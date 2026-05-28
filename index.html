@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculateur Pharmacie — Prix & Négociation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --border: rgba(0,0,0,0.10);
+    --border-med: rgba(0,0,0,0.18);
+    --text: #1a1a18;
+    --text-sec: #6b6a64;
+    --text-ter: #9e9d96;
+    --accent: #1a6b4a;
+    --accent-bg: #e8f5ee;
+    --accent-text: #0d4a32;
+    --warn: #92520a;
+    --warn-bg: #fef3e2;
+    --danger: #8b1c1c;
+    --danger-bg: #fdeaea;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header {
+    background: var(--text);
+    color: #fff;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  header .logo {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  header .logo span {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.5;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  header .version {
+    font-size: 11px;
+    opacity: 0.4;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 10px 0;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+    border: none;
+    background: transparent;
+    color: var(--text-sec);
+    cursor: pointer;
+    transition: all 0.15s;
+    border-right: 1px solid var(--border);
+  }
+  .tab-btn:last-child { border-right: none; }
+  .tab-btn.active {
+    background: var(--text);
+    color: #fff;
+    font-weight: 500;
+  }
+  .tab-btn svg { vertical-align: -3px; margin-right: 5px; }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 14px;
+  }
+  .card-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-ter);
+    margin-bottom: 14px;
+  }
+
+  /* FORM */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .row:last-child { margin-bottom: 0; }
+  .row label {
+    font-size: 13px;
+    color: var(--text-sec);
+    min-width: 185px;
+    flex-shrink: 0;
+  }
+  .row .hint {
+    font-size: 11px;
+    color: var(--text-ter);
+    font-family: 'DM Mono', monospace;
+  }
+  input[type=number], input[type=text], select {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    width: 130px;
+    outline: none;
+    transition: border-color 0.15s;
+    -moz-appearance: textfield;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  select { width: auto; min-width: 130px; }
+  input.wide { width: 260px; }
+  input.sm { width: 70px; }
+
+  hr.div { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  /* TOGGLE BTNS */
+  .toggle-row { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tog-btn {
+    flex: 1;
+    padding: 8px 0;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border-med);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-sec);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tog-btn.active {
+    background: var(--text);
+    color: #fff;
+    border-color: var(--text);
+    font-weight: 500;
+  }
+
+  /* PMC */
+  .pmc-grid { display: flex; gap: 8px; margin-bottom: 14px; }
+  .pmc-item {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pmc-item:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .pmc-item.selected { border-color: var(--accent); background: var(--accent-bg); }
+  .pmc-item .pl { font-size: 10px; color: var(--text-ter); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .pmc-item .pv { font-size: 15px; font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
+
+  /* RESULTS GRID */
+  .rgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .met {
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    border: 1px solid transparent;
+  }
+  .met .lbl { font-size: 10px; color: var(--text-ter); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+  .met .sub { font-size: 10px; color: var(--text-ter); margin-top: 2px; font-family: 'DM Mono', monospace; }
+  .met .val { font-size: 20px; font-weight: 500; color: var(--text); font-family: 'DM Mono', monospace; }
+  .met.hi { background: var(--accent-bg); border-color: rgba(26,107,74,0.2); }
+  .met.hi .lbl { color: var(--accent-text); opacity: 0.7; }
+  .met.hi .val { color: var(--accent-text); font-size: 26px; }
+  .met.hi .sub { color: var(--accent-text); opacity: 0.6; }
+  .met.warn { background: var(--warn-bg); border-color: rgba(146,82,10,0.2); }
+  .met.warn .lbl { color: var(--warn); opacity: 0.7; }
+  .met.warn .val { color: var(--warn); }
+  .met.warn .sub { color: var(--warn); opacity: 0.6; }
+
+  /* NEGO CARDS */
+  .nego-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .nego-card:last-child { margin-bottom: 0; }
+  .nego-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-sec);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .nego-body { font-size: 13px; color: var(--text-sec); line-height: 1.9; }
+  .nego-body b { color: var(--text); font-family: 'DM Mono', monospace; font-weight: 500; }
+  .nego-sub { font-size: 11px; color: var(--text-ter); margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .ug-input-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .ug-input-row label { font-size: 12px; color: var(--text-sec); white-space: nowrap; }
+  .ug-result { font-size: 13px; color: var(--text-sec); line-height: 1.9; margin-top: 8px; }
+  .ug-result b { color: var(--text); font-family: 'DM Mono', monospace; font-weight: 500; }
+
+  /* BADGE */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .ok { background: var(--accent-bg); color: var(--accent-text); }
+  .ko { background: var(--warn-bg); color: var(--warn); }
+  .er { background: var(--danger-bg); color: var(--danger); }
+
+  /* FORMULA */
+  .formula-box {
+    font-size: 12px;
+    color: var(--text-sec);
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    padding: 9px 13px;
+    margin-top: 10px;
+    line-height: 1.8;
+    font-family: 'DM Mono', monospace;
+  }
+  .formula-box b { color: var(--accent-text); font-weight: 500; }
+
+  /* LEXIQUE */
+  .lex-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .lex-table th {
+    text-align: left;
+    padding: 7px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-ter);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+  }
+  .lex-table td {
+    padding: 9px 10px;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.6;
+    color: var(--text-sec);
+  }
+  .lex-table tr:last-child td { border-bottom: none; }
+  .lex-abbr {
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .lex-formula { font-size: 11px; color: var(--text-ter); font-family: 'DM Mono', monospace; margin-top: 2px; }
+  .lex-note { display: inline-block; font-size: 10px; background: var(--warn-bg); color: var(--warn); border-radius: 4px; padding: 1px 6px; margin-top: 3px; font-weight: 500; }
+
+  /* ICON SVG inline */
+  .ico { display: inline-block; vertical-align: -3px; width: 15px; height: 15px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    Pharmacie Michelet
+    <span>Calculateur Prix & Négociation</span>
+  </div>
+  <div class="version">v1.0 — 2026</div>
+</header>
+
+<div class="main">
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-neg" onclick="showTab('neg')">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-3"/><path d="M9 15h3l8.5-8.5a2.121 2.121 0 0 0-3-3L9 12v3"/></svg>
+      Négociation
+    </button>
+    <button class="tab-btn" id="tab-prix" onclick="showTab('prix')">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Prix de vente
+    </button>
+    <button class="tab-btn" id="tab-lex" onclick="showTab('lex')">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Lexique
+    </button>
+  </div>
+
+  <!-- ========== NÉGOCIATION ========== -->
+  <div id="panel-neg">
+
+    <div class="card">
+      <p class="card-title">Produit & prix catalogue</p>
+      <div class="row"><label>Nom du produit</label><input type="text" id="nom" class="wide" placeholder="ex : AVENE CICALFATE 100ml"></div>
+      <div class="row"><label>PA catalogue HT (€)</label><input type="number" id="pacat" value="13.010" step="0.001" min="0" oninput="recalc()"></div>
+      <div class="row">
+        <label>Remise de base déjà obtenue (%)</label>
+        <input type="number" id="rembase" value="23" step="0.1" min="0" max="99" oninput="recalc()">
+        <span class="hint" id="paht-actuel">→ PA HT : —</span>
+      </div>
+      <div class="row">
+        <label>Taux de TVA</label>
+        <select id="tva" onchange="recalc()">
+          <option value="20">TVA 20 %</option>
+          <option value="10">TVA 10 %</option>
+          <option value="5.5">TVA 5,5 %</option>
+          <option value="2.1">TVA 2,1 %</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Prix du marché (PMC) — cliquer pour utiliser comme PV cible</p>
+      <div class="pmc-grid">
+        <div class="pmc-item" id="pmc-0" onclick="usePMC(0, this)">
+          <p class="pl">PMC</p>
+          <p class="pv" id="pmc0v">16,51 €</p>
+          <input type="number" step="0.01" value="16.51" style="width:80px;margin-top:6px;text-align:center" oninput="updatePMC(0,this)" onclick="event.stopPropagation()">
+        </div>
+        <div class="pmc-item" id="pmc-1" onclick="usePMC(1, this)">
+          <p class="pl">PMC ZGP</p>
+          <p class="pv" id="pmc1v">16,40 €</p>
+          <input type="number" step="0.01" value="16.40" style="width:80px;margin-top:6px;text-align:center" oninput="updatePMC(1,this)" onclick="event.stopPropagation()">
+        </div>
+        <div class="pmc-item" id="pmc-2" onclick="usePMC(2, this)">
+          <p class="pl">PMC B</p>
+          <p class="pv" id="pmc2v">15,10 €</p>
+          <input type="number" step="0.01" value="15.10" style="width:80px;margin-top:6px;text-align:center" oninput="updatePMC(2,this)" onclick="event.stopPropagation()">
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:0"><label>Ou saisir un PV TTC personnalisé (€)</label><input type="number" id="pvttc-custom" step="0.01" min="0" placeholder="libre" oninput="usePMCCustom()"></div>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Objectif de marge</p>
+      <div class="row">
+        <label>PV TTC cible (€)</label>
+        <input type="number" id="pvttc" value="12.90" step="0.01" min="0" oninput="syncObj('pvttc')">
+        <span class="hint" id="pv-diff">—</span>
+      </div>
+      <div class="row">
+        <label>MB % cible (taux de marque HT)</label>
+        <input type="number" id="mbcible" value="35" step="0.5" min="0" max="99" oninput="syncObj('mb')">
+      </div>
+    </div>
+
+    <div class="card" id="card-results">
+      <p class="card-title">Situation actuelle</p>
+      <div class="rgrid" id="grid-current"></div>
+      <hr class="div">
+      <p class="card-title">Objectif à atteindre</p>
+      <div class="rgrid" id="grid-target"></div>
+      <hr class="div">
+      <p class="card-title">Écart à négocier</p>
+      <div class="rgrid" id="grid-gap"></div>
+      <div class="formula-box" id="formula-box"></div>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Options de négociation</p>
+
+      <div class="nego-card">
+        <p class="nego-title">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15.09 9a4 4 0 1 0-4.12 6.08"/><path d="M12 3v2"/><path d="M12 19v2"/></svg>
+          Remise additionnelle (%)
+        </p>
+        <div class="nego-body" id="neg-rem-body">—</div>
+      </div>
+
+      <div class="nego-card">
+        <p class="nego-title">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+          Coopération commerciale (€ absolus)
+        </p>
+        <div class="nego-body" id="neg-coop-body">—</div>
+        <div class="nego-sub">
+          Pour une commande de
+          <input type="number" id="qte-coop" value="12" class="sm" min="1" step="1" oninput="recalc()">
+          unités payantes
+        </div>
+      </div>
+
+      <div class="nego-card">
+        <p class="nego-title">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>
+          Unités gratuites — même produit
+        </p>
+        <div class="nego-body" id="neg-ug-body">—</div>
+        <div class="nego-sub">
+          Pour une commande de
+          <input type="number" id="qte-ug" value="12" class="sm" min="1" step="1" oninput="recalc()">
+          unités payantes
+        </div>
+      </div>
+
+      <div class="nego-card">
+        <p class="nego-title">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
+          UG produit différent — validation délégué
+        </p>
+        <div class="ug-input-row">
+          <label>PA HT du produit offert (€)</label>
+          <input type="number" id="ug-autre-pa" placeholder="ex: 5.50" step="0.01" min="0" oninput="recalc()">
+          <label>Qté commandée</label>
+          <input type="number" id="ug-autre-qte" value="12" class="sm" min="1" step="1" oninput="recalc()">
+        </div>
+        <div class="ug-result" id="neg-ug-autre">Saisir le PA HT du produit offert par le délégué pour valider l'échange.</div>
+      </div>
+
+    </div>
+  </div><!-- /panel-neg -->
+
+  <!-- ========== PRIX DE VENTE ========== -->
+  <div id="panel-prix" style="display:none">
+    <div class="card">
+      <p class="card-title">Paramètres</p>
+      <div class="row"><label>PA HT remisé (€)</label><input type="number" id="p-paht" value="10.00" step="0.01" min="0" oninput="calcPrix()"></div>
+      <div class="row">
+        <label>Taux de TVA</label>
+        <select id="p-tva" onchange="calcPrix()">
+          <option value="20">TVA 20 %</option>
+          <option value="10">TVA 10 %</option>
+          <option value="5.5">TVA 5,5 %</option>
+          <option value="2.1">TVA 2,1 %</option>
+        </select>
+      </div>
+      <hr class="div">
+      <div class="toggle-row">
+        <button class="tog-btn active" id="pm-mb" onclick="setPm('mb')">Taux de marque (MB%)</button>
+        <button class="tog-btn" id="pm-k" onclick="setPm('k')">Coefficient (K)</button>
+      </div>
+      <div id="pm-input-mb" class="row"><label>MB objectif (%)</label><input type="number" id="p-mb" value="35" step="0.5" min="0" max="99" oninput="calcPrix()"></div>
+      <div id="pm-input-k" class="row" style="display:none"><label>Coefficient K</label><input type="number" id="p-k" value="1.846" step="0.001" min="1" oninput="calcPrix()"></div>
+    </div>
+    <div class="card">
+      <p class="card-title">Résultats</p>
+      <div class="rgrid">
+        <div class="met hi"><p class="lbl">PV TTC</p><p class="val" id="p-pvttc">—</p><p class="sub" id="p-formula-sub">—</p></div>
+        <div class="met"><p class="lbl">PV HT</p><p class="val" id="p-pvht">—</p></div>
+        <div class="met"><p class="lbl">Marge brute unitaire (MBu)</p><p class="val" id="p-mbu">—</p></div>
+        <div class="met"><p class="lbl">Taux de marque (MB%)</p><p class="val" id="p-mbr">—</p></div>
+        <div class="met"><p class="lbl">Coefficient K</p><p class="val" id="p-kr">—</p></div>
+        <div class="met"><p class="lbl">Taux de marge</p><p class="val" id="p-txm">—</p></div>
+      </div>
+      <div class="formula-box" id="p-formula"></div>
+      <p style="font-size:11px;color:var(--text-ter);margin-top:8px;font-family:'DM Mono',monospace">TVA collectée : <b id="p-tvaval" style="color:var(--text)">—</b></p>
+    </div>
+  </div>
+
+  <!-- ========== LEXIQUE ========== -->
+  <div id="panel-lex" style="display:none">
+    <div class="card">
+      <p class="card-title">Lexique des abréviations</p>
+      <table class="lex-table">
+        <thead><tr><th style="width:100px">Abrév.</th><th>Définition & formule</th></tr></thead>
+        <tbody>
+          <tr><td><span class="lex-abbr">CA HT</span></td><td>Chiffre d'affaires hors taxes sur la période<div class="lex-formula">= PV HT × QV</div></td></tr>
+          <tr><td><span class="lex-abbr">K</span></td><td>Coefficient multiplicateur (calculé selon MB% et TVA%)<div class="lex-formula">= PV TTC / PA HT &nbsp;|&nbsp; = (1 + TVA%) / (1 − MB%)</div></td></tr>
+          <tr><td><span class="lex-abbr">MB</span></td><td>Marge brute cumulée sur la période<div class="lex-formula">= MBu × QV &nbsp;|&nbsp; = CA HT − montant des achats</div></td></tr>
+          <tr><td><span class="lex-abbr">MB %</span></td><td>Taux de marque HT — marge rapportée au PV HT<div class="lex-formula">= [(PV HT − PA HT) / PV HT] %</div><span class="lex-note">≠ taux de marge</span></td></tr>
+          <tr><td><span class="lex-abbr">MBu</span></td><td>Marge brute unitaire<div class="lex-formula">= PV HT − PA HT</div></td></tr>
+          <tr><td><span class="lex-abbr">PA HT</span></td><td>Prix d'achat hors taxe réel remisé<div class="lex-formula">= PAt HT × (1 − remise%) &nbsp;|&nbsp; = PV HT × (1 − MB%)</div></td></tr>
+          <tr><td><span class="lex-abbr">PAt HT</span></td><td>Prix d'achat tarif hors taxe (avant toute remise)</td></tr>
+          <tr><td><span class="lex-abbr">PMC</span></td><td>Prix moyen constaté — référence marché IQVIA / Ospharm</td></tr>
+          <tr><td><span class="lex-abbr">PV HT</span></td><td>Prix de vente hors taxe<div class="lex-formula">= PA HT + MBu &nbsp;|&nbsp; = PA HT / (1 − MB%)</div></td></tr>
+          <tr><td><span class="lex-abbr">PV TTC</span></td><td>Prix de vente toutes taxes comprises<div class="lex-formula">= PV HT × (1 + TVA%) &nbsp;|&nbsp; = PA HT × K</div></td></tr>
+          <tr><td><span class="lex-abbr">QV / QU</span></td><td>Quantités / unités vendues sur la période</td></tr>
+          <tr><td><span class="lex-abbr">Taux de marge</span></td><td>Marge brute rapportée au PA HT<div class="lex-formula">= [(PV HT − PA HT) / PA HT] %</div><span class="lex-note">≠ taux de marque</span></td></tr>
+          <tr><td><span class="lex-abbr">TVA %</span></td><td>Taux de TVA applicable : 2,1 % — 5,5 % — 10 % — 20 %</td></tr>
+          <tr><td><span class="lex-abbr">UG</span></td><td>Unités gratuites — produits offerts par le laboratoire</td></tr>
+          <tr><td><span class="lex-abbr">Coop. com.</span></td><td>Coopération commerciale — remise en montant € versée par le labo (avoir, RFA, etc.)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+let pmMode = 'mb';
+let pmcVals = [16.51, 16.40, 15.10];
+let selectedPmcIdx = null;
+
+function showTab(t) {
+  ['neg','prix','lex'].forEach(x => {
+    document.getElementById('panel-'+x).style.display = x===t?'block':'none';
+    document.getElementById('tab-'+x).classList.toggle('active', x===t);
+  });
+}
+
+function updatePMC(idx, el) {
+  pmcVals[idx] = parseFloat(el.value)||0;
+  document.getElementById('pmc'+idx+'v').textContent = pmcVals[idx].toFixed(2).replace('.',',') + ' €';
+}
+
+function usePMC(idx, el) {
+  selectedPmcIdx = idx;
+  document.querySelectorAll('.pmc-item').forEach((e,i)=>e.classList.toggle('selected',i===idx));
+  document.getElementById('pvttc-custom').value = '';
+  document.getElementById('pvttc').value = pmcVals[idx].toFixed(2);
+  syncObj('pvttc');
+}
+
+function usePMCCustom() {
+  selectedPmcIdx = null;
+  document.querySelectorAll('.pmc-item').forEach(e=>e.classList.remove('selected'));
+  const v = parseFloat(document.getElementById('pvttc-custom').value);
+  if (v>0) { document.getElementById('pvttc').value = v.toFixed(2); syncObj('pvttc'); }
+}
+
+function setPm(m) {
+  pmMode = m;
+  document.getElementById('pm-mb').classList.toggle('active', m==='mb');
+  document.getElementById('pm-k').classList.toggle('active', m==='k');
+  document.getElementById('pm-input-mb').style.display = m==='mb'?'flex':'none';
+  document.getElementById('pm-input-k').style.display = m==='k'?'flex':'none';
+  calcPrix();
+}
+
+function f(v,d=2){ return v.toFixed(d).replace('.',',')+'€'; }
+function fp(v,d=1){ return v.toFixed(d).replace('.',',')+' %'; }
+function fn(v,d=3){ return v.toFixed(d).replace('.',','); }
+
+function syncObj(src) {
+  const tvaRate = parseFloat(document.getElementById('tva').value)/100;
+  const tvaMult = 1+tvaRate;
+  const pacat = parseFloat(document.getElementById('pacat').value)||0;
+  const remb = parseFloat(document.getElementById('rembase').value)||0;
+  const pahta = pacat*(1-remb/100);
+  document.getElementById('paht-actuel').textContent = '→ PA HT : ' + f(pahta);
+
+  if (src==='pvttc') {
+    const pvttc = parseFloat(document.getElementById('pvttc').value)||0;
+    if (pvttc>0 && pahta>0) {
+      const pvht = pvttc/tvaMult;
+      const mb = (pvht-pahta)/pvht*100;
+      document.getElementById('mbcible').value = mb.toFixed(2);
+    }
+  } else {
+    const mb = parseFloat(document.getElementById('mbcible').value)||0;
+    if (mb<100 && pahta>0) {
+      const pvht = pahta/(1-mb/100);
+      const pvttc = pvht*tvaMult;
+      document.getElementById('pvttc').value = pvttc.toFixed(2);
+    }
+  }
+  recalc();
+}
+
+function metHtml(cls,lbl,val,sub) {
+  return `<div class="met ${cls}"><p class="lbl">${lbl}</p><p class="val">${val}</p>${sub?`<p class="sub">${sub}</p>`:''}</div>`;
+}
+
+function recalc() {
+  const pacat   = parseFloat(document.getElementById('pacat').value)||0;
+  const remb    = parseFloat(document.getElementById('rembase').value)||0;
+  const tvaRate = parseFloat(document.getElementById('tva').value)/100;
+  const tvaMult = 1+tvaRate;
+  const pvttcC  = parseFloat(document.getElementById('pvttc').value)||0;
+  const mbCib   = parseFloat(document.getElementById('mbcible').value)||0;
+  const qteCoop = parseInt(document.getElementById('qte-coop').value)||12;
+  const qteUG   = parseInt(document.getElementById('qte-ug').value)||12;
+  const ugAutrePa = parseFloat(document.getElementById('ug-autre-pa').value)||0;
+  const ugAutreQte= parseInt(document.getElementById('ug-autre-qte').value)||12;
+
+  if (!pacat || !pvttcC) return;
+
+  const pahta  = pacat*(1-remb/100);
+  document.getElementById('paht-actuel').textContent = '→ PA HT : '+f(pahta);
+
+  const pvhta  = pvttcC/tvaMult;
+  const mba    = pvhta>0?(pvhta-pahta)/pvhta*100:0;
+  const Ka     = pahta>0?pvttcC/pahta:0;
+
+  const pahtCib = pvttcC/tvaMult*(1-mbCib/100);
+  const Kcib    = tvaMult/(1-mbCib/100);
+  const mbu_cib = pvttcC/tvaMult - pahtCib;
+
+  const ecartUnit = pahta - pahtCib;
+  const remTotale = pacat>0?(1-pahtCib/pacat)*100:0;
+  const remAddi   = remTotale - remb;
+
+  // PV vs PMC
+  let pvDiff = '';
+  if (selectedPmcIdx !== null) {
+    const d = pvttcC - pmcVals[selectedPmcIdx];
+    const s = d<0?'−':'+';
+    const cl = d<0?'ok':d===0?'':'ko';
+    pvDiff = `<span class="badge ${cl}">${s}${f(Math.abs(d))} vs PMC</span>`;
+  }
+  document.getElementById('pv-diff').innerHTML = pvDiff;
+
+  // Grids
+  document.getElementById('grid-current').innerHTML =
+    metHtml('','PA HT actuel',f(pahta),`remise base ${remb.toFixed(1)}%`)+
+    metHtml('','PV TTC',f(pvttcC),'')+
+    metHtml('','MB % actuel',fp(mba),'taux de marque')+
+    metHtml('','Coeff. K actuel',fn(Ka),'');
+
+  document.getElementById('grid-target').innerHTML =
+    metHtml('hi','PA HT cible',f(pahtCib),`pour MB ${fp(mbCib)}`)+
+    metHtml('hi','MBu cible',f(mbu_cib),'')+
+    metHtml('','Coeff. K cible',fn(Kcib),'')+
+    metHtml('','PV TTC cible',f(pvttcC),'');
+
+  const gCls = ecartUnit>0.005?'warn':'hi';
+  document.getElementById('grid-gap').innerHTML =
+    metHtml(gCls,'Écart PA HT / unité',f(ecartUnit),ecartUnit>0.005?'à négocier':'✓ déjà atteint')+
+    metHtml(gCls,'Remise additionnelle nécessaire',fp(remAddi>0?remAddi:0),`remise totale : ${fp(remTotale)}`);
+
+  document.getElementById('formula-box').innerHTML =
+    `PA HT cible = PV TTC ÷ (1+TVA%) × (1−MB%) = <b>${f(pvttcC)}</b> ÷ ${tvaMult.toFixed(3)} × ${(1-mbCib/100).toFixed(3)} = <b>${f(pahtCib)}</b>`;
+
+  // Options de négociation
+  if (ecartUnit <= 0.005) {
+    ['neg-rem-body','neg-coop-body','neg-ug-body'].forEach(id=>{
+      document.getElementById(id).innerHTML = '<span class="badge ok">✓ Objectif déjà atteint avec la remise de base</span>';
+    });
+  } else {
+    const coopTotal = ecartUnit * qteCoop;
+    document.getElementById('neg-rem-body').innerHTML =
+      `Remise <b>additionnelle</b> à demander : <b>${fp(remAddi)}</b> sur PA catalogue<br>
+       Remise <b>totale</b> à obtenir : <b>${fp(remTotale)}</b> (${remb.toFixed(1)}% base + ${fp(remAddi)} additionnelle)<br>
+       PA HT net résultant : <b>${f(pahtCib)}</b>`;
+
+    document.getElementById('neg-coop-body').innerHTML =
+      `Écart unitaire <b>${f(ecartUnit)}</b> × <b>${qteCoop}</b> unités = avoir / RFA de <b>${f(coopTotal)}</b><br>
+       Demander au labo une coopération commerciale de <b>${f(coopTotal)}</b>`;
+
+    const ugNb = pahtCib>0?(qteUG*pahta/pahtCib-qteUG):0;
+    const ugNbRnd = Math.ceil(ugNb*10)/10;
+    const ugNbInt = Math.ceil(ugNb);
+    const paNetUG = pahta*qteUG/(qteUG+ugNbInt);
+    const mbUG = (pvhta-paNetUG)/pvhta*100;
+    document.getElementById('neg-ug-body').innerHTML =
+      `Pour <b>${qteUG}</b> unités payantes → demander <b>${ugNbInt} UG</b><br>
+       Valeur des UG au PA : <b>${f(ugNbInt*pahta)}</b><br>
+       PA net effectif : <b>${f(paNetUG)}</b> → MB obtenu : <b>${fp(mbUG)}</b>`;
+  }
+
+  // UG autre produit
+  if (ugAutrePa>0) {
+    const valNec = ecartUnit * ugAutreQte;
+    const ugNbA  = Math.ceil(valNec/ugAutrePa);
+    const ugValA = ugNbA * ugAutrePa;
+    const paNetA = pahta - ugValA/ugAutreQte;
+    const mbA    = (pvhta-paNetA)/pvhta*100;
+    const ok     = mbA >= mbCib - 0.1;
+    document.getElementById('neg-ug-autre').innerHTML =
+      `Valeur à obtenir : <b>${f(valNec)}</b> pour ${ugAutreQte} unités commandées<br>
+       → Demander <b>${ugNbA} UG</b> du produit offert (valeur PA : <b>${f(ugValA)}</b>)<br>
+       PA net effectif obtenu : <b>${f(paNetA)}</b> → MB : <b>${fp(mbA)}</b>
+       <span class="badge ${ok?'ok':'ko'}" style="margin-left:6px">${ok?'✓ objectif atteint':'⚠ insuffisant'}</span>`;
+  } else {
+    document.getElementById('neg-ug-autre').innerHTML = 'Saisir le PA HT du produit offert par le délégué pour valider l\'échange.';
+  }
+}
+
+// ===== PRIX DE VENTE =====
+function calcPrix() {
+  const paht    = parseFloat(document.getElementById('p-paht').value)||0;
+  const tvaRate = parseFloat(document.getElementById('p-tva').value)/100;
+  const tvaMult = 1+tvaRate;
+  let K, mb;
+  if (pmMode==='mb') {
+    mb = parseFloat(document.getElementById('p-mb').value)/100;
+    if (mb>=1||mb<0) return;
+    K = tvaMult/(1-mb);
+  } else {
+    K = parseFloat(document.getElementById('p-k').value)||0;
+    if (K<=0) return;
+    mb = (K/tvaMult-1)/(K/tvaMult);
+  }
+  const pvttc = paht*K;
+  const pvht  = pvttc/tvaMult;
+  const mbu   = pvht-paht;
+  const txm   = paht>0?(mbu/paht)*100:0;
+  const tvaV  = pvttc-pvht;
+  document.getElementById('p-pvttc').textContent = f(pvttc);
+  document.getElementById('p-formula-sub').textContent = `PA HT × K = ${f(paht)} × ${fn(K)}`;
+  document.getElementById('p-pvht').textContent  = f(pvht);
+  document.getElementById('p-mbu').textContent   = f(mbu);
+  document.getElementById('p-mbr').textContent   = fp(mb*100);
+  document.getElementById('p-kr').textContent    = fn(K);
+  document.getElementById('p-txm').textContent   = fp(txm);
+  document.getElementById('p-tvaval').textContent= f(tvaV);
+  document.getElementById('p-formula').innerHTML =
+    `PV TTC = <b>${f(paht)}</b> × <b>${fn(K)}</b> = <b>${f(pvttc)}</b> &nbsp;|&nbsp; K = (1+${(tvaRate*100).toFixed(1)}%) / (1−${fp(mb*100)}) = <b>${fn(K)}</b>`;
+  if (pmMode==='k') document.getElementById('p-mb').value=(mb*100).toFixed(1);
+  else document.getElementById('p-k').value=K.toFixed(3);
+}
+
+recalc();
+calcPrix();
+</script>
+</body>
+</html>

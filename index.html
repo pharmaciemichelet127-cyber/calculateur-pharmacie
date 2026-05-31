@@ -1178,9 +1178,7 @@ function calcPM() {
 
   // Update elasticity info block
   const elInfo = document.getElementById(`pm-elasticite-info`);
-  const seuil  = mbu > 0 && pvht > 0 ? ((pvht - (pv*(1-promo/100)/tvaM)) / (pvht - (pv*(1-promo/100)/tvaM) - 0.001)) : 0;
-  // Seuil volume = unites suppl. min pour que promo soit rentable vs vente normale
-  // On calcule ca apres avoir pvPromo
+  // seuil calcule plus bas apres mbu
   elInfo.innerHTML = `<p class="nego-title">${elast.label}</p><div class="nego-body">` +
     `Fourchette realiste : <b>+${elast.min}% a +${elast.max}%</b> de ventes supplementaires | Hypothese mediane : <b>+${elast.real}%</b><br>` +
     `${elast.note}` +

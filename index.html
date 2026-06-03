@@ -20,6 +20,8 @@
   #panel-cat { margin: 0 -16px; }
   #panel-cat .card { border-radius: 0; border-left: none; border-right: none; }
   #panel-cmd { margin: 0 -16px; }
+  #panel-sim { margin: 0 -16px; }
+  #panel-sim .card { border-radius: 0; border-left: none; border-right: none; }
   #panel-cmd .card { border-radius: 0; border-left: none; border-right: none; }
   #panel-prixnet .card { border-radius: 0; border-left: none; border-right: none; }
   @media (min-width: 960px) {
@@ -119,6 +121,7 @@
     <button type="button" class="tab-btn" id="tab-prixnet" onclick="showTab('prixnet')">Prix nets</button>
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
+    <button type="button" class="tab-btn" id="tab-sim" onclick="showTab('sim')">Simulation</button>
     <button type="button" class="tab-btn" id="tab-guide" onclick="showTab('guide')">Guide</button>
   </div>
 
@@ -1332,6 +1335,66 @@
 
   </div>
 
+
+  <!-- ===== SIMULATION ===== -->
+  <div id="panel-sim" style="display:none">
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Simulateur — Impact des conditions par marché</span>
+        <button type="button" onclick="simLancer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Simuler</button>
+      </p>
+      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:4px">
+        <div class="row" style="margin:0">
+          <label>Labo</label>
+          <select id="sim-labo" onchange="simChargeLabo()" style="min-width:160px;font-size:13px">
+            <option value="">-- Choisir --</option>
+          </select>
+        </div>
+        <div class="row" style="margin:0">
+          <label>TVA</label>
+          <select id="sim-tva" style="font-size:13px">
+            <option value="20">20%</option>
+            <option value="5.5">5,5%</option>
+            <option value="10">10%</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">Paliers à simuler (remise %)</label>
+          <div id="sim-paliers-inputs" style="display:flex;gap:6px;align-items:center">
+            <input type="number" class="sim-palier-inp" value="25" min="0" max="60" step="0.5" style="width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:'DM Mono',monospace;text-align:center">
+            <input type="number" class="sim-palier-inp" value="30" min="0" max="60" step="0.5" style="width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:'DM Mono',monospace;text-align:center">
+            <input type="number" class="sim-palier-inp" value="35" min="0" max="60" step="0.5" style="width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:'DM Mono',monospace;text-align:center">
+            <button type="button" onclick="simAjouterPalier()" style="font-size:11px;padding:4px 8px;border:1px solid var(--accent);color:var(--accent-text);background:transparent;border-radius:var(--radius-sm);cursor:pointer">+ Palier</button>
+          </div>
+        </div>
+        <div class="row" style="margin:0">
+          <label>UG simulées</label>
+          <select id="sim-ug-mode" style="font-size:12px">
+            <option value="none">Sans UG</option>
+            <option value="6+1">6+1 UG</option>
+            <option value="12+2">12+2 UG</option>
+            <option value="12+3">12+3 UG</option>
+            <option value="24+8">24+8 UG</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="sim-result" style="display:none">
+      <div class="card">
+        <p class="card-title">Vue globale — tous marchés</p>
+        <div id="sim-global-kpis" class="rgrid" style="margin-bottom:0"></div>
+      </div>
+      <div class="card" style="padding:0">
+        <div style="overflow-x:auto">
+          <table id="sim-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
 </div>
 <script>
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
@@ -1352,7 +1415,7 @@ function setSituation(s) {
 }
 
 function showTab(t) {
-  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat'].forEach(function(x) {
+  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat','sim'].forEach(function(x) {
     var p = document.getElementById('panel-'+x);
     var b = document.getElementById('tab-'+x);
     if (p) p.style.display = x===t ? 'block' : 'none';
@@ -1366,6 +1429,7 @@ function showTab(t) {
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
   if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
   if (t === 'cat') { if(!catInited){catInited=true;} catInit(); }
+  if (t === 'sim') { if(!simInited){simInited=true;} simInit(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
 }
 
@@ -4940,6 +5004,200 @@ function catRenderTable() {
 }
 
 var catInited = false;
+
+
+// ===== SIMULATION =====
+var simProduitsSource = [];
+
+function simInit() {
+  if (Object.keys(condLabos).length === 0) {
+    try { var s=localStorage.getItem('cond_labos'); if(s){condLabos=JSON.parse(s);} } catch(e) {}
+  }
+  var sel = document.getElementById('sim-labo');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var l = condLabos[id];
+    if (!l.nom) return;
+    var o = document.createElement('option');
+    o.value = id; o.textContent = l.nom + (l.produits ? ' (' + l.produits.length + ' prod.)' : '');
+    sel.appendChild(o);
+  });
+}
+
+function simChargeLabo() {
+  var id = document.getElementById('sim-labo').value;
+  simProduitsSource = (id && condLabos[id] && condLabos[id].produits) ? condLabos[id].produits : [];
+  document.getElementById('sim-result').style.display = 'none';
+}
+
+function simAjouterPalier() {
+  var div = document.getElementById('sim-paliers-inputs');
+  var inp = document.createElement('input');
+  inp.type = 'number'; inp.className = 'sim-palier-inp';
+  inp.value = ''; inp.min = 0; inp.max = 60; inp.step = 0.5;
+  inp.style.cssText = 'width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:"DM Mono",monospace;text-align:center';
+  div.insertBefore(inp, div.lastElementChild);
+}
+
+function simGetPaliers() {
+  var inps = document.querySelectorAll('.sim-palier-inp');
+  var vals = [];
+  inps.forEach(function(inp) {
+    var v = parseFloat(inp.value);
+    if (!isNaN(v) && v > 0) vals.push(v);
+  });
+  return vals.length > 0 ? vals : [25, 30, 35];
+}
+
+function simCalcUG(qte, ugMode) {
+  if (ugMode === 'none' || !ugMode) return 0;
+  var parts = ugMode.split('+');
+  var ach = parseInt(parts[0])||0, off = parseInt(parts[1])||0;
+  return (ach > 0 && qte >= ach) ? Math.floor(qte / ach) * off : 0;
+}
+
+function simLancer() {
+  if (simProduitsSource.length === 0) { alert('Choisissez un labo avec des produits.'); return; }
+
+  var paliers  = simGetPaliers();
+  var tvaR     = parseFloat(document.getElementById('sim-tva').value) / 100;
+  var ugMode   = document.getElementById('sim-ug-mode').value;
+
+  // Group products by marche (from catalogue)
+  var laboId   = document.getElementById('sim-labo').value;
+  var catalogue = (condLabos[laboId] && condLabos[laboId].catalogue) || {};
+
+  var marchesMap = {}; // marche -> [produits]
+  simProduitsSource.forEach(function(p) {
+    if ((p.moy||0) <= 0) return; // only active products
+    var key    = p.ean || p.nom;
+    var catEntry = catalogue[key] || {};
+    var marche = catEntry.marche || p.marche || 'Non classifie';
+    if (!marchesMap[marche]) marchesMap[marche] = [];
+    marchesMap[marche].push(p);
+  });
+
+  var marches = Object.keys(marchesMap).sort();
+  if (marches.length === 0) {
+    alert('Aucun produit actif. Importez le PDF LGPI puis classifiez via l\'onglet Catalogue.');
+    return;
+  }
+
+  // For each marche × palier, compute indicators
+  // Structure: results[marche][palier] = {ca, marge, mb, ugTotal, nRefs}
+  var results = {};
+  var totals  = {}; // totals[palier] = {ca, marge, ug}
+
+  paliers.forEach(function(pal) { totals[pal] = {ca:0, marge:0, ug:0, refs:0}; });
+
+  marches.forEach(function(marche) {
+    results[marche] = {};
+    var prods = marchesMap[marche];
+
+    paliers.forEach(function(pal) {
+      var ca=0, marge=0, ugTotal=0;
+      prods.forEach(function(p) {
+        var moy    = p.moy || 0;
+        var paCat  = p.pa_net ? p.pa_net / (1 - (p.rem_cat||30)/100) : (p.pa_cat || p.pa_net || 0);
+        // pa_cat original = pa_net / (1 - remCat/100)
+        // Use pa_net from PDF as the PA Cat Net at current conditions
+        // Simulate: new pa_net = paCat * (1 - pal/100)
+        var paNetSim = (p.pa_net||0) * (1 - pal/100) / (1 - (30)/100); // normalize to catalogue then apply pal
+        // Simpler: use pa_net directly as PA Cat HT (best approximation from PDF)
+        var paCatHT = p.pa_net || 0;
+        var paNetNew = paCatHT * (1 - pal/100);
+        var pvHT    = (p.pv_ttc||0) / (1 + tvaR);
+        var mbu     = pvHT - paNetNew;
+        var qteAn   = moy * 12;
+        var ug      = simCalcUG(qteAn, ugMode);
+
+        ca     += moy * 12 * (p.pv_ttc||0);
+        marge  += qteAn * mbu;
+        ugTotal += ug;
+      });
+      var caHT = ca / (1 + tvaR);
+      var mb   = caHT > 0 ? marge / caHT * 100 : 0;
+      results[marche][pal] = { ca:ca, marge:marge, mb:mb, ug:ugTotal, refs:prods.length };
+      totals[pal].ca    += ca;
+      totals[pal].marge += marge;
+      totals[pal].ug    += ugTotal;
+      totals[pal].refs  += prods.length;
+    });
+  });
+
+  // Render global KPIs
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+
+  var kpiHtml = '';
+  paliers.forEach(function(pal) {
+    var t = totals[pal];
+    var caHT = t.ca / (1 + tvaR);
+    var mb = caHT > 0 ? t.marge / caHT * 100 : 0;
+    var cls = mb >= 35 ? 'hi' : mb >= 28 ? 'warn' : 'danger';
+    kpiHtml += '<div class="met ' + cls + '" style="text-align:center">' +
+      '<p class="lbl">Remise ' + pal + '%' + (ugMode !== 'none' ? ' + ' + ugMode + ' UG' : '') + '</p>' +
+      '<p class="val" style="font-size:20px">' + f1(mb) + '%</p>' +
+      '<p class="sub">Marge : ' + fE(t.marge) + '</p>' +
+      '<p class="sub">CA TTC : ' + fE(t.ca) + '</p>' +
+      (t.ug > 0 ? '<p class="sub">UG : +' + t.ug + ' u.</p>' : '') +
+      '</div>';
+  });
+  document.getElementById('sim-global-kpis').innerHTML = kpiHtml;
+
+  // Render table: rows = marches, cols = paliers
+  var thS = 'padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;';
+  var html = '<thead><tr style="background:var(--text);color:#fff">';
+  html += '<th style="' + thS + 'text-align:left;min-width:140px">Marche</th>';
+  html += '<th style="' + thS + 'text-align:center;width:50px">Refs actives</th>';
+  paliers.forEach(function(pal) {
+    html += '<th style="' + thS + 'text-align:center;min-width:180px;background:#1a3a20" colspan="3">Remise ' + pal + '%' + (ugMode !== 'none' ? ' + ' + ugMode + ' UG' : '') + '</th>';
+  });
+  html += '</tr><tr style="background:#2a2a20;color:#fff">';
+  html += '<th></th><th></th>';
+  paliers.forEach(function() {
+    html += '<th style="' + thS + 'text-align:center;font-size:9px;background:#1a3a20">MB%</th>';
+    html += '<th style="' + thS + 'text-align:right;font-size:9px;background:#1a3a20">Marge/an</th>';
+    html += '<th style="' + thS + 'text-align:right;font-size:9px;background:#1a3a20">CA TTC/an</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  marches.forEach(function(marche, mi) {
+    var bg = mi % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var td  = 'padding:6px 10px;border-bottom:0.5px solid var(--border);font-size:12px;background:' + bg;
+    html += '<tr>';
+    html += '<td style="' + td + ';font-weight:600">' + marche + '</td>';
+    html += '<td style="' + td + ';text-align:center">' + marchesMap[marche].length + '</td>';
+    paliers.forEach(function(pal) {
+      var r = results[marche][pal];
+      var mbClr = r.mb >= 35 ? 'var(--accent-text)' : r.mb >= 28 ? 'var(--warn)' : 'var(--danger)';
+      html += '<td style="' + td + ';text-align:center;font-weight:700;color:' + mbClr + '">' + f1(r.mb) + '%</td>';
+      html += '<td style="' + td + ';text-align:right;font-family:monospace">' + fE(r.marge) + '</td>';
+      html += '<td style="' + td + ';text-align:right;font-family:monospace;color:var(--text-sec)">' + fE(r.ca) + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  // Totals row
+  html += '<tr style="background:var(--text);color:#fff;font-weight:600">';
+  html += '<td style="padding:7px 10px;font-size:12px">TOTAL</td>';
+  html += '<td style="padding:7px 10px;text-align:center;font-size:12px">' + simProduitsSource.filter(function(p){ return (p.moy||0)>0; }).length + '</td>';
+  paliers.forEach(function(pal) {
+    var t = totals[pal];
+    var mb = (t.ca / (1+tvaR)) > 0 ? t.marge / (t.ca/(1+tvaR)) * 100 : 0;
+    var mbClr = mb >= 35 ? '#7effc0' : mb >= 28 ? '#ffd580' : '#ff8080';
+    html += '<td style="padding:7px 10px;text-align:center;font-size:13px;font-weight:700;color:' + mbClr + '">' + f1(mb) + '%</td>';
+    html += '<td style="padding:7px 10px;text-align:right;font-family:monospace">' + fE(t.marge) + '</td>';
+    html += '<td style="padding:7px 10px;text-align:right;font-family:monospace;opacity:.8">' + fE(t.ca) + '</td>';
+  });
+  html += '</tr></tbody>';
+
+  document.getElementById('sim-table').innerHTML = html;
+  document.getElementById('sim-result').style.display = 'block';
+}
+
+var simInited = false;
 
 </script>
 

@@ -3310,15 +3310,23 @@ async function importMCPDF(input) {
 // ===== CONDITIONS COMMERCIALES =====
 var MOIS_LABELS_COND = ['Jun25','Jul25','Aou25','Sep25','Oct25','Nov25','Dec25','Jan26','Fev26','Mar26','Avr26','Mai26'];
 var condLabos = {};
-var condInited = false;         // {id: {nom, caAnnuel, mbActuel, tva, ventes[12], conditions[]}}
+var condInited = false;
+// Load condLabos immediately on page load - so cmd/cat tabs work without visiting cond first
+(function() {
+  try {
+    var _saved = localStorage.getItem('cond_labos');
+    if (_saved) {
+      condLabos = JSON.parse(_saved);
+      var _ids = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n) && n > 0; });
+      if (_ids.length > 0) condNextId = Math.max.apply(null, _ids) + 1;
+    }
+  } catch(e) {}
+})();
 var condLaboActif = null;
 var condNextId = 1;
 
 function condInit() {
-  try {
-    var saved = localStorage.getItem('cond_labos');
-    if (saved) { condLabos = JSON.parse(saved); condNextId = Math.max(...Object.keys(condLabos).map(Number)) + 1; }
-  } catch(e) {}
+  // condLabos already loaded at startup via IIFE
   condBuildGrid();
   condRenderTabs();
 }

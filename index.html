@@ -1359,24 +1359,11 @@
             <option value="10">10%</option>
           </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <label style="font-size:11px;color:var(--text-sec);font-weight:500">Paliers à simuler (remise %)</label>
-          <div id="sim-paliers-inputs" style="display:flex;gap:6px;align-items:center">
-            <input type="number" class="sim-palier-inp" value="25" min="0" max="60" step="0.5" style="width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:'DM Mono',monospace;text-align:center">
-            <input type="number" class="sim-palier-inp" value="30" min="0" max="60" step="0.5" style="width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:'DM Mono',monospace;text-align:center">
-            <input type="number" class="sim-palier-inp" value="35" min="0" max="60" step="0.5" style="width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:'DM Mono',monospace;text-align:center">
-            <button type="button" onclick="simAjouterPalier()" style="font-size:11px;padding:4px 8px;border:1px solid var(--accent);color:var(--accent-text);background:transparent;border-radius:var(--radius-sm);cursor:pointer">+ Palier</button>
-          </div>
-        </div>
+
         <div class="row" style="margin:0">
-          <label>UG simulées</label>
-          <select id="sim-ug-mode" style="font-size:12px">
-            <option value="none">Sans UG</option>
-            <option value="6+1">6+1 UG</option>
-            <option value="12+2">12+2 UG</option>
-            <option value="12+3">12+3 UG</option>
-            <option value="24+8">24+8 UG</option>
-          </select>
+          <label>Couverture cible (mois)</label>
+          <input type="number" id="sim-mois-cible" value="2" min="1" max="6" step="1" style="width:60px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)">
+          <span class="hint">mois de stock</span>
         </div>
       </div>
     </div>
@@ -4969,12 +4956,21 @@ function catSauvegarder() {
 function catRenderTable() {
   var tbody = document.getElementById('cat-tbody');
   if (!tbody) return;
-  var inS = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:100%;box-sizing:border-box;';
-  var td  = 'padding:4px 6px;border-bottom:0.5px solid var(--border);font-size:11px;';
+  var inS  = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:100%;box-sizing:border-box;';
+  var selS = 'font-size:11px;padding:3px 4px;border:1px solid var(--accent);border-radius:3px;background:#e8f8f0;width:100%;box-sizing:border-box;font-weight:500;';
+  var td   = 'padding:4px 6px;border-bottom:0.5px solid var(--border);font-size:11px;';
 
+  // Collect all known markets from NUTRICO_CATALOGUE
+  var knownMarches = [];
+  Object.values(NUTRICO_CATALOGUE).forEach(function(v) {
+    if (v.marche && knownMarches.indexOf(v.marche) < 0) knownMarches.push(v.marche);
+  });
+  knownMarches.sort();
+
+  // Group by marche for display
   var marchesMap = {};
   catProduits.forEach(function(p,i){
-    var m = p.marche || 'Non classe';
+    var m = p.marche || '\u2014 Non affect\u00e9';
     if (!marchesMap[m]) marchesMap[m] = [];
     marchesMap[m].push({p:p, i:i});
   });
@@ -4982,21 +4978,41 @@ function catRenderTable() {
   var html = '';
   var colors = ['#fff','var(--surface2)'];
   var ci = 0;
-  Object.keys(marchesMap).sort().forEach(function(marche) {
+  // Show unaffected first, then sorted markets
+  var sortedMarches = Object.keys(marchesMap).sort(function(a,b){
+    if (a.indexOf('Non affect') >= 0) return -1;
+    if (b.indexOf('Non affect') >= 0) return 1;
+    return a.localeCompare(b);
+  });
+
+  sortedMarches.forEach(function(marche) {
     var items = marchesMap[marche];
-    var bg = colors[ci++ % 2];
-    html += '<tr style="background:var(--accent-bg)"><td colspan="7" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em">' + marche + ' <span style="font-weight:400;opacity:.7">(' + items.length + ')</span></td></tr>';
+    var isNA  = marche.indexOf('Non affect') >= 0;
+    var bg    = colors[ci++ % 2];
+    var hdrBg = isNA ? '#fff3e0' : 'var(--accent-bg)';
+    var hdrClr= isNA ? '#b36000' : 'var(--accent-text)';
+    html += '<tr style="background:' + hdrBg + '"><td colspan="7" style="padding:5px 10px;font-size:10px;font-weight:700;color:' + hdrClr + ';text-transform:uppercase;letter-spacing:.06em">' +
+      (isNA ? '\u26a0 ' : '') + marche + ' <span style="font-weight:400;opacity:.7">(' + items.length + ' produit' + (items.length>1?'s':'') + ')</span></td></tr>';
+
     items.forEach(function(item) {
       var p = item.p; var i = item.i;
-      var rowBg = (p.categorie === 'Autre' || !p.categorie) ? '#fff8e6' : bg;
+      var rowBg = isNA ? '#fff8ec' : bg;
       html += '<tr style="background:' + rowBg + '">';
       html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px" title="' + p.nom + '">' + p.nom + '</td>';
-      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center">' + (p.ean||'-') + '</td>';
-      html += '<td style="' + td + 'text-align:center;font-family:monospace">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
-      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
-      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
-      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.marche||'') + '" placeholder="marche" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'marche\',this.value)"></td>';
-      html += '<td style="' + td + 'text-align:center;font-size:11px;color:var(--text-ter)">' + (p.palier_id||'-') + '</td>';
+      html += '<td style="' + td + 'font-family:monospace;font-size:9px;color:var(--text-ter);text-align:center">' + (p.ean||'-') + '</td>';
+      html += '<td style="' + td + 'text-align:center;font-family:monospace;width:44px">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
+      html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
+      html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
+      // Marche = dropdown of official NUTRICO markets
+      var selOpts = '<option value="">\u2014 choisir \u2014</option>';
+      knownMarches.forEach(function(m) {
+        selOpts += '<option value="' + m + '"' + (p.marche === m ? ' selected' : '') + '>' + m + '</option>';
+      });
+      html += '<td style="' + td + 'background:#e8f8f0;min-width:130px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche\',this.value);catRenderTable()">' + selOpts + '</select></td>';
+      // Palier: auto-computed from nb refs in same marche
+      var nbRefsMarche = marchesMap[p.marche||''] ? marchesMap[p.marche||''].length : 0;
+      var palierLabel = !p.marche ? '-' : nbRefsMarche >= 30 ? '30 ref' : nbRefsMarche >= 8 ? '8-29 ref' : nbRefsMarche + ' ref';
+      html += '<td style="' + td + 'text-align:center;font-size:10px;font-weight:600;color:var(--accent-text)">' + palierLabel + '</td>';
       html += '</tr>';
     });
   });
@@ -5060,139 +5076,159 @@ function simCalcUG(qte, ugMode) {
 function simLancer() {
   if (simProduitsSource.length === 0) { alert('Choisissez un labo avec des produits.'); return; }
 
-  var paliers  = simGetPaliers();
-  var tvaR     = parseFloat(document.getElementById('sim-tva').value) / 100;
-  var ugMode   = document.getElementById('sim-ug-mode').value;
+  var tvaR   = parseFloat(document.getElementById('sim-tva').value) / 100;
+  var moisCible = parseFloat(document.getElementById('sim-mois-cible').value) || 2;
+  var laboId = document.getElementById('sim-labo').value;
 
-  // Group products by marche (from catalogue)
-  var laboId   = document.getElementById('sim-labo').value;
-  var catalogue = (condLabos[laboId] && condLabos[laboId].catalogue) || {};
+  // Get all active products (rotation > 0)
+  var actifsAll = simProduitsSource.filter(function(p){ return (p.moy||0) > 0; });
+  actifsAll.sort(function(a,b){ return (b.moy||0) - (a.moy||0); }); // sort by rotation desc
 
-  var marchesMap = {}; // marche -> [produits]
-  simProduitsSource.forEach(function(p) {
-    if ((p.moy||0) <= 0) return; // only active products
-    var key    = p.ean || p.nom;
-    var catEntry = catalogue[key] || {};
-    var marche = catEntry.marche || p.marche || 'Non classifie';
-    if (!marchesMap[marche]) marchesMap[marche] = [];
-    marchesMap[marche].push(p);
-  });
+  // Define the two scenarios
+  var scenarios = [
+    { label: 'Marche 30 refs', rem: 30, nRefs: 30, color: 'var(--accent-text)', bg: 'var(--accent-bg)' },
+    { label: 'Marche 8-29 refs', rem: 25, nRefs: Math.min(29, actifsAll.length), color: 'var(--warn)', bg: '#fff8e6' }
+  ];
 
-  var marches = Object.keys(marchesMap).sort();
-  if (marches.length === 0) {
-    alert('Aucun produit actif. Importez le PDF LGPI puis classifiez via l\'onglet Catalogue.');
-    return;
+  // UG tiers: 6+1, 12+3, 24+8
+  var ugTiers = [
+    { ach: 6,  off: 1 },
+    { ach: 12, off: 3 },
+    { ach: 24, off: 8 }
+  ];
+
+  function getUG(qte) {
+    // Best UG tier applicable
+    var best = { ach:0, off:0 };
+    ugTiers.forEach(function(t) { if (qte >= t.ach) best = t; });
+    return best.ach > 0 ? Math.floor(qte / best.ach) * best.off : 0;
   }
 
-  // For each marche × palier, compute indicators
-  // Structure: results[marche][palier] = {ca, marge, mb, ugTotal, nRefs}
-  var results = {};
-  var totals  = {}; // totals[palier] = {ca, marge, ug}
-
-  paliers.forEach(function(pal) { totals[pal] = {ca:0, marge:0, ug:0, refs:0}; });
-
-  marches.forEach(function(marche) {
-    results[marche] = {};
-    var prods = marchesMap[marche];
-
-    paliers.forEach(function(pal) {
-      var ca=0, marge=0, ugTotal=0;
-      prods.forEach(function(p) {
-        var moy    = p.moy || 0;
-        var paCat  = p.pa_net ? p.pa_net / (1 - (p.rem_cat||30)/100) : (p.pa_cat || p.pa_net || 0);
-        // pa_cat original = pa_net / (1 - remCat/100)
-        // Use pa_net from PDF as the PA Cat Net at current conditions
-        // Simulate: new pa_net = paCat * (1 - pal/100)
-        var paNetSim = (p.pa_net||0) * (1 - pal/100) / (1 - (30)/100); // normalize to catalogue then apply pal
-        // Simpler: use pa_net directly as PA Cat HT (best approximation from PDF)
-        var paCatHT = p.pa_net || 0;
-        var paNetNew = paCatHT * (1 - pal/100);
-        var pvHT    = (p.pv_ttc||0) / (1 + tvaR);
-        var mbu     = pvHT - paNetNew;
-        var qteAn   = moy * 12;
-        var ug      = simCalcUG(qteAn, ugMode);
-
-        ca     += moy * 12 * (p.pv_ttc||0);
-        marge  += qteAn * mbu;
-        ugTotal += ug;
-      });
-      var caHT = ca / (1 + tvaR);
-      var mb   = caHT > 0 ? marge / caHT * 100 : 0;
-      results[marche][pal] = { ca:ca, marge:marge, mb:mb, ug:ugTotal, refs:prods.length };
-      totals[pal].ca    += ca;
-      totals[pal].marge += marge;
-      totals[pal].ug    += ugTotal;
-      totals[pal].refs  += prods.length;
+  function getUGLabel(qte) {
+    var best = { ach:0, off:0, label:'' };
+    ugTiers.forEach(function(t) {
+      if (qte >= t.ach) { best = t; best.label = t.ach+'+'+t.off+' UG'; }
     });
+    return best.label || '-';
+  }
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u00a0\u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+  function f2(v){ return (+v).toFixed(2).replace('.',','); }
+
+  // Compute each scenario
+  var scenResults = scenarios.map(function(sc) {
+    // Take top nRefs products by rotation
+    var prods = actifsAll.slice(0, sc.nRefs);
+    var lignes = [];
+    var totCA = 0, totMarge = 0, totUG = 0, totQte = 0;
+
+    prods.forEach(function(p) {
+      var moy    = p.moy || 0;
+      var qteCmd = Math.ceil(moy * moisCible);
+      var paCat  = p.pa_net || 0; // PA Cat Net from PDF = already the catalogue price
+      var paNet  = paCat * (1 - sc.rem/100);
+      var pvTTC  = p.pv_ttc || 0;
+      var pvHT   = pvTTC / (1 + tvaR);
+      var ug     = getUG(qteCmd);
+      var ugLbl  = getUGLabel(qteCmd);
+      var mbu    = pvHT - paNet;
+      var mb     = pvHT > 0 ? mbu / pvHT * 100 : 0;
+      var caCmd  = qteCmd * pvTTC;
+      var margeCmd = qteCmd * mbu;
+      var caAn   = moy * 12 * pvTTC;
+      var margeAn = moy * 12 * mbu;
+
+      totCA    += caCmd;
+      totMarge += margeCmd;
+      totUG    += ug;
+      totQte   += qteCmd;
+
+      lignes.push({ nom:p.nom, moy:moy, qteCmd:qteCmd, paCat:paCat, paNet:paNet,
+                    pvTTC:pvTTC, ug:ug, ugLbl:ugLbl, mb:mb, margeCmd:margeCmd,
+                    caCmd:caCmd, caAn:caAn, margeAn:margeAn });
+    });
+
+    var caHT = totCA / (1 + tvaR);
+    var mbGlobal = caHT > 0 ? totMarge / caHT * 100 : 0;
+    return { sc:sc, lignes:lignes, totCA:totCA, totMarge:totMarge, totUG:totUG,
+             totQte:totQte, mbGlobal:mbGlobal };
   });
 
-  // Render global KPIs
-  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
-  function f1(v){ return (+v).toFixed(1).replace('.',','); }
-
+  // ===== RENDER GLOBAL KPIs - comparison =====
   var kpiHtml = '';
-  paliers.forEach(function(pal) {
-    var t = totals[pal];
-    var caHT = t.ca / (1 + tvaR);
-    var mb = caHT > 0 ? t.marge / caHT * 100 : 0;
-    var cls = mb >= 35 ? 'hi' : mb >= 28 ? 'warn' : 'danger';
-    kpiHtml += '<div class="met ' + cls + '" style="text-align:center">' +
-      '<p class="lbl">Remise ' + pal + '%' + (ugMode !== 'none' ? ' + ' + ugMode + ' UG' : '') + '</p>' +
-      '<p class="val" style="font-size:20px">' + f1(mb) + '%</p>' +
-      '<p class="sub">Marge : ' + fE(t.marge) + '</p>' +
-      '<p class="sub">CA TTC : ' + fE(t.ca) + '</p>' +
-      (t.ug > 0 ? '<p class="sub">UG : +' + t.ug + ' u.</p>' : '') +
+  scenResults.forEach(function(r) {
+    var cls = r.mbGlobal >= 35 ? 'hi' : r.mbGlobal >= 28 ? 'warn' : 'danger';
+    kpiHtml += '<div class="met ' + cls + '" style="text-align:center;border-top:3px solid ' + r.sc.color + '">' +
+      '<p class="lbl">' + r.sc.label + ' — Remise ' + r.sc.rem + '%</p>' +
+      '<p class="val" style="font-size:22px">' + f1(r.mbGlobal) + '%</p>' +
+      '<p class="sub">MB% moyen sur ' + moisCible + ' mois</p>' +
+      '<p style="font-size:13px;font-weight:600;margin-top:4px">' + fE(r.totMarge) + '</p>' +
+      '<p class="sub">Marge sur commande</p>' +
+      '<p style="font-size:12px;color:var(--accent-text);font-weight:600">+' + r.totUG + ' UG gratuites</p>' +
+      '<p class="sub">CA commande : ' + fE(r.totCA) + '</p>' +
+      '<p class="sub">' + r.totQte + ' u. payantes + ' + r.totUG + ' u. gratuites</p>' +
       '</div>';
   });
+
+  // Verdict
+  var s0 = scenResults[0], s1 = scenResults[1];
+  var gainMarge = s0.totMarge - s1.totMarge;
+  var gainUG    = s0.totUG - s1.totUG;
+  var verdict   = gainMarge >= 0
+    ? 'Le march\u00e9 30 refs \u00e0 30% g\u00e9n\u00e8re <b>+' + fE(gainMarge) + ' de marge</b> et <b>+' + gainUG + ' UG</b> suppl\u00e9mentaires vs le march\u00e9 25 refs.'
+    : 'Le march\u00e9 25 refs \u00e0 25% g\u00e9n\u00e8re <b>+' + fE(-gainMarge) + ' de marge</b> suppl\u00e9mentaire car le volume de commande est plus faible.';
+
+  kpiHtml += '<div class="nego" style="grid-column:1/-1;border-left:3px solid ' + (gainMarge>=0?'var(--accent)':'var(--warn)') + '">' +
+    '<p class="nego-title">Verdict — \u00c9tais-ce le bon choix ?</p>' +
+    '<p class="nego-body">' + verdict + '</p></div>';
+
   document.getElementById('sim-global-kpis').innerHTML = kpiHtml;
 
-  // Render table: rows = marches, cols = paliers
-  var thS = 'padding:8px 10px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;';
+  // ===== RENDER COMPARISON TABLE =====
+  var thS = 'padding:7px 8px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;';
   var html = '<thead><tr style="background:var(--text);color:#fff">';
-  html += '<th style="' + thS + 'text-align:left;min-width:140px">Marche</th>';
-  html += '<th style="' + thS + 'text-align:center;width:50px">Refs actives</th>';
-  paliers.forEach(function(pal) {
-    html += '<th style="' + thS + 'text-align:center;min-width:180px;background:#1a3a20" colspan="3">Remise ' + pal + '%' + (ugMode !== 'none' ? ' + ' + ugMode + ' UG' : '') + '</th>';
-  });
-  html += '</tr><tr style="background:#2a2a20;color:#fff">';
-  html += '<th></th><th></th>';
-  paliers.forEach(function() {
-    html += '<th style="' + thS + 'text-align:center;font-size:9px;background:#1a3a20">MB%</th>';
-    html += '<th style="' + thS + 'text-align:right;font-size:9px;background:#1a3a20">Marge/an</th>';
-    html += '<th style="' + thS + 'text-align:right;font-size:9px;background:#1a3a20">CA TTC/an</th>';
-  });
+  html += '<th style="' + thS + 'text-align:left;min-width:160px">Produit</th>';
+  html += '<th style="' + thS + 'text-align:center;width:50px">Rot./m</th>';
+  html += '<th style="' + thS + 'text-align:center;width:50px">Qte ' + moisCible + 'm</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">UG</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">PA net 30%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">MB% 30%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#3a3a10">PA net 25%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#3a3a10">MB% 25%</th>';
+  html += '<th style="' + thS + 'text-align:center">PV TTC</th>';
   html += '</tr></thead><tbody>';
 
-  marches.forEach(function(marche, mi) {
-    var bg = mi % 2 === 0 ? '#fff' : 'var(--surface2)';
-    var td  = 'padding:6px 10px;border-bottom:0.5px solid var(--border);font-size:12px;background:' + bg;
+  // Merge both scenarios ligne by ligne (same products = top by rotation)
+  var maxRefs = Math.max(s0.lignes.length, s1.lignes.length);
+  for (var ri = 0; ri < maxRefs; ri++) {
+    var l0 = s0.lignes[ri];
+    var l1 = s1.lignes[ri];
+    var l  = l0 || l1;
+    var bg = ri % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:11px;background:' + bg;
+
+    // MB% colors
+    var mb0Clr = l0 ? (l0.mb>=35?'var(--accent-text)':l0.mb>=28?'var(--warn)':'var(--danger)') : '';
+    var mb1Clr = l1 ? (l1.mb>=35?'var(--accent-text)':l1.mb>=28?'var(--warn)':'var(--danger)') : '';
+
+    // Only in scenario 30 (not in 25)?
+    var onlyIn30 = l0 && !l1;
+
     html += '<tr>';
-    html += '<td style="' + td + ';font-weight:600">' + marche + '</td>';
-    html += '<td style="' + td + ';text-align:center">' + marchesMap[marche].length + '</td>';
-    paliers.forEach(function(pal) {
-      var r = results[marche][pal];
-      var mbClr = r.mb >= 35 ? 'var(--accent-text)' : r.mb >= 28 ? 'var(--warn)' : 'var(--danger)';
-      html += '<td style="' + td + ';text-align:center;font-weight:700;color:' + mbClr + '">' + f1(r.mb) + '%</td>';
-      html += '<td style="' + td + ';text-align:right;font-family:monospace">' + fE(r.marge) + '</td>';
-      html += '<td style="' + td + ';text-align:right;font-family:monospace;color:var(--text-sec)">' + fE(r.ca) + '</td>';
-    });
+    html += '<td style="' + td + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px" title="' + l.nom + '">' +
+      l.nom + (onlyIn30 ? ' <span style="font-size:9px;background:var(--accent-bg);color:var(--accent-text);padding:1px 4px;border-radius:2px">+30</span>' : '') + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-family:monospace">' + f1(l.moy) + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-weight:600">' + (l0 ? l0.qteCmd : l1.qteCmd) + '</td>';
+    html += '<td style="' + td + ';text-align:center;background:#e8f5ee">' + (l0 && l0.ug > 0 ? '<b style="color:var(--accent-text)">+' + l0.ug + '</b><br><span style="font-size:9px;color:var(--text-ter)">' + l0.ugLbl + '</span>' : '-') + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-family:monospace;background:#e8f5ee">' + (l0 ? f2(l0.paNet) + '\u00a0\u20ac' : '-') + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-weight:700;background:#e8f5ee;color:' + mb0Clr + '">' + (l0 ? f1(l0.mb) + '%' : '-') + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-family:monospace;background:#fffbea">' + (l1 ? f2(l1.paNet) + '\u00a0\u20ac' : '<span style="color:var(--text-ter)">exclu</span>') + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-weight:700;background:#fffbea;color:' + mb1Clr + '">' + (l1 ? f1(l1.mb) + '%' : '-') + '</td>';
+    html += '<td style="' + td + ';text-align:center;font-family:monospace">' + f2(l.pvTTC) + '\u00a0\u20ac</td>';
     html += '</tr>';
-  });
-
-  // Totals row
-  html += '<tr style="background:var(--text);color:#fff;font-weight:600">';
-  html += '<td style="padding:7px 10px;font-size:12px">TOTAL</td>';
-  html += '<td style="padding:7px 10px;text-align:center;font-size:12px">' + simProduitsSource.filter(function(p){ return (p.moy||0)>0; }).length + '</td>';
-  paliers.forEach(function(pal) {
-    var t = totals[pal];
-    var mb = (t.ca / (1+tvaR)) > 0 ? t.marge / (t.ca/(1+tvaR)) * 100 : 0;
-    var mbClr = mb >= 35 ? '#7effc0' : mb >= 28 ? '#ffd580' : '#ff8080';
-    html += '<td style="padding:7px 10px;text-align:center;font-size:13px;font-weight:700;color:' + mbClr + '">' + f1(mb) + '%</td>';
-    html += '<td style="padding:7px 10px;text-align:right;font-family:monospace">' + fE(t.marge) + '</td>';
-    html += '<td style="padding:7px 10px;text-align:right;font-family:monospace;opacity:.8">' + fE(t.ca) + '</td>';
-  });
-  html += '</tr></tbody>';
-
+  }
+  html += '</tbody>';
   document.getElementById('sim-table').innerHTML = html;
   document.getElementById('sim-result').style.display = 'block';
 }

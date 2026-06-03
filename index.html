@@ -4426,7 +4426,8 @@ function cmdRenderPaliers() {
 function cmdChargeLabo() {
   var sel = document.getElementById('cmd-labo-sel');
   if (!sel) return;
-  var id = sel.value;
+  var idStr = sel.value;
+  var id = idStr ? (parseInt(idStr) || idStr) : null;
   if (!id || !condLabos[id] || !condLabos[id].produits) {
     cmdProduitsSource = [];
     return;
@@ -5044,8 +5045,10 @@ function simInit() {
 }
 
 function simChargeLabo() {
-  var id = document.getElementById('sim-labo').value;
+  var idStr = document.getElementById('sim-labo').value;
+  var id = idStr ? (parseInt(idStr) || idStr) : null;
   simProduitsSource = (id && condLabos[id] && condLabos[id].produits) ? condLabos[id].produits : [];
+  console.log('simChargeLabo: id=', id, 'prods=', simProduitsSource.length, 'keys=', Object.keys(condLabos));
   document.getElementById('sim-result').style.display = 'none';
 }
 
@@ -5081,7 +5084,8 @@ function simLancer() {
 
   var tvaR   = parseFloat(document.getElementById('sim-tva').value) / 100;
   var moisCible = parseFloat(document.getElementById('sim-mois-cible').value) || 2;
-  var laboId = document.getElementById('sim-labo').value;
+  var laboIdStr = document.getElementById('sim-labo').value;
+  var laboId = laboIdStr ? (parseInt(laboIdStr) || laboIdStr) : null;
 
   // Get all active products (rotation > 0)
   var actifsAll = simProduitsSource.filter(function(p){ return (p.moy||0) > 0; });

@@ -17,6 +17,10 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   #panel-prixnet { margin: 0 -16px; }
+  #panel-cat { margin: 0 -16px; }
+  #panel-cat .card { border-radius: 0; border-left: none; border-right: none; }
+  #panel-cmd { margin: 0 -16px; }
+  #panel-cmd .card { border-radius: 0; border-left: none; border-right: none; }
   #panel-prixnet .card { border-radius: 0; border-left: none; border-right: none; }
   @media (min-width: 960px) {
     #panel-prixnet { margin: 0 calc(50% - 50vw + 16px); }
@@ -4901,7 +4905,7 @@ function catSauvegarder() {
 function catRenderTable() {
   var tbody = document.getElementById('cat-tbody');
   if (!tbody) return;
-  var inS = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:120px;';
+  var inS = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:140px;';
   var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;';
 
   // Group by marche for display

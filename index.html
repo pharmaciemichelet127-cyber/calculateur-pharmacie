@@ -349,8 +349,13 @@
     <div class="card">
       <p class="card-title">Lexique des abréviations</p>
       <table class="lex-table">
-        <thead><tr><th style="width:110px">Abrév.</th><th>Définition & formule</th></tr></thead>
-        <tbody>
+        <thead><tr style="background:var(--text);color:#fff">
+            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Produit <span style="font-weight:300;opacity:.6">(survol = EAN)</span></th>
+            <th style="padding:6px 5px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;width:50px">Rot.</th>
+            <th style="padding:6px 5px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a">Categorie</th>
+            <th style="padding:6px 5px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a">Marche</th>
+            <th style="padding:6px 5px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50">Sous-cat.</th>
+          </tr></thead>        <tbody>
           <tr><td><span class="lex-abbr">CA HT</span></td><td>Chiffre d'affaires hors taxes<div class="lex-formula">= PV HT × QV</div></td></tr>
           <tr><td><span class="lex-abbr">K</span></td><td>Coefficient multiplicateur<div class="lex-formula">= PV TTC / PA HT &nbsp;|&nbsp; = (1 + TVA%) / (1 − MB%)</div></td></tr>
           <tr><td><span class="lex-abbr">MB</span></td><td>Marge brute cumulée<div class="lex-formula">= MBu × QV &nbsp;|&nbsp; = CA HT − montant des achats</div></td></tr>
@@ -4905,10 +4910,10 @@ function catSauvegarder() {
 function catRenderTable() {
   var tbody = document.getElementById('cat-tbody');
   if (!tbody) return;
-  var inS = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:110px;';
+  var inS = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:120px;';
+  var inSm = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:80px;';
   var td  = 'padding:4px 6px;border-bottom:0.5px solid var(--border);font-size:11px;';
 
-  // Group by marche for display
   var marchesMap = {};
   catProduits.forEach(function(p,i){
     var m = p.marche || 'Non classe';
@@ -4922,30 +4927,23 @@ function catRenderTable() {
   Object.keys(marchesMap).sort().forEach(function(marche) {
     var items = marchesMap[marche];
     var bg = colors[ci++ % 2];
-    // Group header
     html += '<tr style="background:var(--accent-bg)">' +
-      '<td colspan="7" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em">' +
-      marche + ' <span style="font-weight:400;opacity:.7">(' + items.length + ' produits)</span></td></tr>';
+      '<td colspan="5" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em">' +
+      marche + ' <span style="font-weight:400;opacity:.7">(' + items.length + ')</span></td></tr>';
 
     items.forEach(function(item) {
       var p = item.p; var i = item.i;
-      var notClassified = p.categorie === 'Autre' || !p.categorie;
-      var rowBg = notClassified ? 'var(--warn-bg)' : bg;
+      var notClass = p.categorie === 'Autre' || !p.categorie;
+      var rowBg = notClass ? '#fff8e6' : bg;
       html += '<tr style="background:' + rowBg + '">';
-      html += '<td style="' + td + 'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.nom + '">' + p.nom + '</td>';
-      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center" title="' + (p.ean||'') + '">' + (p.ean ? p.ean.slice(-7) : '-') + '</td>';
-      html += '<td style="' + td + 'text-align:center;font-family:monospace">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
-      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.categorie||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
-      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.sous_cat||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
-      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.marche||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'marche\',this.value)"></td>';
-      html += '<td style="' + td + 'text-align:center;font-size:10px;color:var(--text-ter)">' + (p.palier_id||'-') + '</td>';
+      html += '<td style="' + td + 'max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.nom + ' — EAN: ' + (p.ean||'') + '">' + p.nom + '</td>';
+      html += '<td style="' + td + 'text-align:center;font-family:monospace;width:40px">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
+      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
+      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.marche||'') + '" placeholder="marche" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'marche\',this.value)"></td>';
+      html += '<td style="' + td + 'background:#ddeeff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inSm + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
       html += '</tr>';
     });
   });
   tbody.innerHTML = html;
 }
-
-var catInited = false;
-
-</script>
 

@@ -355,6 +355,7 @@
             <th style="padding:6px 5px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a">Categorie</th>
             <th style="padding:6px 5px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a">Marche</th>
             <th style="padding:6px 5px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50">Sous-cat.</th>
+            <th style="padding:6px 5px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;width:50px">Palier</th>
           </tr></thead>        <tbody>
           <tr><td><span class="lex-abbr">CA HT</span></td><td>Chiffre d'affaires hors taxes<div class="lex-formula">= PV HT × QV</div></td></tr>
           <tr><td><span class="lex-abbr">K</span></td><td>Coefficient multiplicateur<div class="lex-formula">= PV TTC / PA HT &nbsp;|&nbsp; = (1 + TVA%) / (1 − MB%)</div></td></tr>
@@ -4928,7 +4929,7 @@ function catRenderTable() {
     var items = marchesMap[marche];
     var bg = colors[ci++ % 2];
     html += '<tr style="background:var(--accent-bg)">' +
-      '<td colspan="5" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em">' +
+      '<td colspan="6" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em">' +
       marche + ' <span style="font-weight:400;opacity:.7">(' + items.length + ')</span></td></tr>';
 
     items.forEach(function(item) {
@@ -4941,6 +4942,7 @@ function catRenderTable() {
       html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
       html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.marche||'') + '" placeholder="marche" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'marche\',this.value)"></td>';
       html += '<td style="' + td + 'background:#ddeeff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inSm + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
+      html += '<td style="' + td + 'text-align:center;font-size:11px;color:var(--text-ter)">' + (p.palier_id||'-') + '</td>';
       html += '</tr>';
     });
   });

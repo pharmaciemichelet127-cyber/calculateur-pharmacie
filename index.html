@@ -3568,26 +3568,22 @@ function condUpdateDiag() {
   function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; }
 
   // ===== PROJECTION AU 31/12/2026 =====
-  // Calculate months remaining from eval date to 31/12/2026
+  // La rotation Moy. du PDF est deja une moyenne sur 12 mois
+  // Donc CA annuel = moy*12*PV = deja la projection annuelle
+  // On affiche simplement le CA annualise = ce qui est deja dans ca/marge
   var moisEcoules = 0, moisRestants = 0;
   if (dateStr) {
     var evalDate = new Date(dateStr);
-    var finAn = new Date('2026-12-31');
-    var debut = new Date(evalDate.getFullYear(), 0, 1); // 1er jan
-    var totalMois = 12;
-    // Months elapsed from Jan 1 to eval date
-    moisEcoules = (evalDate.getFullYear() - debut.getFullYear()) * 12 + evalDate.getMonth() - debut.getMonth();
+    moisEcoules = evalDate.getMonth(); // 0=jan, 5=juin
     moisEcoules = Math.max(1, Math.min(11, moisEcoules));
     moisRestants = 12 - moisEcoules;
   } else {
-    moisEcoules = 6; moisRestants = 6; // default
+    moisEcoules = 6; moisRestants = 6;
   }
-  // Monthly rate from current data
-  var caMoisActuel  = moisEcoules > 0 ? ca / moisEcoules : 0;
-  var margeMoisActuelle = moisEcoules > 0 ? marge / moisEcoules : 0;
-  var caProjTotal   = ca + caMoisActuel * moisRestants;
-  var margeProjTotal = marge + margeMoisActuelle * moisRestants;
-  var mbProj = (caProjTotal / (1 + tvaR)) > 0 ? (margeProjTotal / (caProjTotal / (1 + tvaR)) * 100) : mb;
+  // Projection = CA annualise depuis rotation (deja correct)
+  var caProjTotal   = ca;      // rotation * 12 * PV = annuel
+  var margeProjTotal = marge;  // idem
+  var mbProj = mb;
 
   // Fill actuel KPIs
   var el = function(id){ return document.getElementById(id); };
@@ -3610,7 +3606,7 @@ function condUpdateDiag() {
     el('cond-proj-marge').textContent = margeProjTotal > 0 ? fE(margeProjTotal) : '—';
   }
   if (el('cond-proj-mois')) {
-    el('cond-proj-mois').textContent = moisEcoules + ' mois écoulés → ' + moisRestants + ' mois restants extrapoler';
+    el('cond-proj-mois').textContent = 'Annualise depuis rotation moyenne 12 mois';
   }
 
   // Diag body: use produit data if available
@@ -4032,9 +4028,11 @@ async function condImportPDFDiag(input) {
       if (el) el.value = v > 0 ? v.toFixed(0) : 0;
     });
 
-    // Update identity fields
+    // Update identity fields - compute CA TTC from moy*pvTTC*12 (not from PDF extraction)
     var tvaR = parseFloat(document.getElementById('cond-tva').value) / 100;
-    var caTTC = totCAHT * (1 + tvaR);
+    var caTTC_calc = 0;
+    prods.forEach(function(p){ caTTC_calc += (p.moy||0) * 12 * (p.pv_ttc||0); });
+    var caTTC = caTTC_calc > 0 ? caTTC_calc : totCAHT * (1 + tvaR);
     document.getElementById('cond-ca-annuel').value = Math.round(caTTC);
     document.getElementById('cond-mb-actuel').value = mbGlobal.toFixed(1);
     document.getElementById('cond-marge-actuelle').value = Math.round(totMarge);
@@ -4069,7 +4067,11 @@ async function condImportPDFDiag(input) {
     condLabos[condLaboActif].produits = prods;
     condLabos[condLaboActif].mbActuel = parseFloat(mbGlobal.toFixed(1));
     condLabos[condLaboActif].margeActuelle = Math.round(totMarge);
-    condLabos[condLaboActif].caAnnuel = Math.round(caTTC);
+    // Recompute caTTC from product data for accuracy
+    var caTTCfinal = 0;
+    prods.forEach(function(p){ caTTCfinal += (p.moy||0) * 12 * (p.pv_ttc||0); });
+    var caTTC2 = caTTCfinal > 0 ? caTTCfinal : caTTC;
+    condLabos[condLaboActif].caAnnuel = Math.round(caTTC2);
 
     // Save to historique
     var dateImport = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);

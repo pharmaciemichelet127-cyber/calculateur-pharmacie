@@ -113,6 +113,7 @@
     <button type="button" class="tab-btn" id="tab-mc" onclick="showTab('mc')">Marge compensee</button>
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Cond. commerciales</button>
     <button type="button" class="tab-btn" id="tab-prixnet" onclick="showTab('prixnet')">Prix nets</button>
+    <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
     <button type="button" class="tab-btn" id="tab-guide" onclick="showTab('guide')">Guide</button>
   </div>
 
@@ -1063,6 +1064,14 @@
         </div>
       </div>
 
+      <div class="card" id="cond-historique-card" style="display:none">
+        <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Historique des imports</span>
+          <button type="button" onclick="condAfficherHistorique()" style="font-size:11px;padding:3px 10px;background:transparent;color:var(--text-sec);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer">Rafraichir</button>
+        </p>
+        <div id="cond-historique-body"></div>
+      </div>
+
       <div class="card" id="cond-result-card" style="display:none">
         <p class="card-title">Analyse des conditions</p>
         <div class="rgrid" id="cond-kpis" style="margin-bottom:14px"></div>
@@ -1223,6 +1232,61 @@
 
   </div>
 
+
+  <!-- ===== COMMANDE ===== -->
+  <div id="panel-cmd" style="display:none">
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Simulateur de commande</span>
+        <button type="button" onclick="cmdGenerer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Calculer la commande</button>
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:0">
+        <div>
+          <div class="row">
+            <label>Labo (source produits)</label>
+            <select id="cmd-labo-sel" onchange="cmdChargeLabo()" style="min-width:180px;font-size:13px">
+              <option value="">-- Choisir un labo --</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Couverture cible (mois)</label>
+            <input type="number" id="cmd-mois" value="2" min="1" max="12" step="1" style="width:80px">
+            <span class="hint">mois de stock a commander</span>
+          </div>
+          <div class="row">
+            <label>Stock actuel pris en compte</label>
+            <select id="cmd-stock-mode" style="font-size:13px">
+              <option value="ignore">Ignorer (commander sur rotation seule)</option>
+              <option value="deduct">Deduire du besoin</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Seuil rotation mini (u/mois)</label>
+            <input type="number" id="cmd-rot-min" value="0.1" min="0" step="0.1" style="width:80px">
+            <span class="hint">exclure les produits en dessous</span>
+          </div>
+        </div>
+        <div>
+          <p style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-ter);margin-bottom:10px">Paliers de conditions</p>
+          <div id="cmd-paliers-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          <button type="button" onclick="cmdAjouterPalier()" style="margin-top:8px;font-size:12px;padding:4px 12px;background:transparent;color:var(--accent-text);border:1px solid var(--accent);border-radius:var(--radius-sm);cursor:pointer;">+ Palier</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="cmd-result-card" style="display:none">
+      <p class="card-title">Resultat — Commande recommandee</p>
+      <div class="rgrid" id="cmd-kpis" style="margin-bottom:14px"></div>
+      <div style="overflow-x:auto">
+        <table id="cmd-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
+      </div>
+      <div id="cmd-conclusion" class="nego" style="margin-top:12px;display:none"></div>
+    </div>
+
+  </div>
+
 </div>
 <script>
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
@@ -1243,7 +1307,7 @@ function setSituation(s) {
 }
 
 function showTab(t) {
-  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet'].forEach(function(x) {
+  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd'].forEach(function(x) {
     var p = document.getElementById('panel-'+x);
     var b = document.getElementById('tab-'+x);
     if (p) p.style.display = x===t ? 'block' : 'none';
@@ -1254,6 +1318,7 @@ function showTab(t) {
   if (t === 'prix')    try { calcPrix(); }   catch(e) { console.error('calcPrix',e); }
   if (t === 'mc')      try { calcMC(); }     catch(e) { console.error('calcMC',e); }
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
+  if (t === 'cmd' && !cmdInited) { cmdInited=true; cmdInit(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
 }
 
@@ -3313,6 +3378,7 @@ function condSelectionnerLabo(id) {
   condRenderConditions();
   condCalc();
   condRenderTabs();
+  condAfficherHistorique();
 }
 
 function condAutoSave() {
@@ -3954,9 +4020,38 @@ async function condImportPDFDiag(input) {
     condLabos[condLaboActif].margeActuelle = Math.round(totMarge);
     condLabos[condLaboActif].caAnnuel = Math.round(caTTC);
 
+    // Save to historique
+    var dateImport = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
+    if (!condLabos[condLaboActif].historique) condLabos[condLaboActif].historique = [];
+    // Check if same date already exists - update it
+    var existIdx = condLabos[condLaboActif].historique.findIndex(function(h){ return h.date === dateImport; });
+    var histEntry = {
+      date: dateImport,
+      mbGlobal: parseFloat(mbGlobal.toFixed(1)),
+      margeAn: Math.round(totMarge),
+      caAn: Math.round(caTTC),
+      nbProduits: prods.length,
+      nbActifs: prods.filter(function(p){ return (p.moy||0) > 0; }).length,
+      ventes: ventesMensuelles.slice(),
+      produits: prods
+    };
+    if (existIdx >= 0) {
+      condLabos[condLaboActif].historique[existIdx] = histEntry;
+    } else {
+      condLabos[condLaboActif].historique.push(histEntry);
+      // Keep max 24 entries
+      if (condLabos[condLaboActif].historique.length > 24) {
+        condLabos[condLaboActif].historique.shift();
+      }
+    }
+    // Sort by date
+    condLabos[condLaboActif].historique.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
     condUpdateVentes();
     condUpdateDiag();
     condCalc();
+    condAfficherHistorique();
+    condSauvegarder();
 
     if (status) {
       status.textContent = prods.length + ' produits analys\u00e9s — MB% global : ' + mbGlobal.toFixed(1) + '%';
@@ -4139,6 +4234,378 @@ function pnUpdateSynthese() {
 }
 
 var pnInited = false;
+
+
+// ===== COMMANDE =====
+var cmdPaliers = [];
+var cmdPalierId = 1;
+var cmdProduitsSource = []; // produits charges depuis condLabos
+
+function cmdInit() {
+  // Populate labo selector from condLabos
+  var sel = document.getElementById('cmd-labo-sel');
+  if (!sel) return;
+  // Clear except first option
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var labo = condLabos[id];
+    if (!labo.nom) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = labo.nom + (labo.produits ? ' (' + labo.produits.length + ' produits)' : '');
+    sel.appendChild(opt);
+  });
+  // Init default paliers
+  if (cmdPaliers.length === 0) {
+    cmdAjouterPalier({ label:'Marche >= 30 ref', refs_min:30, refs_max:999, rem:30, ug_offerts:0, ug_achetes:0 });
+    cmdAjouterPalier({ label:'Marche 8-29 ref',  refs_min:8,  refs_max:29,  rem:25, ug_offerts:0, ug_achetes:0 });
+    cmdAjouterPalier({ label:'Proteines',         refs_min:1,  refs_max:999, rem:25, ug_offerts:2, ug_achetes:12, categorie:'proteine' });
+    cmdAjouterPalier({ label:'Proteines isolats', refs_min:1,  refs_max:999, rem:20, ug_offerts:2, ug_achetes:12, categorie:'isolat' });
+    cmdAjouterPalier({ label:'Barres proteines',  refs_min:1,  refs_max:999, rem:20, ug_offerts:1, ug_achetes:6,  categorie:'barre' });
+  }
+}
+
+function cmdAjouterPalier(data) {
+  var id = cmdPalierId++;
+  var p = { id:id, label:'', refs_min:1, refs_max:999, rem:30, ug_offerts:0, ug_achetes:0, categorie:'' };
+  if (data) Object.keys(data).forEach(function(k){ p[k]=data[k]; });
+  cmdPaliers.push(p);
+  cmdRenderPaliers();
+}
+
+function cmdSupprimerPalier(id) {
+  cmdPaliers = cmdPaliers.filter(function(p){ return p.id !== id; });
+  cmdRenderPaliers();
+}
+
+function cmdUpdatePalier(id, key, val) {
+  var p = cmdPaliers.find(function(x){ return x.id === id; });
+  if (p) p[key] = (key === 'label' || key === 'categorie') ? val : +val;
+}
+
+function cmdRenderPaliers() {
+  var container = document.getElementById('cmd-paliers-list');
+  if (!container) return;
+  container.innerHTML = cmdPaliers.map(function(p) {
+    var inS = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);font-family:"DM Mono",monospace;';
+    return '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--surface2);padding:6px 8px;border-radius:var(--radius-sm)">' +
+      '<input type="text" value="' + p.label + '" placeholder="Libelle" style="' + inS + 'width:130px;text-align:left;font-family:DM Sans,sans-serif" oninput="cmdUpdatePalier(' + p.id + ',\'label\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">ref</span>' +
+      '<input type="number" value="' + p.refs_min + '" min="1" style="' + inS + 'width:40px" oninput="cmdUpdatePalier(' + p.id + ',\'refs_min\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">a</span>' +
+      '<input type="number" value="' + p.refs_max + '" min="1" style="' + inS + 'width:40px" oninput="cmdUpdatePalier(' + p.id + ',\'refs_max\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">rem%</span>' +
+      '<input type="number" value="' + p.rem + '" min="0" max="60" step="0.5" style="' + inS + 'width:40px" oninput="cmdUpdatePalier(' + p.id + ',\'rem\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">UG</span>' +
+      '<input type="number" value="' + p.ug_offerts + '" min="0" style="' + inS + 'width:32px" placeholder="off" oninput="cmdUpdatePalier(' + p.id + ',\'ug_offerts\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">/</span>' +
+      '<input type="number" value="' + p.ug_achetes + '" min="0" style="' + inS + 'width:32px" placeholder="ach" oninput="cmdUpdatePalier(' + p.id + ',\'ug_achetes\',this.value)">' +
+      '<input type="text" value="' + (p.categorie||'') + '" placeholder="cat." style="' + inS + 'width:70px;text-align:left;font-family:DM Sans,sans-serif" oninput="cmdUpdatePalier(' + p.id + ',\'categorie\',this.value)">' +
+      '<button type="button" onclick="cmdSupprimerPalier(' + p.id + ')" style="font-size:11px;color:var(--danger);background:none;border:none;cursor:pointer">\u00d7</button>' +
+      '</div>';
+  }).join('');
+}
+
+function cmdChargeLabo() {
+  var sel = document.getElementById('cmd-labo-sel');
+  if (!sel) return;
+  var id = sel.value;
+  if (!id || !condLabos[id] || !condLabos[id].produits) {
+    cmdProduitsSource = [];
+    return;
+  }
+  cmdProduitsSource = condLabos[id].produits || [];
+  document.getElementById('cmd-result-card').style.display = 'none';
+}
+
+function cmdGenerer() {
+  if (cmdProduitsSource.length === 0) {
+    alert('Chargez d\'abord un labo avec des produits (via Cond. commerciales > Importer PDF LGPI).');
+    return;
+  }
+  var moisCible  = parseFloat(document.getElementById('cmd-mois').value) || 2;
+  var rotMin     = parseFloat(document.getElementById('cmd-rot-min').value) || 0;
+  var stockMode  = document.getElementById('cmd-stock-mode').value;
+
+  // Filter products with enough rotation
+  var prods = cmdProduitsSource.filter(function(p){ return (p.moy||0) >= rotMin; });
+  var nRefs = prods.length;
+
+  // Find applicable palier based on nb refs
+  // Priority: categorie-specific paliers first, then general paliers by refs count
+  function getPalier(prod) {
+    // Try category match first (if prod has a categorie field)
+    var cat = (prod.categorie||'').toLowerCase();
+    if (cat) {
+      var catPalier = cmdPaliers.find(function(p){ return p.categorie && cat.indexOf(p.categorie.toLowerCase()) >= 0; });
+      if (catPalier) return catPalier;
+    }
+    // General palier by refs count
+    return cmdPaliers.find(function(p){ return !p.categorie && nRefs >= p.refs_min && nRefs <= p.refs_max; }) || null;
+  }
+
+  // Use the dominant palier (most products) for global UG calc
+  var dominantPalier = cmdPaliers.find(function(p){ return !p.categorie && nRefs >= p.refs_min && nRefs <= p.refs_max; });
+
+  // Build command lines
+  var lignes = [];
+  var totQteCde = 0, totCA = 0, totUG = 0;
+
+  prods.forEach(function(p) {
+    var moy     = p.moy || 0;
+    var besoin  = moy * moisCible;
+    var stock   = stockMode === 'deduct' ? (p.stock || 0) : 0;
+    var qteNette = Math.max(0, besoin - stock);
+    var qte     = Math.ceil(qteNette);
+    if (qte <= 0) return;
+
+    var palier = getPalier(p) || dominantPalier;
+    var rem    = palier ? palier.rem : 0;
+    var ugOff  = palier ? palier.ug_offerts : 0;
+    var ugAch  = palier ? palier.ug_achetes : 0;
+
+    // UG: how many lots of ugAch can we order?
+    var lots   = (ugAch > 0 && qte >= ugAch) ? Math.floor(qte / ugAch) : 0;
+    var ugObtenues = lots * ugOff;
+    var qteTotal   = qte + ugObtenues;
+
+    // Price calc
+    var paCat  = p.pa_net || p.paCat || 0; // use pa_cat before remise
+    var paNet  = paCat * (1 - rem/100);
+    var pvTTC  = p.pv_ttc || 0;
+    var pvHT   = pvTTC > 0 ? pvTTC / 1.2 : 0;
+    var mb     = (pvHT > 0 && paNet > 0) ? (pvHT - paNet) / pvHT * 100 : null;
+    var caCde  = qte * paNet;
+
+    totQteCde += qte;
+    totCA     += caCde;
+    totUG     += ugObtenues;
+
+    lignes.push({
+      nom: p.nom || p.libelle || '',
+      ean: p.ean || '',
+      moy: moy,
+      besoin: besoin,
+      stock: stock,
+      qte: qte,
+      palierLabel: palier ? palier.label : '-',
+      rem: rem,
+      ugAch: ugAch,
+      ugOff: ugOff,
+      lots: lots,
+      ugObtenues: ugObtenues,
+      qteTotal: qteTotal,
+      paCat: paCat,
+      paNet: paNet,
+      pvTTC: pvTTC,
+      mb: mb,
+      caCde: caCde
+    });
+  });
+
+  // Sort by CA descending
+  lignes.sort(function(a,b){ return b.caCde - a.caCde; });
+
+  // KPIs
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
+  function f1(v){ return v.toFixed(1).replace('.',','); }
+  function f2(v){ return v.toFixed(2).replace('.',','); }
+
+  var kpiEl = document.getElementById('cmd-kpis');
+  var palierLabel = dominantPalier ? dominantPalier.label + ' (' + dominantPalier.rem + '%)' : 'Aucun';
+  kpiEl.innerHTML =
+    '<div class="met hi"><p class="lbl">References a commander</p><p class="val">' + lignes.length + '</p><p class="sub">sur ' + nRefs + ' actifs (\u2265' + rotMin + ' u/mois)</p></div>' +
+    '<div class="met"><p class="lbl">Palier general</p><p class="val" style="font-size:14px">' + palierLabel + '</p><p class="sub">' + nRefs + ' ref \u2192 ' + (dominantPalier ? dominantPalier.rem + '% de remise' : '-') + '</p></div>' +
+    '<div class="met warn"><p class="lbl">CA commande (PA net)</p><p class="val">' + fE(totCA) + '</p><p class="sub">' + totQteCde + ' unites payantes</p></div>' +
+    '<div class="met hi"><p class="lbl">UG obtenues</p><p class="val">' + totUG + '</p><p class="sub">unites gratuites sur la commande</p></div>';
+
+  // Table
+  var thS = 'padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;text-align:left';
+  var thSR = thS + ';text-align:right';
+  var html = '<thead><tr>' +
+    '<th style="' + thS + '">Produit</th>' +
+    '<th style="' + thSR + '">Rot./mois</th>' +
+    '<th style="' + thSR + '">Besoin ' + moisCible + 'm</th>' +
+    '<th style="' + thSR + '">Qte a commander</th>' +
+    '<th style="' + thS + '">Palier</th>' +
+    '<th style="' + thSR + '">Rem%</th>' +
+    '<th style="' + thSR + '">UG obtenues</th>' +
+    '<th style="' + thSR + '">Qte totale</th>' +
+    '<th style="' + thSR + '">PA net HT</th>' +
+    '<th style="' + thSR + '">CA cde</th>' +
+    '<th style="' + thSR + '">MB%</th>' +
+    '</tr></thead><tbody>';
+
+  lignes.forEach(function(l, i) {
+    var bg = i % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;background:' + bg;
+    var tdR = td + ';text-align:right;font-family:monospace';
+    var mbClr = l.mb === null ? '' : l.mb >= 35 ? ';color:var(--accent-text);font-weight:600' : l.mb >= 28 ? ';color:var(--warn)' : ';color:var(--danger)';
+    var ugBadge = l.ugObtenues > 0
+      ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+' + l.ugObtenues + ' UG</span>'
+      : '-';
+    html += '<tr>' +
+      '<td style="' + td + ';max-width:200px">' + l.nom + '</td>' +
+      '<td style="' + tdR + '">' + f1(l.moy) + '</td>' +
+      '<td style="' + tdR + '">' + f1(l.besoin) + '</td>' +
+      '<td style="' + tdR + ';font-weight:600">' + l.qte + '</td>' +
+      '<td style="' + td + ';font-size:11px;color:var(--text-sec)">' + l.palierLabel + '</td>' +
+      '<td style="' + tdR + '">' + l.rem + '%</td>' +
+      '<td style="' + tdR + '">' + ugBadge + '</td>' +
+      '<td style="' + tdR + ';font-weight:700;color:var(--accent-text)">' + l.qteTotal + '</td>' +
+      '<td style="' + tdR + '">' + (l.paNet > 0 ? f2(l.paNet) : '-') + '</td>' +
+      '<td style="' + tdR + ';font-weight:600">' + (l.caCde > 0 ? fE(l.caCde) : '-') + '</td>' +
+      '<td style="' + tdR + mbClr + '">' + (l.mb !== null ? f1(l.mb) + '%' : '-') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('cmd-table').innerHTML = html;
+
+  // Conclusion
+  var conEl = document.getElementById('cmd-conclusion');
+  conEl.innerHTML = '<p class="nego-title">Synthese</p><div class="nego-body">' +
+    'Commande recommandee pour <b>' + moisCible + ' mois</b> de couverture sur <b>' + lignes.length + ' references</b>.<br>' +
+    'Palier atteint : <b>' + palierLabel + '</b><br>' +
+    'CA total commande : <b>' + fE(totCA) + '</b> | UG obtenues : <b>' + totUG + ' unites gratuites</b>' +
+    '</div>';
+  conEl.style.display = 'block';
+  document.getElementById('cmd-result-card').style.display = 'block';
+}
+
+var cmdInited = false;
+
+
+// ===== HISTORIQUE IMPORTS =====
+function condAfficherHistorique() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var labo = condLabos[condLaboActif];
+  var hist = labo.historique || [];
+  var card = document.getElementById('cond-historique-card');
+  var body = document.getElementById('cond-historique-body');
+  if (!card || !body) return;
+
+  if (hist.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+
+  // Timeline
+  var html = '<div style="display:flex;flex-direction:column;gap:0">';
+
+  hist.forEach(function(h, i) {
+    var isLast = i === hist.length - 1;
+    var d = new Date(h.date);
+    var dateStr = d.toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'});
+    var mbClr = h.mbGlobal >= 35 ? 'var(--accent-text)' : h.mbGlobal >= 28 ? 'var(--warn)' : 'var(--danger)';
+
+    // Evolution vs previous
+    var diffMB = null, diffMarge = null;
+    if (i > 0) {
+      diffMB    = h.mbGlobal - hist[i-1].mbGlobal;
+      diffMarge = h.margeAn  - hist[i-1].margeAn;
+    }
+
+    // Monthly CA sparkline
+    var mois = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+    var LABELS = ['Jui25','Jui25','Aou25','Sep25','Oct25','Nov25','Dec25','Jan26','Fev26','Mar26','Avr26','Mai26'];
+    var ventes = h.ventes || new Array(12).fill(0);
+    var maxV = Math.max.apply(null, ventes) || 1;
+    var sparkline = '<div style="display:flex;gap:2px;align-items:flex-end;height:24px;margin-top:6px">';
+    ventes.forEach(function(v, mi) {
+      var h2 = Math.round((v/maxV)*22);
+      var clr = v > 0 ? 'var(--accent-text)' : 'var(--border)';
+      sparkline += '<div title="' + LABELS[mi] + ': ' + Math.round(v) + '\u20ac" style="width:14px;height:'+h2+'px;background:'+clr+';border-radius:2px 2px 0 0;min-height:2px"></div>';
+    });
+    sparkline += '</div>';
+    sparkline += '<div style="display:flex;gap:2px;margin-top:2px">';
+    ventes.forEach(function(v, mi) {
+      sparkline += '<div style="width:14px;font-size:8px;color:var(--text-ter);text-align:center">' + mois[mi] + '</div>';
+    });
+    sparkline += '</div>';
+
+    html += '<div style="display:flex;gap:0;align-items:stretch">';
+    // Timeline line
+    html += '<div style="display:flex;flex-direction:column;align-items:center;width:32px;flex-shrink:0">';
+    html += '<div style="width:10px;height:10px;border-radius:50%;background:' + (isLast ? 'var(--accent-text)' : 'var(--border-med)') + ';margin-top:14px;flex-shrink:0"></div>';
+    if (!isLast) html += '<div style="width:2px;flex:1;background:var(--border);margin:2px 0"></div>';
+    html += '</div>';
+    // Content
+    html += '<div style="flex:1;padding:10px 0 16px 8px">';
+    html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--text)">' + dateStr + '</span>';
+    html += '<span style="font-size:11px;color:var(--text-ter)">' + h.nbProduits + ' produits · ' + h.nbActifs + ' actifs</span>';
+    html += '<span style="font-size:13px;font-weight:700;color:' + mbClr + '">' + f1(h.mbGlobal) + '%</span>';
+    html += '<span style="font-size:12px;color:var(--text-sec)">' + fE(h.margeAn) + '/an</span>';
+    if (diffMB !== null) {
+      var sign = diffMB >= 0 ? '+' : '';
+      var dClr = diffMB >= 0 ? 'var(--accent-text)' : 'var(--danger)';
+      html += '<span style="font-size:11px;font-weight:600;color:' + dClr + '">' + sign + f1(diffMB) + '% MB</span>';
+      var signM = diffMarge >= 0 ? '+' : '';
+      html += '<span style="font-size:11px;color:' + dClr + '">' + signM + fE(diffMarge) + '</span>';
+    }
+    if (isLast) html += '<span style="font-size:10px;background:var(--accent-bg);color:var(--accent-text);padding:1px 6px;border-radius:3px;font-weight:600">Dernier import</span>';
+    html += '</div>';
+    html += sparkline;
+
+    // Produits top 3 par marge
+    if (h.produits && h.produits.length > 0) {
+      var top3 = h.produits
+        .filter(function(p){ return (p.moy||0) > 0 && (p.pv_ht||0) > 0; })
+        .map(function(p){ return { nom:p.nom||'', marge:(p.moy||0)*12*((p.pv_ht||0)-(p.pa_net||0)) }; })
+        .sort(function(a,b){ return b.marge - a.marge; })
+        .slice(0,3);
+      if (top3.length > 0) {
+        html += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+        top3.forEach(function(p){
+          html += '<span style="font-size:10px;background:var(--surface2);padding:2px 7px;border-radius:3px;color:var(--text-sec)">' + p.nom.substring(0,25) + ' · ' + fE(p.marge) + '</span>';
+        });
+        html += '</div>';
+      }
+    }
+
+    // Button to restore this import
+    html += '<button type="button" onclick="condRestaurerImport(' + i + ')" style="margin-top:6px;font-size:10px;color:var(--text-ter);background:none;border:none;cursor:pointer;padding:0">Restaurer cet import \u2192</button>';
+    html += '</div></div>';
+  });
+
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+function condRestaurerImport(idx) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var labo = condLabos[condLaboActif];
+  var hist = labo.historique || [];
+  if (idx < 0 || idx >= hist.length) return;
+  var h = hist[idx];
+
+  // Restore data
+  labo.produits = h.produits;
+  labo.mbActuel = h.mbGlobal;
+  labo.margeActuelle = h.margeAn;
+  labo.caAnnuel = h.caAn;
+  labo.dateEval = h.date;
+  labo.alertes = [];
+
+  // Restore ventes grid
+  h.ventes.forEach(function(v, i) {
+    var el = document.getElementById('cond-v-' + i);
+    if (el) el.value = v > 0 ? v.toFixed(0) : 0;
+  });
+
+  // Update UI fields
+  document.getElementById('cond-date-eval').value = h.date;
+  document.getElementById('cond-mb-actuel').value = h.mbGlobal;
+  document.getElementById('cond-marge-actuelle').value = h.margeAn;
+  document.getElementById('cond-ca-annuel').value = h.caAn;
+
+  condUpdateVentes();
+  condUpdateDiag();
+  condCalc();
+}
+
+// Also update condSelectionnerLabo to show historique
 
 </script>
 

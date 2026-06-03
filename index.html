@@ -5040,6 +5040,7 @@ function simInit() {
     o.value = id; o.textContent = l.nom + (l.produits ? ' (' + l.produits.length + ' prod.)' : '');
     sel.appendChild(o);
   });
+  if (sel.options.length > 1) { sel.selectedIndex = 1; simChargeLabo(); }
 }
 
 function simChargeLabo() {
@@ -5075,7 +5076,8 @@ function simCalcUG(qte, ugMode) {
 }
 
 function simLancer() {
-  if (simProduitsSource.length === 0) { alert('Choisissez un labo avec des produits.'); return; }
+  if (simProduitsSource.length === 0) { simChargeLabo(); }
+  if (simProduitsSource.length === 0) { alert('Importez le PDF LGPI dans Cond. commerciales.'); return; }
 
   var tvaR   = parseFloat(document.getElementById('sim-tva').value) / 100;
   var moisCible = parseFloat(document.getElementById('sim-mois-cible').value) || 2;

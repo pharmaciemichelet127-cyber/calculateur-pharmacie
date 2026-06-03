@@ -4905,8 +4905,8 @@ function catSauvegarder() {
 function catRenderTable() {
   var tbody = document.getElementById('cat-tbody');
   if (!tbody) return;
-  var inS = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:140px;';
-  var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;';
+  var inS = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:110px;';
+  var td  = 'padding:4px 6px;border-bottom:0.5px solid var(--border);font-size:11px;';
 
   // Group by marche for display
   var marchesMap = {};
@@ -4933,7 +4933,7 @@ function catRenderTable() {
       var rowBg = notClassified ? 'var(--warn-bg)' : bg;
       html += '<tr style="background:' + rowBg + '">';
       html += '<td style="' + td + 'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.nom + '">' + p.nom + '</td>';
-      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center">' + (p.ean||'-') + '</td>';
+      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center" title="' + (p.ean||'') + '">' + (p.ean ? p.ean.slice(-7) : '-') + '</td>';
       html += '<td style="' + td + 'text-align:center;font-family:monospace">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
       html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.categorie||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
       html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.sous_cat||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';

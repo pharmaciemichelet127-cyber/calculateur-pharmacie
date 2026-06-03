@@ -1242,7 +1242,7 @@
         <button type="button" onclick="cmdGenerer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Calculer la commande</button>
       </p>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:0">
+      <div style="display:flex;flex-direction:column;gap:0;margin-bottom:0">
         <div>
           <div class="row">
             <label>Labo (source produits)</label>
@@ -1268,8 +1268,9 @@
             <span class="hint">exclure les produits en dessous</span>
           </div>
         </div>
-        <div>
+        <div style="margin-top:14px">
           <p style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-ter);margin-bottom:10px">Paliers de conditions</p>
+          <p style="font-size:11px;color:var(--text-ter);margin-bottom:10px">Colonnes : Libelle | Ref min | Ref max | Remise% | UG offerts | / X achetes | Categorie (optionnel)</p>
           <div id="cmd-paliers-list" style="display:flex;flex-direction:column;gap:6px"></div>
           <button type="button" onclick="cmdAjouterPalier()" style="margin-top:8px;font-size:12px;padding:4px 12px;background:transparent;color:var(--accent-text);border:1px solid var(--accent);border-radius:var(--radius-sm);cursor:pointer;">+ Palier</button>
         </div>
@@ -1317,8 +1318,9 @@ function showTab(t) {
   if (t === 'pm')      try { calcPM(); }     catch(e) { console.error('calcPM',e); }
   if (t === 'prix')    try { calcPrix(); }   catch(e) { console.error('calcPrix',e); }
   if (t === 'mc')      try { calcMC(); }     catch(e) { console.error('calcMC',e); }
+  if (t === 'cond')     try { if(!condInited){condInited=true;condInit();} } catch(e) {}
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
-  if (t === 'cmd' && !cmdInited) { cmdInited=true; cmdInit(); }
+  if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
 }
 
@@ -3267,7 +3269,8 @@ async function importMCPDF(input) {
 
 // ===== CONDITIONS COMMERCIALES =====
 var MOIS_LABELS_COND = ['Jun25','Jul25','Aou25','Sep25','Oct25','Nov25','Dec25','Jan26','Fev26','Mar26','Avr26','Mai26'];
-var condLabos = {};         // {id: {nom, caAnnuel, mbActuel, tva, ventes[12], conditions[]}}
+var condLabos = {};
+var condInited = false;         // {id: {nom, caAnnuel, mbActuel, tva, ventes[12], conditions[]}}
 var condLaboActif = null;
 var condNextId = 1;
 
@@ -4242,6 +4245,13 @@ var cmdPalierId = 1;
 var cmdProduitsSource = []; // produits charges depuis condLabos
 
 function cmdInit() {
+  // Ensure condLabos is loaded from localStorage
+  if (Object.keys(condLabos).length === 0) {
+    try {
+      var saved = localStorage.getItem('cond_labos');
+      if (saved) { condLabos = JSON.parse(saved); condNextId = Math.max.apply(null, Object.keys(condLabos).map(Number)) + 1; }
+    } catch(e) {}
+  }
   // Populate labo selector from condLabos
   var sel = document.getElementById('cmd-labo-sel');
   if (!sel) return;

@@ -3966,6 +3966,7 @@ async function condImportPDFDiag(input) {
   }
   input.value = '';
 }
+
 // ===== PRIX NETS =====
 var pnLignes = [];
 var pnNextId = 1;
@@ -3982,114 +3983,34 @@ function pnCalcLigne(pa, r1, r2, ug, ugx, rfa, pv, tvaR) {
   return { paR1:paR1, paR2:paR2, ugRem:ugRem*100, net:net, netTTC:netTTC, mb:mb };
 }
 
-function pnUpd(id, key) {
-  return function(el) { pnUpdate(id, key, key === 'nom' ? el.value : +el.value); };
-}
+function pnF2(v){ return (+v).toFixed(2).replace('.',','); }
+function pnF1(v){ return (+v).toFixed(1).replace('.',','); }
 
-function pnTdS(extra) { return 'padding:3px 4px;border-bottom:0.5px solid var(--border);' + (extra||''); }
-function pnInS(w, bg) { return 'font-size:11px;padding:4px 4px;border:1px solid var(--border);border-radius:4px;background:' + (bg||'var(--surface2)') + ';font-family:"DM Mono",monospace;text-align:center;width:' + w + 'px;'; }
-
-function pnMakeInput(type, val, placeholder, step, w, bg, id, key) {
-  var el = document.createElement('input');
-  el.type = type;
-  if (val) el.value = val;
-  el.placeholder = placeholder;
-  if (step) el.step = step;
-  el.min = 0;
-  el.setAttribute('style', pnInS(w, bg));
-  if (type === 'text') el.style.textAlign = 'left';
-  var evName = type === 'text' ? 'oninput' : 'oninput';
-  el.addEventListener('input', function(){ pnUpdate(id, key, key === 'nom' ? this.value : +this.value); });
-  return el;
-}
-
-function pnRenderRow(id) {
+// Update only result cells (not inputs) to avoid focus loss
+function pnUpdateResults(id) {
   var l = pnLignes.find(function(x){ return x.id === id; });
   if (!l) return;
-  var row = document.getElementById('pn-row-' + id);
-  if (!row) return;
   var tvaR = parseFloat(document.getElementById('pn-tva').value) / 100;
   var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR);
-  function f2(v){ return (+v).toFixed(2).replace('.',','); }
-  function f1(v){ return (+v).toFixed(1).replace('.',','); }
   var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
 
-  // Clear row
-  while (row.firstChild) row.removeChild(row.firstChild);
+  // Update intermediate PA hints
+  var r1hint = document.getElementById('pn-hint-r1-'+id);
+  var r2hint = document.getElementById('pn-hint-r2-'+id);
+  var ughint = document.getElementById('pn-hint-ug-'+id);
+  if (r1hint) r1hint.textContent = l.pa > 0 ? pnF2(c.paR1) : '';
+  if (r2hint) r2hint.textContent = l.pa > 0 ? pnF2(c.paR2) : '';
+  if (ughint) ughint.textContent = c.ugRem > 0 ? '-'+pnF1(c.ugRem)+'%' : '';
 
-  function mkTd(extra) {
-    var td = document.createElement('td');
-    td.setAttribute('style', pnTdS(extra));
-    return td;
-  }
-  function mkSpan(txt, color) {
-    var sp = document.createElement('span');
-    sp.style.cssText = 'font-size:10px;color:' + (color||'var(--text-ter)');
-    sp.textContent = txt;
-    return sp;
-  }
-  function mkBr() { return document.createElement('br'); }
+  // Update result cells
+  var netEl = document.getElementById('pn-net-'+id);
+  var netTTCEl = document.getElementById('pn-netttc-'+id);
+  var mbEl = document.getElementById('pn-mb-'+id);
+  if (netEl) netEl.textContent = l.pa > 0 ? pnF2(c.net) : '-';
+  if (netTTCEl) netTTCEl.textContent = l.pa > 0 ? pnF2(c.netTTC) : '-';
+  if (mbEl) { mbEl.textContent = c.mb !== null ? pnF1(c.mb)+'%' : '-'; mbEl.style.color = mbClr; }
 
-  var cols = [
-    { key:'nom',  type:'text',   placeholder:'Produit', step:null, w:110, bg:null,          extra:null },
-    { key:'pa',   type:'number', placeholder:'0.000',   step:'0.001', w:72, bg:null,         extra:null },
-    { key:'r1',   type:'number', placeholder:'0',       step:'0.1', w:50, bg:'var(--surface2)', extra:l.pa>0?f2(c.paR1):null },
-    { key:'r2',   type:'number', placeholder:'0',       step:'0.1', w:50, bg:'var(--surface2)', extra:l.pa>0?f2(c.paR2):null },
-    { key:'ug',   type:'number', placeholder:'0',       step:'1',   w:44, bg:'#fffbf0',     extra:null },
-    { key:'ugx',  type:'number', placeholder:'-',       step:'1',   w:44, bg:'#fffbf0',     extra:c.ugRem>0?'-'+f1(c.ugRem)+'%':null, exColor:'var(--warn)' },
-    { key:'rfa',  type:'number', placeholder:'0',       step:'0.1', w:44, bg:'#f0fff5',     extra:null },
-  ];
-
-  cols.forEach(function(col) {
-    var td = mkTd(col.bg ? 'background:' + col.bg : null);
-    var inp = pnMakeInput(col.type, l[col.key]||'', col.placeholder, col.step, col.w, col.bg, id, col.key);
-    td.appendChild(inp);
-    if (col.extra) { td.appendChild(mkBr()); td.appendChild(mkSpan(col.extra, col.exColor||null)); }
-    row.appendChild(td);
-  });
-
-  // Prix net HT
-  var tdNet = mkTd('background:#e8f5ee;text-align:center');
-  var spNet = document.createElement('span');
-  spNet.style.cssText = 'font-family:monospace;font-weight:700;color:var(--accent-text);font-size:13px';
-  spNet.textContent = l.pa > 0 ? f2(c.net) : '-';
-  tdNet.appendChild(spNet);
-  row.appendChild(tdNet);
-
-  // Prix net TTC
-  var tdNetTTC = mkTd('background:#e8f5ee;text-align:center');
-  var spNetTTC = document.createElement('span');
-  spNetTTC.style.cssText = 'font-family:monospace;font-weight:600;color:var(--accent-text)';
-  spNetTTC.textContent = l.pa > 0 ? f2(c.netTTC) : '-';
-  tdNetTTC.appendChild(spNetTTC);
-  row.appendChild(tdNetTTC);
-
-  // PV TTC
-  var tdPV = mkTd('background:#f0fff8');
-  var inpPV = pnMakeInput('number', l.pv||'', 'PV', '0.01', 60, '#f0fff8', id, 'pv');
-  tdPV.appendChild(inpPV);
-  row.appendChild(tdPV);
-
-  // MB%
-  var tdMB = mkTd('background:#f0fff8;text-align:center;font-weight:600');
-  tdMB.style.color = mbClr;
-  tdMB.textContent = c.mb !== null ? f1(c.mb) + '%' : '-';
-  row.appendChild(tdMB);
-
-  // Delete btn
-  var tdDel = mkTd('text-align:center');
-  var btnDel = document.createElement('button');
-  btnDel.type = 'button';
-  btnDel.style.cssText = 'font-size:11px;color:var(--text-ter);background:none;border:none;cursor:pointer';
-  btnDel.textContent = '×';
-  btnDel.addEventListener('click', function(){ pnSupprimerLigne(id); });
-  tdDel.appendChild(btnDel);
-  row.appendChild(tdDel);
-}
-
-function pnUpdate(id, key, val) {
-  var l = pnLignes.find(function(x){ return x.id === id; });
-  if (l) { l[key] = val; pnRenderRow(id); pnUpdateSynthese(); }
+  pnUpdateSynthese();
 }
 
 function pnAjouterLigne(data) {
@@ -4099,11 +4020,45 @@ function pnAjouterLigne(data) {
   pnLignes.push(l);
   var tbody = document.getElementById('pn-tbody');
   if (!tbody) return;
-  var tr = document.createElement('tr');
-  tr.id = 'pn-row-' + id;
-  tbody.appendChild(tr);
-  pnRenderRow(id);
+
+  var tvaR = parseFloat(document.getElementById('pn-tva').value) / 100;
+  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR);
+  var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
+
+  // Column widths
+  var W = { nom:110, pa:68, r1:46, r2:46, ug:42, ugx:42, rfa:42, pv:58 };
+  var inBase = 'font-size:11px;padding:4px;border:1px solid var(--border);border-radius:4px;text-align:center;font-family:"DM Mono",monospace;width:';
+  function inp(key, type, ph, step, bg) {
+    var s = inBase + W[key] + 'px;background:' + (bg||'var(--surface2)') + ';';
+    if (key === 'nom') s = inBase.replace('text-align:center','text-align:left') + W[key] + 'px;background:var(--surface2);';
+    return '<input type="'+type+'" id="pn-inp-'+key+'-'+id+'" value="'+(l[key]||'')+'" placeholder="'+ph+'" '+(step?'step="'+step+'"':'')+' min="0" style="'+s+'" oninput="pnOnInput('+id+',\''+key+'\',this)">';
+  }
+  var td = 'padding:3px 4px;border-bottom:0.5px solid var(--border);';
+
+  var html = '<tr id="pn-row-'+id+'">';
+  html += '<td style="'+td+'">'+inp('nom','text','Produit',null,null)+'</td>';
+  html += '<td style="'+td+'">'+inp('pa','number','0.00','0.001',null)+'</td>';
+  html += '<td style="'+td+';background:var(--surface2)">'+inp('r1','number','0','0.1','var(--surface2)')+'<br><span id="pn-hint-r1-'+id+'" style="font-size:9px;color:var(--text-ter)">'+(l.pa>0?pnF2(c.paR1):'')+'</span></td>';
+  html += '<td style="'+td+';background:var(--surface2)">'+inp('r2','number','0','0.1','var(--surface2)')+'<br><span id="pn-hint-r2-'+id+'" style="font-size:9px;color:var(--text-ter)">'+(l.pa>0?pnF2(c.paR2):'')+'</span></td>';
+  html += '<td style="'+td+';background:#fffbf0">'+inp('ug','number','0','1','#fffbf0')+'</td>';
+  html += '<td style="'+td+';background:#fffbf0">'+inp('ugx','number','-','1','#fffbf0')+'<br><span id="pn-hint-ug-'+id+'" style="font-size:9px;color:var(--warn)">'+(c.ugRem>0?'-'+pnF1(c.ugRem)+'%':'')+'</span></td>';
+  html += '<td style="'+td+';background:#f0fff5">'+inp('rfa','number','0','0.1','#f0fff5')+'</td>';
+  html += '<td style="'+td+';background:#e8f5ee;text-align:center"><span id="pn-net-'+id+'" style="font-family:monospace;font-weight:700;color:var(--accent-text);font-size:13px">'+(l.pa>0?pnF2(c.net):'-')+'</span></td>';
+  html += '<td style="'+td+';background:#e8f5ee;text-align:center"><span id="pn-netttc-'+id+'" style="font-family:monospace;font-weight:600;color:var(--accent-text)">'+(l.pa>0?pnF2(c.netTTC):'-')+'</span></td>';
+  html += '<td style="'+td+';background:#f0fff8">'+inp('pv','number','PV','0.01','#f0fff8')+'</td>';
+  html += '<td id="pn-mb-'+id+'" style="'+td+';background:#f0fff8;text-align:center;font-weight:600;color:'+mbClr+'">'+(c.mb!==null?pnF1(c.mb)+'%':'-')+'</td>';
+  html += '<td style="'+td+';text-align:center"><button type="button" onclick="pnSupprimerLigne('+id+')" style="font-size:11px;color:var(--text-ter);background:none;border:none;cursor:pointer">\u00d7</button></td>';
+  html += '</tr>';
+
+  tbody.insertAdjacentHTML('beforeend', html);
   pnUpdateSynthese();
+}
+
+function pnOnInput(id, key, el) {
+  var l = pnLignes.find(function(x){ return x.id === id; });
+  if (!l) return;
+  l[key] = (key === 'nom') ? el.value : (parseFloat(el.value)||0);
+  pnUpdateResults(id);
 }
 
 function pnSupprimerLigne(id) {
@@ -4122,24 +4077,26 @@ function pnViderTout() {
 }
 
 function pnRecalcAll() {
-  pnLignes.forEach(function(l){ pnRenderRow(l.id); });
+  pnLignes.forEach(function(l){ pnUpdateResults(l.id); });
   pnUpdateSynthese();
 }
 
 function pnAjouterDepuisSaisie() {
-  var get = function(i){ return document.getElementById(i); };
-  var nom = get('pn-q-nom') ? get('pn-q-nom').value : '';
-  var pa  = get('pn-q-pa')  ? parseFloat(get('pn-q-pa').value)||0 : 0;
-  var r1  = get('pn-q-r1')  ? parseFloat(get('pn-q-r1').value)||0 : 0;
-  var r2  = get('pn-q-r2')  ? parseFloat(get('pn-q-r2').value)||0 : 0;
-  var ug  = get('pn-q-ug')  ? parseFloat(get('pn-q-ug').value)||0 : 0;
-  var ugx = get('pn-q-ugx') ? parseFloat(get('pn-q-ugx').value)||0 : 0;
-  var rfa = get('pn-q-rfa') ? parseFloat(get('pn-q-rfa').value)||0 : 0;
-  pnAjouterLigne({ nom:nom, pa:pa, r1:r1, r2:r2, ug:ug, ugx:ugx, rfa:rfa });
-  ['pn-q-nom','pn-q-pa','pn-q-r1','pn-q-r2','pn-q-ug','pn-q-ugx','pn-q-rfa'].forEach(function(i){
-    var e = document.getElementById(i); if(e) e.value = '';
+  var g = function(i){ return document.getElementById(i); };
+  var nom = g('pn-q-nom') ? g('pn-q-nom').value : '';
+  pnAjouterLigne({
+    nom: nom,
+    pa:  g('pn-q-pa')  ? parseFloat(g('pn-q-pa').value)||0  : 0,
+    r1:  g('pn-q-r1')  ? parseFloat(g('pn-q-r1').value)||0  : 0,
+    r2:  g('pn-q-r2')  ? parseFloat(g('pn-q-r2').value)||0  : 0,
+    ug:  g('pn-q-ug')  ? parseFloat(g('pn-q-ug').value)||0  : 0,
+    ugx: g('pn-q-ugx') ? parseFloat(g('pn-q-ugx').value)||0 : 0,
+    rfa: g('pn-q-rfa') ? parseFloat(g('pn-q-rfa').value)||0 : 0
   });
-  var n = document.getElementById('pn-q-nom'); if(n) n.focus();
+  ['pn-q-nom','pn-q-pa','pn-q-r1','pn-q-r2','pn-q-ug','pn-q-ugx','pn-q-rfa'].forEach(function(i){
+    var e = g(i); if(e) e.value = '';
+  });
+  var n = g('pn-q-nom'); if(n) n.focus();
 }
 
 function pnUpdateSynthese() {
@@ -4157,16 +4114,14 @@ function pnUpdateSynthese() {
   if (n === 0) { syn.style.display='none'; return; }
   var gain = totPA > 0 ? (totPA-totNet)/totPA*100 : 0;
   var mbM  = nMB > 0 ? totMB/nMB : null;
-  function fE(v){ return v.toFixed(2).replace('.',',') + ' €'; }
-  function f1(v){ return v.toFixed(1).replace('.',','); }
+  function fE(v){ return v.toFixed(2).replace('.',',') + ' \u20ac'; }
   var mbCls = mbM===null ? '' : mbM>=35 ? 'hi' : mbM>=28 ? 'warn' : 'danger';
   document.getElementById('pn-kpis').innerHTML =
-    '<div class="met"><p class="lbl">Produits</p><p class="val" style="font-size:18px">' + pnLignes.length + '</p></div>' +
-    '<div class="met warn"><p class="lbl">PA Cat. HT moyen</p><p class="val" style="font-size:15px">' + fE(totPA/n) + '</p></div>' +
-    '<div class="met hi"><p class="lbl">Prix net HT moyen</p><p class="val" style="font-size:15px">' + fE(totNet/n) + '</p><p class="sub">gain : -' + f1(gain) + '%</p></div>' +
-    (mbM !== null
-      ? '<div class="met ' + mbCls + '"><p class="lbl">MB% moyen</p><p class="val" style="font-size:15px">' + f1(mbM) + '%</p><p class="sub">sur ' + nMB + ' produit(s)</p></div>'
-      : '<div class="met"><p class="lbl">MB%</p><p class="val">-</p><p class="sub">saisir PV TTC</p></div>');
+    '<div class="met"><p class="lbl">Produits</p><p class="val" style="font-size:18px">'+pnLignes.length+'</p></div>'+
+    '<div class="met warn"><p class="lbl">PA Cat. HT moyen</p><p class="val" style="font-size:15px">'+fE(totPA/n)+'</p></div>'+
+    '<div class="met hi"><p class="lbl">Prix net HT moyen</p><p class="val" style="font-size:15px">'+fE(totNet/n)+'</p><p class="sub">gain : -'+pnF1(gain)+'%</p></div>'+
+    (mbM!==null ? '<div class="met '+mbCls+'"><p class="lbl">MB% moyen</p><p class="val" style="font-size:15px">'+pnF1(mbM)+'%</p><p class="sub">sur '+nMB+' produit(s)</p></div>'
+    : '<div class="met"><p class="lbl">MB%</p><p class="val">-</p><p class="sub">saisir PV TTC</p></div>');
   syn.style.display = 'block';
 }
 

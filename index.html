@@ -1188,9 +1188,9 @@
             <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00501a">Prix net TTC</th>
             <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00401a">PV TTC</th>
             <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00401a">MB%</th>
-            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50">MB% cible</th>
-            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50">PV cible</th>
-            <th style="padding:3px;background:transparent"></th>
+            <th style="padding:5px 6px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:52px">MB% cible</th>
+            <th style="padding:5px 6px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:58px">PV cible</th>
+            <th style="padding:3px;background:transparent;width:24px"></th>
           </tr></thead>
           <tbody id="pn-tbody"></tbody>
         </table>
@@ -4036,7 +4036,7 @@ function pnAjouterLigne(data) {
   var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
 
   // Column widths
-  var W = { nom:100, pa:62, r1:42, r2:42, ug:38, ugx:38, rfa:38, pv:52, mb_cible:38 };
+  var W = { nom:100, pa:62, r1:42, r2:42, ug:38, ugx:38, rfa:38, pv:52, mb_cible:48 };
   var inBase = 'font-size:11px;padding:4px;border:1px solid var(--border);border-radius:4px;text-align:center;font-family:"DM Mono",monospace;width:';
   function inp(key, type, ph, step, bg) {
     var s = inBase + W[key] + 'px;background:' + (bg||'var(--surface2)') + ';';
@@ -4057,7 +4057,9 @@ function pnAjouterLigne(data) {
   html += '<td style="'+td+';background:#e8f5ee;text-align:center"><span id="pn-netttc-'+id+'" style="font-family:monospace;font-weight:600;color:var(--accent-text)">'+(l.pa>0?pnF2(c.netTTC):'-')+'</span></td>';
   html += '<td style="'+td+';background:#f0fff8">'+inp('pv','number','PV','0.01','#f0fff8')+'</td>';
   html += '<td id="pn-mb-'+id+'" style="'+td+';background:#f0fff8;text-align:center;font-weight:600;color:'+mbClr+'">'+(c.mb!==null?pnF1(c.mb)+'%':'-')+'</td>';
-  html += '<td style="'+td+';text-align:center"><button type="button" onclick="pnSupprimerLigne('+id+')" style="font-size:11px;color:var(--text-ter);background:none;border:none;cursor:pointer">\u00d7</button></td>';
+  html += '<td style="'+td+';background:#1a3a50">'+inp('mb_cible','number','35','0.5','#1a3a50',99)+'</td>';
+  html += '<td id="pn-pvcible-'+id+'" style="'+td+';background:#1a3a50;text-align:center;font-family:monospace;font-weight:700;color:#7ec8e3;font-size:13px">'+(c.pvCible!==null?pnF2(c.pvCible):'-')+'</td>';
+  html += '<td style="'+td+';text-align:center;width:20px;min-width:20px"><button type="button" onclick="pnSupprimerLigne('+id+')" style="font-size:13px;color:var(--text-ter);background:none;border:none;cursor:pointer;padding:0 4px">\u00d7</button></td>';
   html += '</tr>';
 
   tbody.insertAdjacentHTML('beforeend', html);

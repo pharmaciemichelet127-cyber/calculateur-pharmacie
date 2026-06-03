@@ -1341,31 +1341,40 @@
 
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>Simulateur — Impact des conditions par marché</span>
+        <span>Simulateur — Potentiel de marché</span>
         <button type="button" onclick="simLancer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Simuler</button>
       </p>
-      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:4px">
-        <div class="row" style="margin:0">
-          <label>Labo</label>
-          <select id="sim-labo" onchange="simChargeLabo()" style="min-width:160px;font-size:13px">
-            <option value="">-- Choisir --</option>
-          </select>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:8px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">1. Top 100 Panel France <span id="sim-top100-badge" style="color:var(--accent-text)"></span></label>
+          <label style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface2)">Importer XLSX <input type="file" id="sim-top100-file" accept=".xlsx,.csv" style="display:none" onchange="simImportTop100(this)"></label>
         </div>
-        <div class="row" style="margin:0">
-          <label>TVA</label>
-          <select id="sim-tva" style="font-size:13px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">2. Prix de proximité <span id="sim-prox-badge" style="color:var(--accent-text)"></span></label>
+          <label style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface2)">Importer XLSX <input type="file" id="sim-prox-file" accept=".xlsx,.csv" style="display:none" onchange="simImportProx(this)"></label>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">3. Labo LGPI (optionnel)</label>
+          <select id="sim-labo" onchange="simChargeLabo()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)"><option value="">-- Optionnel --</option></select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">TVA</label>
+          <select id="sim-tva" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
             <option value="5.5">5,5% (compl. alim.)</option>
-            <option value="20">20%</option>
-            <option value="10">10%</option>
+            <option value="20">20%</option><option value="10">10%</option>
           </select>
         </div>
-
-        <div class="row" style="margin:0">
-          <label>Couverture cible (mois)</label>
-          <input type="number" id="sim-mois-cible" value="2" min="1" max="6" step="1" style="width:60px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)">
-          <span class="hint">mois de stock</span>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">Couverture cible (mois)</label>
+          <input type="number" id="sim-mois-cible" value="2" min="1" max="6" step="1" style="width:70px;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--text-sec);font-weight:500">Nb pharmas zone</label>
+          <input type="number" id="sim-nb-pharmas" value="20" min="1" max="50" step="1" style="width:70px;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)">
+          <span style="font-size:10px;color:var(--text-ter)">pour estim. rotation</span>
         </div>
       </div>
+      <div id="sim-import-status" style="font-size:11px;color:var(--text-sec);min-height:16px"></div>
     </div>
 
     <div id="sim-result" style="display:none">
@@ -5026,6 +5035,110 @@ var catInited = false;
 
 // ===== SIMULATION =====
 var simProduitsSource = [];
+var simTop100Data = {};   // EAN -> {lib, qte_ph, pdm_ph, ordre_panel, pdm_panel, dn_pct}
+var simProxData   = {};   // EAN -> {prix_zone, ton_prix, ton_vol, prix_pan, prix_qrt, dn_zone_n, dn_zone_d}
+
+function simParseXLSX(file, callback) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      callback(null, rows);
+    } catch(err) { callback(err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function simCleanEAN(v) {
+  if (!v) return '';
+  return String(v).replace(/\s/g,'').replace(/\xa0/g,'');
+}
+
+function simParseFloat(v) {
+  if (v === null || v === undefined) return 0;
+  var s = String(v).replace(',','.').replace(/[^\d.-]/g,'');
+  var f = parseFloat(s);
+  return isNaN(f) ? 0 : f;
+}
+
+function simImportTop100(input) {
+  var file = input.files[0]; if (!file) return;
+  var badge = document.getElementById('sim-top100-badge');
+  if (badge) badge.textContent = 'Chargement...';
+  simParseXLSX(file, function(err, rows) {
+    if (err) { if(badge) badge.textContent = 'Erreur'; return; }
+    // Row 0 = group headers, Row 1 = sub-headers, Row 2+ = data
+    // Cols: Ordre(0), EAN(1), Libelle(2), QtePharm(3), EvolPh(4), PDMph(5), dn(6), OrdrePanel(7), EvolPanel(8), PDMpanel(9), DN(10)
+    simTop100Data = {};
+    var count = 0;
+    rows.slice(2).forEach(function(r) {
+      if (!r[1]) return;
+      var ean = simCleanEAN(r[1]);
+      if (ean.length < 8) return;
+      var qte_ph = simParseFloat(r[3]);
+      var pdm_ph = simParseFloat(r[5]);
+      var ordre_panel = r[7] ? parseInt(r[7]) : 999;
+      var pdm_panel = simParseFloat(r[9]);
+      var dn_pct = simParseFloat(r[10]);
+      simTop100Data[ean] = { lib: String(r[2]||'').substring(0,45), qte_ph:qte_ph,
+        pdm_ph:pdm_ph, ordre_panel:ordre_panel, pdm_panel:pdm_panel, dn_pct:dn_pct };
+      count++;
+    });
+    if (badge) badge.textContent = '\u2713 ' + count + ' produits';
+    document.getElementById('sim-import-status').textContent = 'Top 100 : ' + count + ' produits charges.';
+    input.value = '';
+  });
+}
+
+function simImportProx(input) {
+  var file = input.files[0]; if (!file) return;
+  var badge = document.getElementById('sim-prox-badge');
+  if (badge) badge.textContent = 'Chargement...';
+  simParseXLSX(file, function(err, rows) {
+    if (err) { if(badge) badge.textContent = 'Erreur'; return; }
+    // Row 0 = group headers, Row 1 = col headers, Row 2+ = data
+    // Cols: EAN(0), Lib(1), TVA(2),
+    // Panel prox(3,4,5), Panel ayant vendu(6,7,8), Votre ville(9,10),
+    // Votre pharmacie: Volume(11), DernPrix(12)
+    // Panel: PrixMoy(13), MinMax(14)
+    // Types: Banlieue(15), Centre ville(16), Centre commercial(17), Quartier(18), Rural(19)
+    simProxData = {};
+    var count = 0;
+    rows.slice(2).forEach(function(r) {
+      if (!r[0]) return;
+      var ean = simCleanEAN(r[0]);
+      if (ean.length < 8) return;
+      // Parse prix_zone from col 6 (ex: "19.9 €DN: 2/20")
+      var col6 = String(r[6]||'');
+      var prix_zone_m = col6.match(/[\d]+[.,]?[\d]*/);
+      var prix_zone = prix_zone_m ? parseFloat(prix_zone_m[0].replace(',','.')) : null;
+      var dn_zone_m = col6.match(/DN:\s*(\d+)\/(\d+)/);
+      var dn_zone_n = dn_zone_m ? parseInt(dn_zone_m[1]) : 0;
+      var dn_zone_d = dn_zone_m ? parseInt(dn_zone_m[2]) : 20;
+      // Parse ton prix col 12
+      var col12 = String(r[12]||'');
+      var ton_prix_m = col12.match(/[\d]+[.,]?[\d]*/);
+      var ton_prix = ton_prix_m ? parseFloat(ton_prix_m[0].replace(',','.')) : null;
+      var ton_vol = r[11] ? parseFloat(r[11]) : 0;
+      // Parse prix panel col 13
+      var col13 = String(r[13]||'');
+      var prix_pan_m = col13.match(/[\d]+[.,]?[\d]*/);
+      var prix_pan = prix_pan_m ? parseFloat(prix_pan_m[0].replace(',','.')) : null;
+      // Prix quartier col 18
+      var col18 = String(r[18]||'');
+      var prix_qrt_m = col18.match(/[\d]+[.,]?[\d]*/);
+      var prix_qrt = prix_qrt_m ? parseFloat(prix_qrt_m[0].replace(',','.')) : null;
+      simProxData[ean] = { prix_zone:prix_zone, ton_prix:ton_prix, ton_vol:ton_vol,
+        prix_pan:prix_pan, prix_qrt:prix_qrt, dn_zone_n:dn_zone_n, dn_zone_d:dn_zone_d };
+      count++;
+    });
+    if (badge) badge.textContent = '\u2713 ' + count + ' produits';
+    document.getElementById('sim-import-status').textContent += ' | Prix prox. : ' + count + ' produits charges.';
+    input.value = '';
+  });
+}
 
 function simInit() {
   if (Object.keys(condLabos).length === 0) {
@@ -5079,166 +5192,161 @@ function simCalcUG(qte, ugMode) {
 }
 
 function simLancer() {
-  if (simProduitsSource.length === 0) { simChargeLabo(); }
-  if (simProduitsSource.length === 0) { alert('Importez le PDF LGPI dans Cond. commerciales.'); return; }
+  // Need at least Top100 data
+  if (Object.keys(simTop100Data).length === 0 && simProduitsSource.length === 0) {
+    alert('Importez au moins le Top 100 Panel France.');
+    return;
+  }
 
-  var tvaR   = parseFloat(document.getElementById('sim-tva').value) / 100;
+  var tvaR      = parseFloat(document.getElementById('sim-tva').value) / 100;
   var moisCible = parseFloat(document.getElementById('sim-mois-cible').value) || 2;
+  var nbPharmas = parseFloat(document.getElementById('sim-nb-pharmas').value) || 20;
   var laboIdStr = document.getElementById('sim-labo').value;
-  var laboId = laboIdStr ? (parseInt(laboIdStr) || laboIdStr) : null;
+  var laboId    = laboIdStr ? (parseInt(laboIdStr) || laboIdStr) : null;
 
-  // Get all active products (rotation > 0)
-  var actifsAll = simProduitsSource.filter(function(p){ return (p.moy||0) > 0; });
-  actifsAll.sort(function(a,b){ return (b.moy||0) - (a.moy||0); }); // sort by rotation desc
-
-  // Define the two scenarios
-  var scenarios = [
-    { label: 'Marche 30 refs', rem: 30, nRefs: 30, color: 'var(--accent-text)', bg: 'var(--accent-bg)' },
-    { label: 'Marche 8-29 refs', rem: 25, nRefs: Math.min(29, actifsAll.length), color: 'var(--warn)', bg: '#fff8e6' }
-  ];
-
-  // UG tiers: 6+1, 12+3, 24+8
-  var ugTiers = [
-    { ach: 6,  off: 1 },
-    { ach: 12, off: 3 },
-    { ach: 24, off: 8 }
-  ];
-
-  function getUG(qte) {
-    // Best UG tier applicable
-    var best = { ach:0, off:0 };
-    ugTiers.forEach(function(t) { if (qte >= t.ach) best = t; });
-    return best.ach > 0 ? Math.floor(qte / best.ach) * best.off : 0;
+  // Build unified product list
+  // Priority: Top100 as base, enrich with Prox data and LGPI rotations
+  var allEANs = Object.keys(simTop100Data);
+  if (allEANs.length === 0 && simProduitsSource.length > 0) {
+    // Fallback: use LGPI data only
+    simProduitsSource.forEach(function(p){ if(p.ean) allEANs.push(p.ean); });
   }
 
-  function getUGLabel(qte) {
-    var best = { ach:0, off:0, label:'' };
-    ugTiers.forEach(function(t) {
-      if (qte >= t.ach) { best = t; best.label = t.ach+'+'+t.off+' UG'; }
-    });
-    return best.label || '-';
-  }
+  var produits = allEANs.map(function(ean) {
+    var t = simTop100Data[ean] || {};
+    var p = simProxData[ean]   || {};
+    // LGPI product if available
+    var lgpi = null;
+    if (laboId && condLabos[laboId] && condLabos[laboId].produits) {
+      lgpi = condLabos[laboId].produits.find(function(x){ return x.ean === ean; }) || null;
+    }
+
+    // Rotation estimates
+    var rot_reel = lgpi ? (lgpi.moy||0) : (t.qte_ph||0) / 12;
+    var rot_pdm  = (t.pdm_ph > 0 && t.qte_ph > 0) ? (t.qte_ph / t.pdm_ph * t.pdm_panel / 12) : 0;
+    var rot_dn   = (t.dn_pct > 0) ? (t.qte_ph||0) / 12 / (t.dn_pct/100 * nbPharmas) : 0;
+
+    // PV: priority = Quartier > ton prix > panel France > LGPI
+    var pv_ttc = p.prix_qrt || p.ton_prix || p.prix_pan || (lgpi ? lgpi.pv_ttc : 0) || 0;
+    // PA Cat Net from LGPI or estimate from PA_net column
+    var pa_net = lgpi ? (lgpi.pa_net||0) : 0;
+    var rem_cat = lgpi ? (lgpi.rem_cat||30) : 30;
+    var pa_cat_brut = rem_cat > 0 ? pa_net / (1 - rem_cat/100) : pa_net;
+
+    return { ean:ean, lib:t.lib || (lgpi?lgpi.nom:''), ordre:t.ordre_panel||999,
+             rot_reel:rot_reel, rot_pdm:rot_pdm, rot_dn:rot_dn,
+             pdm_ph:t.pdm_ph||0, dn_zone_n:p.dn_zone_n||0, dn_zone_d:p.dn_zone_d||nbPharmas,
+             pv_ttc:pv_ttc, pa_cat_brut:pa_cat_brut, pa_net:pa_net,
+             prix_zone:p.prix_zone||0, ton_vol:p.ton_vol||0 };
+  });
+
+  // Sort by panel order
+  produits.sort(function(a,b){ return a.ordre - b.ordre; });
+
+  // Filter: only products with some data
+  produits = produits.filter(function(p){ return p.pv_ttc > 0 || p.pa_cat_brut > 0; });
 
   function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u00a0\u20ac'; }
   function f1(v){ return (+v).toFixed(1).replace('.',','); }
   function f2(v){ return (+v).toFixed(2).replace('.',','); }
 
-  // Compute each scenario
-  var scenResults = scenarios.map(function(sc) {
-    // Take top nRefs products by rotation
-    var prods = actifsAll.slice(0, sc.nRefs);
+  function calcScenario(prods, rem) {
     var lignes = [];
-    var totCA = 0, totMarge = 0, totUG = 0, totQte = 0;
-
+    var totCA=0, totMarge=0, totUG=0, totQte=0;
     prods.forEach(function(p) {
-      var moy    = p.moy || 0;
-      var qteCmd = Math.ceil(moy * moisCible);
-      // Reconstruct PA Cat brut from pa_net
-      // PDF gives pa_net already after remise catalogue
-      // PA Cat brut = pa_net / (1 - rem_cat/100)
-      var remCatPDF = p.rem_cat || 30;
-      var paCatBrut = remCatPDF > 0 ? (p.pa_net||0) / (1 - remCatPDF/100) : (p.pa_net||0);
-      var paNet  = paCatBrut * (1 - sc.rem/100);
-      var pvTTC  = p.pv_ttc || 0;
-      var pvHT   = pvTTC / (1 + tvaR);
-      var ug     = getUG(qteCmd);
-      var ugLbl  = getUGLabel(qteCmd);
-      var mbu    = pvHT - paNet;
-      var mb     = pvHT > 0 ? mbu / pvHT * 100 : 0;
-      var caCmd  = qteCmd * pvTTC;
+      var rot      = p.rot_reel > 0 ? p.rot_reel : (p.rot_dn > 0 ? p.rot_dn : p.rot_pdm);
+      var qteCmd   = Math.ceil(rot * moisCible);
+      if (qteCmd <= 0) qteCmd = 1; // at least 1 for new products
+      var paNet    = p.pa_cat_brut > 0 ? p.pa_cat_brut * (1 - rem/100) : 0;
+      var pvHT     = p.pv_ttc / (1 + tvaR);
+      var mbu      = paNet > 0 ? pvHT - paNet : 0;
+      var mb       = (pvHT > 0 && paNet > 0) ? mbu/pvHT*100 : null;
+      // UG: 6+1, 12+3, 24+8
+      var ug = 0, ugLbl = '-';
+      if (qteCmd >= 24) { ug = Math.floor(qteCmd/24)*8; ugLbl='24+8'; }
+      else if (qteCmd >= 12) { ug = Math.floor(qteCmd/12)*3; ugLbl='12+3'; }
+      else if (qteCmd >= 6)  { ug = Math.floor(qteCmd/6)*1;  ugLbl='6+1'; }
+      var caCmd  = qteCmd * p.pv_ttc;
       var margeCmd = qteCmd * mbu;
-      var caAn   = moy * 12 * pvTTC;
-      var margeAn = moy * 12 * mbu;
-
-      totCA    += caCmd;
-      totMarge += margeCmd;
-      totUG    += ug;
-      totQte   += qteCmd;
-
-      lignes.push({ nom:p.nom, moy:moy, qteCmd:qteCmd, paCat:paCatBrut, paNet:paNet,
-                    pvTTC:pvTTC, ug:ug, ugLbl:ugLbl, mb:mb, margeCmd:margeCmd,
-                    caCmd:caCmd, caAn:caAn, margeAn:margeAn });
+      totCA += caCmd; totMarge += margeCmd; totUG += ug; totQte += qteCmd;
+      lignes.push({ ean:p.ean, lib:p.lib, ordre:p.ordre,
+        rot_reel:p.rot_reel, rot_dn:p.rot_dn, rot_pdm:p.rot_pdm,
+        dn_zone_n:p.dn_zone_n, dn_zone_d:p.dn_zone_d,
+        qteCmd:qteCmd, paNet:paNet, pvTTC:p.pv_ttc, pv_qrt:p.prix_qrt||0,
+        ug:ug, ugLbl:ugLbl, mb:mb, margeCmd:margeCmd, caCmd:caCmd,
+        isNew: p.rot_reel <= 0 });
     });
+    var caHT = totCA/(1+tvaR);
+    var mbG  = caHT > 0 ? totMarge/caHT*100 : 0;
+    return { lignes:lignes, totCA:totCA, totMarge:totMarge, totUG:totUG, totQte:totQte, mbG:mbG };
+  }
 
-    var caHT = totCA / (1 + tvaR);
-    var mbGlobal = caHT > 0 ? totMarge / caHT * 100 : 0;
-    return { sc:sc, lignes:lignes, totCA:totCA, totMarge:totMarge, totUG:totUG,
-             totQte:totQte, mbGlobal:mbGlobal };
-  });
+  var top30  = produits.slice(0, 30);
+  var top25  = produits.slice(0, Math.min(29, produits.length));
+  var sc30   = calcScenario(top30,  30);
+  var sc25   = calcScenario(top25,  25);
 
-  // ===== RENDER GLOBAL KPIs - comparison =====
+  // Global KPIs
+  var gainMarge = sc30.totMarge - sc25.totMarge;
+  var gainUG    = sc30.totUG - sc25.totUG;
+  var verdict   = gainMarge >= 0
+    ? 'Marche 30 refs g\u00e9n\u00e8re <b>+' + fE(gainMarge) + '</b> et <b>+' + gainUG + ' UG</b> suppl\u00e9mentaires.'
+    : 'Marche 25 refs g\u00e9n\u00e8re <b>+' + fE(-gainMarge) + '</b> de marge suppl\u00e9mentaire.';
+
   var kpiHtml = '';
-  scenResults.forEach(function(r) {
-    var cls = r.mbGlobal >= 35 ? 'hi' : r.mbGlobal >= 28 ? 'warn' : 'danger';
-    kpiHtml += '<div class="met ' + cls + '" style="text-align:center;border-top:3px solid ' + r.sc.color + '">' +
-      '<p class="lbl">' + r.sc.label + ' — Remise ' + r.sc.rem + '%</p>' +
-      '<p class="val" style="font-size:22px">' + f1(r.mbGlobal) + '%</p>' +
-      '<p class="sub">MB% moyen sur ' + moisCible + ' mois</p>' +
-      '<p style="font-size:13px;font-weight:600;margin-top:4px">' + fE(r.totMarge) + '</p>' +
+  [{sc:sc30,rem:30,cl:'hi'},{sc:sc25,rem:25,cl:'warn'}].forEach(function(x) {
+    kpiHtml += '<div class="met ' + x.cl + '" style="text-align:center">' +
+      '<p class="lbl">March\u00e9 ' + (x.rem===30?'30':'25') + ' refs \u2014 Remise ' + x.rem + '%</p>' +
+      '<p class="val" style="font-size:22px">' + f1(x.sc.mbG) + '%</p>' +
+      '<p class="sub">MB% moyen sur ' + moisCible + ' mois de commande</p>' +
+      '<p style="font-size:14px;font-weight:600;margin:4px 0">' + fE(x.sc.totMarge) + '</p>' +
       '<p class="sub">Marge sur commande</p>' +
-      '<p style="font-size:12px;color:var(--accent-text);font-weight:600">+' + r.totUG + ' UG gratuites</p>' +
-      '<p class="sub">CA commande : ' + fE(r.totCA) + '</p>' +
-      '<p class="sub">' + r.totQte + ' u. payantes + ' + r.totUG + ' u. gratuites</p>' +
+      '<p style="font-size:12px;color:var(--accent-text);font-weight:600">+' + x.sc.totUG + ' UG gratuites</p>' +
+      '<p class="sub">CA commande : ' + fE(x.sc.totCA) + ' | ' + x.sc.totQte + ' u. payantes</p>' +
       '</div>';
   });
-
-  // Verdict
-  var s0 = scenResults[0], s1 = scenResults[1];
-  var gainMarge = s0.totMarge - s1.totMarge;
-  var gainUG    = s0.totUG - s1.totUG;
-  var verdict   = gainMarge >= 0
-    ? 'Le march\u00e9 30 refs \u00e0 30% g\u00e9n\u00e8re <b>+' + fE(gainMarge) + ' de marge</b> et <b>+' + gainUG + ' UG</b> suppl\u00e9mentaires vs le march\u00e9 25 refs.'
-    : 'Le march\u00e9 25 refs \u00e0 25% g\u00e9n\u00e8re <b>+' + fE(-gainMarge) + ' de marge</b> suppl\u00e9mentaire car le volume de commande est plus faible.';
-
-  kpiHtml += '<div class="nego" style="grid-column:1/-1;border-left:3px solid ' + (gainMarge>=0?'var(--accent)':'var(--warn)') + '">' +
-    '<p class="nego-title">Verdict — \u00c9tais-ce le bon choix ?</p>' +
-    '<p class="nego-body">' + verdict + '</p></div>';
-
+  kpiHtml += '<div class="nego" style="grid-column:1/-1">' +
+    '<p class="nego-title">Verdict</p><p class="nego-body">' + verdict + '</p></div>';
   document.getElementById('sim-global-kpis').innerHTML = kpiHtml;
 
-  // ===== RENDER COMPARISON TABLE =====
-  var thS = 'padding:7px 8px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;';
+  // Comparison table
+  var thS = 'padding:6px 8px;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;';
   var html = '<thead><tr style="background:var(--text);color:#fff">';
+  html += '<th style="' + thS + 'text-align:center;width:40px">Rang</th>';
   html += '<th style="' + thS + 'text-align:left;min-width:160px">Produit</th>';
-  html += '<th style="' + thS + 'text-align:center;width:50px">Rot./m</th>';
-  html += '<th style="' + thS + 'text-align:center;width:50px">Qte ' + moisCible + 'm</th>';
-  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">UG</th>';
+  html += '<th style="' + thS + 'text-align:center">Rot. r\u00e9elle<br>/mois</th>';
+  html += '<th style="' + thS + 'text-align:center">Estim. DN<br>/mois</th>';
+  html += '<th style="' + thS + 'text-align:center">DN zone</th>';
+  html += '<th style="' + thS + 'text-align:center">PV Quartier</th>';
   html += '<th style="' + thS + 'text-align:center;background:#1a3a20">PA net 30%</th>';
   html += '<th style="' + thS + 'text-align:center;background:#1a3a20">MB% 30%</th>';
-  html += '<th style="' + thS + 'text-align:center;background:#3a3a10">PA net 25%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">UG 30%</th>';
   html += '<th style="' + thS + 'text-align:center;background:#3a3a10">MB% 25%</th>';
-  html += '<th style="' + thS + 'text-align:center">PV TTC</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#3a3a10">UG 25%</th>';
   html += '</tr></thead><tbody>';
 
-  // Merge both scenarios ligne by ligne (same products = top by rotation)
-  var maxRefs = Math.max(s0.lignes.length, s1.lignes.length);
-  for (var ri = 0; ri < maxRefs; ri++) {
-    var l0 = s0.lignes[ri];
-    var l1 = s1.lignes[ri];
-    var l  = l0 || l1;
-    var bg = ri % 2 === 0 ? '#fff' : 'var(--surface2)';
-    var td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:11px;background:' + bg;
-
-    // MB% colors
-    var mb0Clr = l0 ? (l0.mb>=35?'var(--accent-text)':l0.mb>=28?'var(--warn)':'var(--danger)') : '';
-    var mb1Clr = l1 ? (l1.mb>=35?'var(--accent-text)':l1.mb>=28?'var(--warn)':'var(--danger)') : '';
-
-    // Only in scenario 30 (not in 25)?
-    var onlyIn30 = l0 && !l1;
-
+  sc30.lignes.forEach(function(l, ri) {
+    var l25 = sc25.lignes[ri];
+    var bg  = ri % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var tdS = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:11px;background:' + bg;
+    var mb30c = l.mb===null?'':(l.mb>=35?'var(--accent-text)':l.mb>=28?'var(--warn)':'var(--danger)');
+    var mb25c = (l25&&l25.mb!==null)?(l25.mb>=35?'var(--accent-text)':l25.mb>=28?'var(--warn)':'var(--danger)'):'';
+    var isNew = l.rot_reel <= 0;
     html += '<tr>';
-    html += '<td style="' + td + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px" title="' + l.nom + '">' +
-      l.nom + (onlyIn30 ? ' <span style="font-size:9px;background:var(--accent-bg);color:var(--accent-text);padding:1px 4px;border-radius:2px">+30</span>' : '') + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-family:monospace">' + f1(l.moy) + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-weight:600">' + (l0 ? l0.qteCmd : l1.qteCmd) + '</td>';
-    html += '<td style="' + td + ';text-align:center;background:#e8f5ee">' + (l0 && l0.ug > 0 ? '<b style="color:var(--accent-text)">+' + l0.ug + '</b><br><span style="font-size:9px;color:var(--text-ter)">' + l0.ugLbl + '</span>' : '-') + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-family:monospace;background:#e8f5ee">' + (l0 ? f2(l0.paNet) + '\u00a0\u20ac' : '-') + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-weight:700;background:#e8f5ee;color:' + mb0Clr + '">' + (l0 ? f1(l0.mb) + '%' : '-') + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-family:monospace;background:#fffbea">' + (l1 ? f2(l1.paNet) + '\u00a0\u20ac' : '<span style="color:var(--text-ter)">exclu</span>') + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-weight:700;background:#fffbea;color:' + mb1Clr + '">' + (l1 ? f1(l1.mb) + '%' : '-') + '</td>';
-    html += '<td style="' + td + ';text-align:center;font-family:monospace">' + f2(l.pvTTC) + '\u00a0\u20ac</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace;color:var(--text-ter)">' + l.ordre + '</td>';
+    html += '<td style="' + tdS + ';max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + l.lib + '">' +
+      l.lib + (isNew ? ' <span style="font-size:9px;background:#fff3e0;color:#b36000;padding:1px 4px;border-radius:2px">NEW</span>' : '') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace">' + (l.rot_reel>0 ? f1(l.rot_reel) : '<span style="color:var(--text-ter)">-</span>') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace;color:var(--text-sec)">' + (l.rot_dn>0 ? f1(l.rot_dn) : '-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-size:10px">' + (l.dn_zone_n>0 ? l.dn_zone_n+'/'+l.dn_zone_d : '-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace">' + (l.pv_qrt>0 ? f2(l.pv_qrt)+'\u20ac' : f2(l.pvTTC)+'\u20ac') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace;background:#e8f5ee">' + (l.paNet>0?f2(l.paNet)+'\u20ac':'-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-weight:700;background:#e8f5ee;color:' + mb30c + '">' + (l.mb!==null?f1(l.mb)+'%':'-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;background:#e8f5ee">' + (l.ug>0?'<b style="color:var(--accent-text)">+'+l.ug+'</b><br><span style="font-size:9px">'+l.ugLbl+'</span>':'-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-weight:700;background:#fffbea;color:' + mb25c + '">' + (l25&&l25.mb!==null?f1(l25.mb)+'%':'exclu') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;background:#fffbea">' + (l25&&l25.ug>0?'<b style="color:var(--warn)">+'+l25.ug+'</b>':'-') + '</td>';
     html += '</tr>';
-  }
+  });
   html += '</tbody>';
   document.getElementById('sim-table').innerHTML = html;
   document.getElementById('sim-result').style.display = 'block';

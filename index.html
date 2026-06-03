@@ -1354,8 +1354,8 @@
         <div class="row" style="margin:0">
           <label>TVA</label>
           <select id="sim-tva" style="font-size:13px">
+            <option value="5.5">5,5% (compl. alim.)</option>
             <option value="20">20%</option>
-            <option value="5.5">5,5%</option>
             <option value="10">10%</option>
           </select>
         </div>
@@ -4061,6 +4061,7 @@ async function condImportPDFDiag(input) {
       p.pv_ht  = p.pv_ttc > 0 ? p.pv_ttc / tvaFactor : 0;
       p.mbu    = p.pv_ht - (p.pa_net || 0);
       p.mb_pct = p.pv_ht > 0 ? p.mbu / p.pv_ht * 100 : 0;
+      if (!p.rem_cat) p.rem_cat = 30; // NUTRI&CO default
       totCAHT  += (p.moy||0) * 12 * p.pv_ht;
       totMarge += (p.moy||0) * 12 * p.mbu;
     });
@@ -5126,8 +5127,12 @@ function simLancer() {
     prods.forEach(function(p) {
       var moy    = p.moy || 0;
       var qteCmd = Math.ceil(moy * moisCible);
-      var paCat  = p.pa_net || 0; // PA Cat Net from PDF = already the catalogue price
-      var paNet  = paCat * (1 - sc.rem/100);
+      // Reconstruct PA Cat brut from pa_net
+      // PDF gives pa_net already after remise catalogue
+      // PA Cat brut = pa_net / (1 - rem_cat/100)
+      var remCatPDF = p.rem_cat || 30;
+      var paCatBrut = remCatPDF > 0 ? (p.pa_net||0) / (1 - remCatPDF/100) : (p.pa_net||0);
+      var paNet  = paCatBrut * (1 - sc.rem/100);
       var pvTTC  = p.pv_ttc || 0;
       var pvHT   = pvTTC / (1 + tvaR);
       var ug     = getUG(qteCmd);

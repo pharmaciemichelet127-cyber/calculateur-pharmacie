@@ -1177,18 +1177,20 @@
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:920px">
           <thead><tr style="background:var(--text);color:#fff">
-            <th style="padding:6px 6px;text-align:left;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:110px">Produit</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase">PA Cat. HT</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#333">Remise 1 %</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#333">Remise 2 %</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#3a3000">UG offerts</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#3a3000">/ X achetes</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#003a15">RFA %</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00501a">Prix net HT</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00501a">Prix net TTC</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00401a">PV TTC</th>
-            <th style="padding:6px 5px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00401a">MB%</th>
-            <th style="padding:4px;background:transparent"></th>
+            <th style="padding:5px 5px;text-align:left;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:100px">Produit</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase">PA Cat. HT</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#333">Rem. 1 %</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#333">Rem. 2 %</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#3a3000">UG offerts</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#3a3000">/ X achetes</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#003a15">RFA %</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00501a">Prix net HT</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00501a">Prix net TTC</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00401a">PV TTC</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#00401a">MB%</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50">MB% cible</th>
+            <th style="padding:5px 4px;text-align:center;white-space:nowrap;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50">PV cible</th>
+            <th style="padding:3px;background:transparent"></th>
           </tr></thead>
           <tbody id="pn-tbody"></tbody>
         </table>
@@ -3971,7 +3973,8 @@ async function condImportPDFDiag(input) {
 var pnLignes = [];
 var pnNextId = 1;
 
-function pnCalcLigne(pa, r1, r2, ug, ugx, rfa, pv, tvaR) {
+function pnCalcLigne(pa, r1, r2, ug, ugx, rfa, pv, tvaR, l_mb_cible) {
+  l_mb_cible = l_mb_cible || 35;
   var paR1  = pa * (1 - r1/100);
   var paR2  = paR1 * (1 - r2/100);
   var ugRem = (ug > 0 && ugx > 0) ? ug / (ugx + ug) : 0;
@@ -3980,7 +3983,12 @@ function pnCalcLigne(pa, r1, r2, ug, ugx, rfa, pv, tvaR) {
   var tvaM  = 1 + tvaR;
   var netTTC = net * tvaM;
   var mb    = (pv > 0 && tvaM > 0) ? ((pv/tvaM - net) / (pv/tvaM) * 100) : null;
-  return { paR1:paR1, paR2:paR2, ugRem:ugRem*100, net:net, netTTC:netTTC, mb:mb };
+  var pvCible = null;
+  if (l_mb_cible > 0 && l_mb_cible < 100) {
+    var tvaM2 = 1 + tvaR;
+    pvCible = net * tvaM2 / (1 - l_mb_cible/100);
+  }
+  return { paR1:paR1, paR2:paR2, ugRem:ugRem*100, net:net, netTTC:netTTC, mb:mb, pvCible:pvCible };
 }
 
 function pnF2(v){ return (+v).toFixed(2).replace('.',','); }
@@ -3991,7 +3999,7 @@ function pnUpdateResults(id) {
   var l = pnLignes.find(function(x){ return x.id === id; });
   if (!l) return;
   var tvaR = parseFloat(document.getElementById('pn-tva').value) / 100;
-  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR);
+  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR, l.mb_cible);
   var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
 
   // Update intermediate PA hints
@@ -4009,24 +4017,26 @@ function pnUpdateResults(id) {
   if (netEl) netEl.textContent = l.pa > 0 ? pnF2(c.net) : '-';
   if (netTTCEl) netTTCEl.textContent = l.pa > 0 ? pnF2(c.netTTC) : '-';
   if (mbEl) { mbEl.textContent = c.mb !== null ? pnF1(c.mb)+'%' : '-'; mbEl.style.color = mbClr; }
+  var pvCibleEl = document.getElementById('pn-pvcible-'+id);
+  if (pvCibleEl) pvCibleEl.textContent = c.pvCible !== null ? pnF2(c.pvCible) : '-';
 
   pnUpdateSynthese();
 }
 
 function pnAjouterLigne(data) {
   var id = pnNextId++;
-  var l = { id:id, nom:'', pa:0, r1:0, r2:0, ug:0, ugx:0, rfa:0, pv:0 };
+  var l = { id:id, nom:'', pa:0, r1:0, r2:0, ug:0, ugx:0, rfa:0, pv:0, mb_cible:35 };
   if (data) { Object.keys(data).forEach(function(k){ l[k]=data[k]; }); }
   pnLignes.push(l);
   var tbody = document.getElementById('pn-tbody');
   if (!tbody) return;
 
   var tvaR = parseFloat(document.getElementById('pn-tva').value) / 100;
-  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR);
+  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR, l.mb_cible);
   var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
 
   // Column widths
-  var W = { nom:110, pa:68, r1:46, r2:46, ug:42, ugx:42, rfa:42, pv:58 };
+  var W = { nom:100, pa:62, r1:42, r2:42, ug:38, ugx:38, rfa:38, pv:52, mb_cible:38 };
   var inBase = 'font-size:11px;padding:4px;border:1px solid var(--border);border-radius:4px;text-align:center;font-family:"DM Mono",monospace;width:';
   function inp(key, type, ph, step, bg) {
     var s = inBase + W[key] + 'px;background:' + (bg||'var(--surface2)') + ';';
@@ -4058,6 +4068,7 @@ function pnOnInput(id, key, el) {
   var l = pnLignes.find(function(x){ return x.id === id; });
   if (!l) return;
   l[key] = (key === 'nom') ? el.value : (parseFloat(el.value)||0);
+  if (key === 'mb_cible' && l[key] <= 0) l[key] = 35;
   pnUpdateResults(id);
 }
 
@@ -4084,7 +4095,7 @@ function pnRecalcAll() {
 function pnAjouterDepuisSaisie() {
   var g = function(i){ return document.getElementById(i); };
   var nom = g('pn-q-nom') ? g('pn-q-nom').value : '';
-  pnAjouterLigne({
+  pnAjouterLigne({ mb_cible: 35,
     nom: nom,
     pa:  g('pn-q-pa')  ? parseFloat(g('pn-q-pa').value)||0  : 0,
     r1:  g('pn-q-r1')  ? parseFloat(g('pn-q-r1').value)||0  : 0,
@@ -4107,7 +4118,7 @@ function pnUpdateSynthese() {
   var totPA=0, totNet=0, totMB=0, nMB=0, n=0;
   pnLignes.forEach(function(l){
     if (l.pa <= 0) return;
-    var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR);
+    var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR, l.mb_cible);
     totPA += l.pa; totNet += c.net; n++;
     if (c.mb !== null) { totMB += c.mb; nMB++; }
   });

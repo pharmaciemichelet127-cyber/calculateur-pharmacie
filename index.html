@@ -114,6 +114,7 @@
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Cond. commerciales</button>
     <button type="button" class="tab-btn" id="tab-prixnet" onclick="showTab('prixnet')">Prix nets</button>
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
+    <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-guide" onclick="showTab('guide')">Guide</button>
   </div>
 
@@ -1288,6 +1289,44 @@
 
   </div>
 
+
+  <!-- ===== CATALOGUE ===== -->
+  <div id="panel-cat" style="display:none">
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Catalogue produits — Classification</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="cat-labo-sel" onchange="catChargeLabo()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+            <option value="">-- Choisir un labo --</option>
+          </select>
+          <button type="button" onclick="catClassifierAuto()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Auto-classifier</button>
+          <button type="button" onclick="catSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
+        </div>
+      </p>
+      <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">
+        Importez d abord l etat des ventes dans l onglet Cond. commerciales. Cliquez sur Auto-classifier pour que Claude analyse les noms et propose Categorie, Sous-categorie et Marche. Corrigez ensuite manuellement si besoin.
+      </p>
+      <div id="cat-status" style="font-size:12px;color:var(--text-sec);margin-bottom:10px;min-height:18px"></div>
+
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--text);color:#fff">
+            <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;min-width:200px">Produit</th>
+            <th style="padding:7px 8px;text-align:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">EAN</th>
+            <th style="padding:7px 8px;text-align:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">Rot./mois</th>
+            <th style="padding:7px 8px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:#1a4a2a;min-width:130px">Categorie</th>
+            <th style="padding:7px 8px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:#1a4a2a;min-width:130px">Sous-categorie</th>
+            <th style="padding:7px 8px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:#1a4a2a;min-width:130px">Marche</th>
+            <th style="padding:7px 8px;text-align:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:#1a3a50">Palier</th>
+          </tr></thead>
+          <tbody id="cat-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
 </div>
 <script>
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
@@ -1308,7 +1347,7 @@ function setSituation(s) {
 }
 
 function showTab(t) {
-  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd'].forEach(function(x) {
+  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat'].forEach(function(x) {
     var p = document.getElementById('panel-'+x);
     var b = document.getElementById('tab-'+x);
     if (p) p.style.display = x===t ? 'block' : 'none';
@@ -1321,6 +1360,7 @@ function showTab(t) {
   if (t === 'cond')     try { if(!condInited){condInited=true;condInit();} } catch(e) {}
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
   if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
+  if (t === 'cat') { if(!catInited){catInited=true;} catInit(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
 }
 
@@ -4616,6 +4656,245 @@ function condRestaurerImport(idx) {
 }
 
 // Also update condSelectionnerLabo to show historique
+
+
+// ===== CATALOGUE =====
+var catLaboActif = null;
+var catProduits  = [];   // [{ean, nom, moy, pa_net, pv_ttc, categorie, sous_categorie, marche, palier_id}]
+
+// Nomenclature NUTRI&CO par défaut - extensible
+var CAT_RULES = [
+  { keywords:['whey','proteine','protein','prot '],        cat:'Proteines',    scat:'Whey',             marche:'Proteines poudre' },
+  { keywords:['isolat'],                                   cat:'Proteines',    scat:'Isolat',           marche:'Proteines isolats' },
+  { keywords:['barre','bar ','bar\u00e9al'],               cat:'Proteines',    scat:'Barres',           marche:'Barres proteines' },
+  { keywords:['creatine'],                                 cat:'Performance',  scat:'Creatine',         marche:'Force & performance' },
+  { keywords:['magnesium','magn\u00e9sium'],               cat:'Mineraux',     scat:'Magnesium',        marche:'Mineraux' },
+  { keywords:['zinc'],                                     cat:'Mineraux',     scat:'Zinc',             marche:'Mineraux' },
+  { keywords:['fer ','fer g'],                             cat:'Mineraux',     scat:'Fer',              marche:'Mineraux' },
+  { keywords:['vitamine d','vit d'],                       cat:'Vitamines',    scat:'Vitamine D',       marche:'Vitamines' },
+  { keywords:['vitamine b','vit b','b12'],                 cat:'Vitamines',    scat:'Vitamine B',       marche:'Vitamines' },
+  { keywords:['vitamine c','vit c'],                       cat:'Vitamines',    scat:'Vitamine C',       marche:'Vitamines' },
+  { keywords:['omega','om\u00e9ga'],                       cat:'Acides gras',  scat:'Omega 3',          marche:'Acides gras essentiels' },
+  { keywords:['collagene','collag\u00e8ne'],               cat:'Beaute',       scat:'Collagene',        marche:'Collagene & beaute' },
+  { keywords:['probio','probiotique'],                     cat:'Microbiote',   scat:'Probiotiques',     marche:'Microbiote & digestion' },
+  { keywords:['prebio'],                                   cat:'Microbiote',   scat:'Prebiotiques',     marche:'Microbiote & digestion' },
+  { keywords:['spiruline'],                                cat:'Superaliments',scat:'Spiruline',        marche:'Superaliments' },
+  { keywords:['ashwagandha'],                              cat:'Adaptogenes',  scat:'Ashwagandha',      marche:'Stress & sommeil' },
+  { keywords:['sommeil','m\u00e9latonine','melatonine'],   cat:'Bien-etre',    scat:'Sommeil',          marche:'Stress & sommeil' },
+  { keywords:['acide hyaluronique','hyaluron','hyaluro'],  cat:'Beaute',       scat:'Acide hyaluronique',marche:'Anti-age & peau' },
+  { keywords:['curcuma'],                                  cat:'Articulations',scat:'Curcuma',          marche:'Articulations & mobilite' },
+  { keywords:['glucosamine','chondroitine','articulat'],   cat:'Articulations',scat:'Glucosamine',      marche:'Articulations & mobilite' },
+  { keywords:['fer ','fer\u00e8','iron'],                  cat:'Mineraux',     scat:'Fer',              marche:'Mineraux' },
+  { keywords:['gelee royale'],                             cat:'Superaliments',scat:'Gelee royale',     marche:'Superaliments' },
+  { keywords:['ginkgo','gingko'],                          cat:'Cognition',    scat:'Ginkgo',           marche:'Cognition & memoire' },
+  { keywords:['enzyme','enzym'],                           cat:'Digestion',    scat:'Enzymes digestives',marche:'Microbiote & digestion' },
+  { keywords:['detox','draineur'],                         cat:'Minceur',      scat:'Detox',            marche:'Minceur & detox' },
+  { keywords:['fibres','fiber'],                           cat:'Digestion',    scat:'Fibres',           marche:'Microbiote & digestion' },
+  { keywords:['chia'],                                     cat:'Superaliments',scat:'Graines',          marche:'Superaliments' },
+  { keywords:['glycine'],                                  cat:'Acides amines',scat:'Glycine',          marche:'Proteines & acides amines' },
+  { keywords:['glutamine'],                                cat:'Acides amines',scat:'Glutamine',        marche:'Proteines & acides amines' },
+  { keywords:['q10','coenzyme'],                           cat:'Antioxydants', scat:'Q10',              marche:'Antioxydants' },
+  { keywords:['antioxydant'],                              cat:'Antioxydants', scat:'Antioxydants mix', marche:'Antioxydants' },
+  { keywords:['multi ','multivitamine','multi g'],         cat:'Vitamines',    scat:'Multivitamines',   marche:'Vitamines' },
+  { keywords:['booster','energy','energi'],                cat:'Performance',  scat:'Energie',          marche:'Force & performance' },
+  { keywords:['peau nette','complexe peau','acne'],        cat:'Beaute',       scat:'Peau nette',       marche:'Peau & cheveux' },
+  { keywords:['millet','biotine','cheveux','hair'],        cat:'Beaute',       scat:'Cheveux & ongles', marche:'Peau & cheveux' },
+  { keywords:['solaire','soleil','sun'],                   cat:'Bien-etre',    scat:'Protection solaire',marche:'Saisonnalite' },
+  { keywords:['flore intime'],                             cat:'Microbiote',   scat:'Flore intime',     marche:'Sante feminine' },
+  { keywords:['fem','regles','menstruel','femme'],         cat:'Bien-etre',    scat:'Sante feminine',   marche:'Sante feminine' },
+];
+
+function catClassifierProduit(nom) {
+  var nomL = nom.toLowerCase()
+    .replace(/\u00e9/g,'e').replace(/\u00e8/g,'e').replace(/\u00ea/g,'e')
+    .replace(/\u00e0/g,'a').replace(/\u00e2/g,'a');
+  for (var i = 0; i < CAT_RULES.length; i++) {
+    var rule = CAT_RULES[i];
+    for (var j = 0; j < rule.keywords.length; j++) {
+      if (nomL.indexOf(rule.keywords[j]) >= 0) {
+        return { cat: rule.cat, scat: rule.scat, marche: rule.marche };
+      }
+    }
+  }
+  return { cat: 'Autre', scat: '', marche: 'Non classe' };
+}
+
+function catInit() {
+  // Load condLabos if needed
+  if (Object.keys(condLabos).length === 0) {
+    try {
+      var saved = localStorage.getItem('cond_labos');
+      if (saved) { condLabos = JSON.parse(saved); }
+    } catch(e) {}
+  }
+  // Populate selector
+  var sel = document.getElementById('cat-labo-sel');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var labo = condLabos[id];
+    if (!labo.nom) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = labo.nom + (labo.produits ? ' (' + labo.produits.length + ' prod.)' : '');
+    sel.appendChild(opt);
+  });
+}
+
+function catChargeLabo() {
+  var sel = document.getElementById('cat-labo-sel');
+  catLaboActif = sel ? sel.value : null;
+  if (!catLaboActif || !condLabos[catLaboActif]) { catProduits = []; catRenderTable(); return; }
+
+  var labo = condLabos[catLaboActif];
+  var src = labo.produits || [];
+  // Merge with existing catalogue if any
+  var existing = labo.catalogue || {};
+
+  catProduits = src.map(function(p) {
+    var key = p.ean || p.nom;
+    var saved = existing[key] || {};
+    var autoClass = catClassifierProduit(p.nom || '');
+    return {
+      ean:          p.ean || '',
+      nom:          p.nom || p.libelle || '',
+      moy:          p.moy || 0,
+      pa_net:       p.pa_net || 0,
+      pv_ttc:       p.pv_ttc || 0,
+      categorie:    saved.categorie    || autoClass.cat,
+      sous_cat:     saved.sous_cat     || autoClass.scat,
+      marche:       saved.marche       || autoClass.marche,
+      palier_id:    saved.palier_id    || '',
+      classified:   !!saved.categorie
+    };
+  });
+
+  catRenderTable();
+  var status = document.getElementById('cat-status');
+  if (status) status.textContent = catProduits.length + ' produits charges — cliquez Auto-classifier pour classifier automatiquement.';
+}
+
+async function catClassifierAuto() {
+  if (!catLaboActif || catProduits.length === 0) { alert('Chargez d\'abord un labo.'); return; }
+  var status = document.getElementById('cat-status');
+
+  // First do local rule-based classification for all products
+  catProduits.forEach(function(p) {
+    var res = catClassifierProduit(p.nom);
+    p.categorie  = res.cat;
+    p.sous_cat   = res.scat;
+    p.marche     = res.marche;
+    p.classified = res.cat !== 'Autre';
+  });
+
+  catRenderTable();
+  var nonClasses = catProduits.filter(function(p){ return p.categorie === 'Autre'; });
+  if (status) status.textContent = 'Classification locale : ' + (catProduits.length - nonClasses.length) + ' classes, ' + nonClasses.length + ' non reconnus.';
+
+  // For unclassified products, use Claude API
+  if (nonClasses.length > 0 && nonClasses.length <= 30) {
+    if (status) status.textContent += ' Envoi a Claude pour les ' + nonClasses.length + ' non reconnus...';
+    try {
+      var noms = nonClasses.map(function(p,i){ return (i+1) + '. ' + p.nom; }).join('\n');
+      var resp = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2000,
+          messages: [{role:'user', content:
+            'Classifie ces produits de complement alimentaire. Pour chacun donne : categorie (ex: Vitamines, Mineraux, Proteines, Acides amines, Microbiote, Beaute, Articulations, Bien-etre, Superaliments...), sous_categorie courte, marche (groupe de produits concurrents).\nReponds UNIQUEMENT en JSON : {"produits":[{"idx":1,"cat":"...","scat":"...","marche":"..."}]}\n\n' + noms
+          }]
+        })
+      });
+      var data = await resp.json();
+      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        var parsed = JSON.parse(jsonMatch[0]);
+        (parsed.produits||[]).forEach(function(r) {
+          var p = nonClasses[r.idx-1];
+          if (p) { p.categorie = r.cat; p.sous_cat = r.scat; p.marche = r.marche; p.classified = true; }
+        });
+        catRenderTable();
+        if (status) status.textContent = 'Classification complete : ' + catProduits.length + ' produits. Corrigez si besoin puis Sauvegarder.';
+      }
+    } catch(err) {
+      if (status) status.textContent += ' Erreur Claude : ' + err.message;
+    }
+  } else if (nonClasses.length > 30) {
+    if (status) status.textContent += ' Trop de produits non reconnus (' + nonClasses.length + ') — verifiez les noms ou ajoutez des regles locales.';
+  } else {
+    if (status) status.textContent = 'Classification complete. Corrigez si besoin puis Sauvegarder.';
+  }
+}
+
+function catUpdateProduit(idx, key, val) {
+  if (catProduits[idx]) catProduits[idx][key] = val;
+}
+
+function catSauvegarder() {
+  if (!catLaboActif || !condLabos[catLaboActif]) return;
+  var catalogue = {};
+  catProduits.forEach(function(p) {
+    var key = p.ean || p.nom;
+    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, palier_id:p.palier_id };
+    // Also update the produit in condLabos
+    var prods = condLabos[catLaboActif].produits || [];
+    var orig = prods.find(function(x){ return (x.ean||x.nom) === key; });
+    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; }
+  });
+  condLabos[catLaboActif].catalogue = catalogue;
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  var status = document.getElementById('cat-status');
+  if (status) { status.textContent = 'Sauvegarde ! ' + Object.keys(catalogue).length + ' produits classes.'; status.style.color = 'var(--accent-text)'; }
+  setTimeout(function(){ if(status) status.style.color = ''; }, 2000);
+}
+
+function catRenderTable() {
+  var tbody = document.getElementById('cat-tbody');
+  if (!tbody) return;
+  var inS = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:120px;';
+  var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;';
+
+  // Group by marche for display
+  var marchesMap = {};
+  catProduits.forEach(function(p,i){
+    var m = p.marche || 'Non classe';
+    if (!marchesMap[m]) marchesMap[m] = [];
+    marchesMap[m].push({p:p, i:i});
+  });
+
+  var html = '';
+  var colors = ['#fff','var(--surface2)'];
+  var ci = 0;
+  Object.keys(marchesMap).sort().forEach(function(marche) {
+    var items = marchesMap[marche];
+    var bg = colors[ci++ % 2];
+    // Group header
+    html += '<tr style="background:var(--accent-bg)">' +
+      '<td colspan="7" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--accent-text);text-transform:uppercase;letter-spacing:.06em">' +
+      marche + ' <span style="font-weight:400;opacity:.7">(' + items.length + ' produits)</span></td></tr>';
+
+    items.forEach(function(item) {
+      var p = item.p; var i = item.i;
+      var notClassified = p.categorie === 'Autre' || !p.categorie;
+      var rowBg = notClassified ? 'var(--warn-bg)' : bg;
+      html += '<tr style="background:' + rowBg + '">';
+      html += '<td style="' + td + 'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.nom + '">' + p.nom + '</td>';
+      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center">' + (p.ean||'-') + '</td>';
+      html += '<td style="' + td + 'text-align:center;font-family:monospace">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
+      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.categorie||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
+      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.sous_cat||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
+      html += '<td style="' + td + 'background:#e8f5ee"><input type="text" value="' + (p.marche||'') + '" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'marche\',this.value)"></td>';
+      html += '<td style="' + td + 'text-align:center;font-size:10px;color:var(--text-ter)">' + (p.palier_id||'-') + '</td>';
+      html += '</tr>';
+    });
+  });
+  tbody.innerHTML = html;
+}
+
+var catInited = false;
 
 </script>
 

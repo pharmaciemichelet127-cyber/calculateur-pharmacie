@@ -5349,6 +5349,154 @@ function simLancer() {
   });
   html += '</tbody>';
   document.getElementById('sim-table').innerHTML = html;
+
+  // ===== RECOMMANDATION FINALE =====
+  var bestSc = gainMarge >= 0 ? sc30 : sc25;
+  var bestRem = gainMarge >= 0 ? 30 : 25;
+  var bestNRefs = gainMarge >= 0 ? 30 : 25;
+
+  // Products to prioritize: sort by score = mb * rot (value x volume)
+  var lignes = bestSc.lignes.slice();
+
+  // Category 1: Already selling + good MB
+  var actifs_bons = lignes.filter(function(l){ return !l.isNew && l.mb !== null && l.mb >= 28; });
+  // Category 2: Already selling + bad MB -> need negotiation
+  var actifs_faibles = lignes.filter(function(l){ return !l.isNew && l.mb !== null && l.mb < 28; });
+  // Category 3: New + good DN in zone
+  var nouveaux_dn = lignes.filter(function(l){ return l.isNew && l.dn_zone_n >= 2; });
+  // Category 4: New + no presence in zone -> opportunity
+  var nouveaux_zero = lignes.filter(function(l){ return l.isNew && l.dn_zone_n <= 1; });
+
+  // Top UG products (most units = most UG)
+  var topUG = lignes.slice().sort(function(a,b){ return b.ug - a.ug; }).filter(function(l){ return l.ug > 0; }).slice(0,5);
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u00a0\u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+  function f2(v){ return (+v).toFixed(2).replace('.',','); }
+
+  var recHtml = '';
+
+  // ===== BLOC 1: Quel marche prendre =====
+  var marcheColor = gainMarge >= 0 ? 'var(--accent-text)' : 'var(--warn)';
+  recHtml += '<div class="card" style="border-top:4px solid ' + marcheColor + '">';
+  recHtml += '<p class="card-title">\u2460 Quel march\u00e9 prendre ?</p>';
+  recHtml += '<div class="rgrid">';
+  recHtml += '<div class="met ' + (gainMarge>=0?'hi':'warn') + '" style="text-align:center">';
+  recHtml += '<p class="lbl">Recommandation</p>';
+  recHtml += '<p class="val" style="font-size:20px">March\u00e9 ' + bestNRefs + ' r\u00e9f\u00e9rences</p>';
+  recHtml += '<p class="sub">Remise ' + bestRem + '% + UG (6+1, 12+3 ou 24+8)</p>';
+  recHtml += '</div>';
+  recHtml += '<div class="met hi"><p class="lbl">Marge g\u00e9n\u00e9r\u00e9e</p><p class="val">' + fE(bestSc.totMarge) + '</p><p class="sub">sur ' + moisCible + ' mois de commande</p></div>';
+  recHtml += '<div class="met hi"><p class="lbl">MB% moyen</p><p class="val">' + f1(bestSc.mbG) + '%</p></div>';
+  recHtml += '<div class="met hi"><p class="lbl">UG gratuites</p><p class="val">+' + bestSc.totUG + '</p><p class="sub">unit\u00e9s offertes</p></div>';
+  recHtml += '</div>';
+
+  // Justification text
+  recHtml += '<div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;line-height:1.6">';
+  if (gainMarge >= 0) {
+    recHtml += 'Le march\u00e9 <b>30 r\u00e9f\u00e9rences \u00e0 30%</b> est plus avantageux car la remise suppl\u00e9mentaire (+5 pts vs 25%) compense largement le co\u00fbt du r\u00e9f\u00e9rencement des 5 r\u00e9f\u00e9rences suppl\u00e9mentaires. ';
+    recHtml += 'Gain : <b>+' + fE(gainMarge) + '</b> de marge et <b>+' + gainUG + ' UG</b> vs le march\u00e9 25 r\u00e9f\u00e9rences.';
+  } else {
+    recHtml += 'Le march\u00e9 <b>25 r\u00e9f\u00e9rences \u00e0 25%</b> est suffisant. Les 5 r\u00e9f\u00e9rences suppl\u00e9mentaires du march\u00e9 30 ne compensent pas la complexit\u00e9 de gestion. ';
+    recHtml += 'Gain : <b>+' + fE(-gainMarge) + '</b> de marge en restant sur 25 r\u00e9f\u00e9rences.';
+  }
+  recHtml += '</div></div>';
+
+  // ===== BLOC 2: Produits prioritaires =====
+  recHtml += '<div class="card">';
+  recHtml += '<p class="card-title">\u2461 Produits prioritaires \u00e0 r\u00e9f\u00e9rencer</p>';
+
+  if (nouveaux_dn.length > 0) {
+    recHtml += '<p style="font-size:11px;font-weight:600;color:var(--accent-text);margin:8px 0 4px">';
+    recHtml += '\u2605 D\u00e9j\u00e0 vendus dans ta zone (' + nouveaux_dn.length + ' produits) \u2014 r\u00e9f\u00e9rencement imm\u00e9diat recommand\u00e9</p>';
+    recHtml += '<div style="display:flex;flex-direction:column;gap:4px">';
+    nouveaux_dn.forEach(function(l) {
+      var mbClr = l.mb>=35?'var(--accent-text)':l.mb>=28?'var(--warn)':'var(--danger)';
+      recHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--accent-bg);border-radius:var(--radius-sm)">';
+      recHtml += '<span style="font-size:12px;font-weight:500">' + l.lib + '</span>';
+      recHtml += '<div style="display:flex;gap:12px;font-size:11px">';
+      recHtml += '<span>DN zone: <b>' + l.dn_zone_n + '/' + l.dn_zone_d + '</b></span>';
+      recHtml += '<span>PV: <b>' + f2(l.pvTTC) + '\u20ac</b></span>';
+      recHtml += '<span style="color:' + mbClr + ';font-weight:700">MB% ' + (l.mb!==null?f1(l.mb)+'%':'?') + '</span>';
+      recHtml += (l.ug>0 ? '<span style="color:var(--accent-text)">+' + l.ug + ' UG</span>' : '');
+      recHtml += '</div></div>';
+    });
+    recHtml += '</div>';
+  }
+
+  if (actifs_faibles.length > 0) {
+    recHtml += '<p style="font-size:11px;font-weight:600;color:var(--danger);margin:12px 0 4px">';
+    recHtml += '\u26a0 Produits en vente avec MB% insuffisant (' + actifs_faibles.length + ') \u2014 v\u00e9rifier prix ou n\u00e9gocier</p>';
+    recHtml += '<div style="display:flex;flex-direction:column;gap:4px">';
+    actifs_faibles.forEach(function(l) {
+      recHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#fff3f0;border-radius:var(--radius-sm)">';
+      recHtml += '<span style="font-size:12px">' + l.lib + '</span>';
+      recHtml += '<div style="display:flex;gap:12px;font-size:11px">';
+      recHtml += '<span>Rot: <b>' + f1(l.rot_reel) + '/m</b></span>';
+      recHtml += '<span>PV actuel: <b>' + f2(l.pvTTC) + '\u20ac</b></span>';
+      recHtml += '<span style="color:var(--danger);font-weight:700">MB% ' + (l.mb!==null?f1(l.mb)+'%':'?') + '</span>';
+      recHtml += '</div></div>';
+    });
+    recHtml += '</div>';
+  }
+
+  recHtml += '</div>';
+
+  // ===== BLOC 3: Commande optimale =====
+  recHtml += '<div class="card">';
+  recHtml += '<p class="card-title">\u2462 Commande optimale — ' + moisCible + ' mois de couverture</p>';
+  recHtml += '<p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">Produits tri\u00e9s par valeur d\u2019UG d\u00e9clench\u00e9es, puis par marge.</p>';
+
+  // Sort by UG desc then mb desc
+  var cmdLignes = bestSc.lignes.filter(function(l){ return l.qteCmd > 0 && l.mb !== null; })
+    .sort(function(a,b){ return (b.ug - a.ug) || (b.mb - a.mb); });
+
+  var thS2 = 'padding:6px 8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap;';
+  var cmdHtml = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+  cmdHtml += '<thead><tr style="background:var(--text);color:#fff">';
+  cmdHtml += '<th style="' + thS2 + 'text-align:left">Produit</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">Qte \u00e0 cde</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center;background:#1a3a20">PA net ' + bestRem + '%</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center;background:#1a3a20">MB%</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center;background:#1a3a20">UG</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">PV cible</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">Marge</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">Statut</th>';
+  cmdHtml += '</tr></thead><tbody>';
+
+  cmdLignes.forEach(function(l, ri) {
+    var bg = ri % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var tdC = 'padding:5px 8px;border-bottom:0.5px solid var(--border);background:' + bg;
+    var mbClr = l.mb>=35?'var(--accent-text)':l.mb>=28?'var(--warn)':'var(--danger)';
+    var statut = l.isNew
+      ? '<span style="font-size:9px;background:#fff3e0;color:#b36000;padding:1px 5px;border-radius:3px;font-weight:600">NOUVEAU</span>'
+      : '<span style="font-size:9px;background:var(--accent-bg);color:var(--accent-text);padding:1px 5px;border-radius:3px">EN STOCK</span>';
+    cmdHtml += '<tr>';
+    cmdHtml += '<td style="' + tdC + ';max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:' + (l.isNew?'600':'400') + '" title="' + l.lib + '">' + l.lib + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-weight:700">' + l.qteCmd + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-family:monospace;background:#e8f5ee">' + (l.paNet>0?f2(l.paNet)+'\u20ac':'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-weight:700;background:#e8f5ee;color:' + mbClr + '">' + (l.mb!==null?f1(l.mb)+'%':'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;background:#e8f5ee">' + (l.ug>0?'<b style="color:var(--accent-text)">+'+l.ug+'</b> <span style="font-size:9px;color:var(--text-ter)">'+l.ugLbl+'</span>':'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-family:monospace">' + f2(l.pv_qrt>0?l.pv_qrt:l.pvTTC) + '\u20ac</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-family:monospace;font-weight:600">' + (l.margeCmd>0?fE(l.margeCmd):'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center">' + statut + '</td>';
+    cmdHtml += '</tr>';
+  });
+
+  // Total row
+  cmdHtml += '<tr style="background:var(--text);color:#fff;font-weight:600">';
+  cmdHtml += '<td style="padding:7px 8px">TOTAL ' + cmdLignes.length + ' r\u00e9f\u00e9rences</td>';
+  cmdHtml += '<td style="padding:7px 8px;text-align:center">' + bestSc.totQte + ' u.</td>';
+  cmdHtml += '<td colspan="2" style="padding:7px 8px;text-align:center;background:#1a3a20">' + f1(bestSc.mbG) + '% MB moyen</td>';
+  cmdHtml += '<td style="padding:7px 8px;text-align:center;background:#1a3a20">+' + bestSc.totUG + ' UG</td>';
+  cmdHtml += '<td style="padding:7px 8px"></td>';
+  cmdHtml += '<td style="padding:7px 8px;text-align:center">' + fE(bestSc.totMarge) + '</td>';
+  cmdHtml += '<td style="padding:7px 8px"></td>';
+  cmdHtml += '</tr></tbody></table></div>';
+
+  recHtml += cmdHtml + '</div>';
+
+  document.getElementById('sim-recommandation').innerHTML = recHtml;
   document.getElementById('sim-result').style.display = 'block';
 }
 

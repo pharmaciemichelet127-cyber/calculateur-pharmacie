@@ -3769,7 +3769,12 @@ function condUpdateDiag() {
   // Ordre app: index 0=Jun25, 1=Jul25, ..., 10=Avr26, 11=Mai26
   // PDF order inverse: jun26=pdfIdx0=appIdx11, mai26=pdfIdx1=appIdx10, ...
   // Reconstituer CA réel depuis ventes mensuelles stockées
-  var ventes12 = (condLabos[condLaboActif] && condLabos[condLaboActif].ventes) || new Array(12).fill(0);
+  // Lire directement depuis la grille affichée (source de vérité)
+  var ventes12 = [];
+  for (var vi = 0; vi < 12; vi++) {
+    var vel = document.getElementById('cond-v-' + vi);
+    ventes12.push(vel ? (parseFloat(vel.value) || 0) : 0);
+  }
   // ventes12 order: [0]=Jun25, [1]=Jul25, [2]=Aou25, [3]=Sep25, [4]=Oct25,
   //                 [5]=Nov25, [6]=Dec25, [7]=Jan26, [8]=Fev26, [9]=Mar26, [10]=Avr26, [11]=Mai26
   // Date d'évaluation → déterminer le premier mois de l'année civile en cours dans le tableau
@@ -3807,12 +3812,12 @@ function condUpdateDiag() {
   moisRestants = Math.max(0, 12 - nbMoisEcoules);
   // Projection CA = CA réel + mois restants × CA moyen mensuel
   var caProjTotal = caReel + moisRestants * caMoyMois;
-  // Marge réelle YTD = margeActuelle (calculée dans import LGPI sur exercice)
-  var margeReelle = marge > 0 ? marge : (caReel > 0 ? caReel / (1 + tvaRCalc) * (mb / 100) : 0);
-  // Marge projetée = marge réelle + mois restants × marge mensuelle moyenne
-  var margeMoyMois = nbMoisEcoules > 0 ? margeReelle / nbMoisEcoules : 0;
-  var margeProjTotal = margeReelle + moisRestants * margeMoyMois;
-  // MB% projeté = même taux
+  // Marge réelle YTD = CA HT réel × MB%
+  var caHTReel = caReel > 0 ? caReel / (1 + tvaRCalc) : 0;
+  var margeReelle = caHTReel * (mb / 100);
+  // Marge projetée = CA HT projeté × MB%
+  var caHTProj = caProjTotal > 0 ? caProjTotal / (1 + tvaRCalc) : 0;
+  var margeProjTotal = caHTProj * (mb / 100);
   var mbProj = mb;
   var caActuel = caReel > 0 ? caReel : ca;
   var margeActuelle_ = margeReelle;

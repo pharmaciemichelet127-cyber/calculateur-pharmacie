@@ -1310,9 +1310,9 @@
   <div id="panel-cat" style="display:none">
 
     <div class="card">
-      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <span>Catalogue produits — Classification</span>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="cat-labo-sel" onchange="catChargeLabo()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
             <option value="">-- Choisir un labo --</option>
           </select>
@@ -1326,8 +1326,8 @@
       </p>
       <div id="cat-status" style="font-size:12px;color:var(--text-sec);margin-bottom:10px;min-height:18px"></div>
 
-      <div style="overflow-x:auto">
-        <table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto">
+      <div style="overflow-x:auto;width:100%">
+        <table id="cat-tbl" style="border-collapse:collapse;font-size:12px;table-layout:auto">
           <thead><tr style="background:var(--text);color:#fff">
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:180px">Produit</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:115px">EAN</th>
@@ -1422,12 +1422,25 @@ function setSituation(s) {
 }
 
 function showTab(t) {
+  var WIDE = ['cat','sim','cmd','prixnet'];
+  var mainEl = document.querySelector('.main');
   ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat','sim'].forEach(function(x) {
     var p = document.getElementById('panel-'+x);
     var b = document.getElementById('tab-'+x);
     if (p) p.style.display = x===t ? 'block' : 'none';
     if (b) b.classList.toggle('active', x===t);
   });
+  if (mainEl) {
+    if (WIDE.indexOf(t) >= 0) {
+      mainEl.style.maxWidth = '100%';
+      mainEl.style.paddingLeft = '24px';
+      mainEl.style.paddingRight = '24px';
+    } else {
+      mainEl.style.maxWidth = '720px';
+      mainEl.style.paddingLeft = '16px';
+      mainEl.style.paddingRight = '16px';
+    }
+  }
   if (t === 'bundle' && !bundleInited) { bundleInited = true; initBundleTotals(); }
   if (t === 'pm')      try { calcPM(); }     catch(e) { console.error('calcPM',e); }
   if (t === 'prix')    try { calcPrix(); }   catch(e) { console.error('calcPrix',e); }

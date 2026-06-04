@@ -4222,8 +4222,8 @@ async function condImportPDFDiag(input) {
   var allProds = {};
 
   var prompts = [
-    'Etat des ventes LGPI page 1. Pour chaque produit extrais : nom (max 20 cars), ean (13 chiffres ou vide si absent), moy (Moy. decimal), pa_net (PA Cat Net decimal), pv_ttc (PV TTC decimal), mois (12 entiers dans cet ordre : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si vide). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}',
-    'Etat des ventes LGPI page 2. Meme extraction : nom (max 20 cars), ean, moy, pa_net, pv_ttc, mois (12 entiers : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}'
+    'Etat des ventes LGPI page 1. Pour chaque produit extrais : nom (max 20 cars), ean (13 chiffres ou vide si absent), stock (entier, colonne Stock), moy (Moy. decimal), pa_net (PA Cat Net decimal), pv_ttc (PV TTC decimal), mois (12 entiers dans cet ordre : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si vide). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}',
+    'Etat des ventes LGPI page 2. Meme extraction : nom (max 20 cars), ean, stock (entier), moy, pa_net, pv_ttc, mois (12 entiers : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}'
   ];
 
   try {
@@ -4809,7 +4809,7 @@ function cmdGenerer() {
       nom: p.nom||'', ean: p.ean||'',
       marche: marcheDef ? marcheDef.label : '',
       colisage: colisage,
-      moy:moy, besoin:besoin, stock:stock, qte:qte,
+      moy:moy, besoin:besoin, stock:p.stock||0, qte:qte,
       palierLabel:palierLabel, rem:rem,
       ugLabel:ugLabel, ugObtenues:ugObtenues, qteTotal:qteTotal,
       paCat:paCat, paNet:paNet, pvTTC:pvTTC, mb:mb, caCde:caCde
@@ -4858,6 +4858,7 @@ function cmdGenerer() {
     '<th style="'+thS+'">Marché</th>'+
     '<th style="'+thSR+'">Rot./mois</th>'+
     '<th style="'+thSR+'">Besoin '+moisCible+'m</th>'+
+    '<th style="'+thSR+'">Stock</th>'+
     '<th style="'+thSR+'">Qté à cder</th>'+
     '<th style="'+thSR+'">Colis.</th>'+
     '<th style="'+thSR+'">Rem%</th>'+
@@ -4881,6 +4882,7 @@ function cmdGenerer() {
       '<td style="'+td+';font-size:10px;color:var(--text-sec)">'+(l.marche||'-')+'</td>'+
       '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
       '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
+      '<td style="'+tdR+';color:'+(l.stock>0?'var(--warn)':'var(--text-ter)')+'">'+l.stock+'</td>'+
       '<td style="'+tdR+';font-weight:600">'+l.qte+'</td>'+
       '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+(l.colisage>1?'×'+l.colisage:'-')+'</td>'+
       '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+

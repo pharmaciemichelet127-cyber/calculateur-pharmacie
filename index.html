@@ -3763,36 +3763,62 @@ function condUpdateDiag() {
 
   function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; }
 
-  // ===== PROJECTION AU 31/12/2026 =====
-  // La rotation Moy. du PDF est deja une moyenne sur 12 mois
-  // Donc CA annuel = moy*12*PV = deja la projection annuelle
-  // On affiche simplement le CA annualise = ce qui est deja dans ca/marge
-  var moisEcoules = 0, moisRestants = 0;
+  // ===== CA RÉEL YTD ET PROJECTION AU 31/12 =====
+  // ventes = tableau [Jun25(0), Jul25(1), ..., Mai26(11)] CA TTC mensuel réel
+  // dateEval = 03/06/2026 → on est en juin 2026
+  // Ordre app: index 0=Jun25, 1=Jul25, ..., 10=Avr26, 11=Mai26
+  // PDF order inverse: jun26=pdfIdx0=appIdx11, mai26=pdfIdx1=appIdx10, ...
+  // Reconstituer CA réel depuis ventes mensuelles stockées
+  var ventes12 = (condLabos[condLaboActif] && condLabos[condLaboActif].ventes) || new Array(12).fill(0);
+  // ventes12 order: [0]=Jun25, [1]=Jul25, [2]=Aou25, [3]=Sep25, [4]=Oct25,
+  //                 [5]=Nov25, [6]=Dec25, [7]=Jan26, [8]=Fev26, [9]=Mar26, [10]=Avr26, [11]=Mai26
+  // Date d'évaluation → déterminer le premier mois de l'année civile en cours dans le tableau
+  var moisEcoules = 6; // défaut : juin
+  var evalYear = new Date().getFullYear();
   if (dateStr) {
     var evalDate = new Date(dateStr);
-    moisEcoules = evalDate.getMonth(); // 0=jan, 5=juin
-    moisEcoules = Math.max(1, Math.min(11, moisEcoules));
-    moisRestants = 12 - moisEcoules;
-  } else {
-    moisEcoules = 6; moisRestants = 6;
+    moisEcoules = evalDate.getMonth() + 1; // 1=jan, 6=juin...
+    evalYear = evalDate.getFullYear();
   }
-  // Projection = CA annualise depuis rotation (deja correct)
-  var caProjTotal   = ca;      // rotation * 12 * PV = annuel
-  var margeProjTotal = marge;  // idem
+  // Index dans ventes12 du mois de janvier de l'année d'évaluation
+  // ventes12[6]=Dec25, ventes12[7]=Jan26 → pour 2026, jan = index 7
+  // Formule : index_jan = 12 - (12 - moisEcoules) - moisEcoules + 1 = trop complexe
+  // Plus simple : l'index de Jan de l'année éval = 12 - moisEcoules + 1 - 1 = 12 - moisEcoules
+  // Vérifié : si date=juin 2026 (moisEcoules=6), jan26=index 7 = 12-6+1=7 ✓
+  var idxJan = 12 - moisEcoules + 1; // index de janvier année en cours dans ventes12
+  // CA réel YTD = somme des mois de janvier au mois précédent l'évaluation
+  var caReel = 0;
+  var moisAvecCA = 0;
+  for (var mi = idxJan; mi < 12; mi++) {
+    caReel += ventes12[mi] || 0;
+    if ((ventes12[mi]||0) > 0) moisAvecCA++;
+  }
+  // CA moyen sur les mois de l'année civile avec CA > 0
+  var caMoyMois = moisAvecCA > 0 ? caReel / moisAvecCA : 0;
+  // Mois restants jusqu'au 31/12 (mois en cours + mois suivants)
+  var moisRestants = Math.max(0, 12 - (moisEcoules - 1));
+  // Projection = CA réel YTD + mois restants × CA moyen mensuel
+  var caProjTotal = caReel + moisRestants * caMoyMois;
+  // Marge projetée au même MB%
   var mbProj = mb;
+  var tvaRCalc = parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055;
+  var margeProjTotal = caProjTotal > 0 ? caProjTotal / (1 + tvaRCalc) * (mb / 100) : marge;
+  // CA actuel = CA réel des mois écoulés (pas annualisé)
+  var caActuel = caReel > 0 ? caReel : ca;
+  var margeActuelle_ = caActuel > 0 ? caActuel / (1 + tvaRCalc) * (mb / 100) : marge;
 
-  // Fill actuel KPIs
+  // Fill actuel KPIs (CA réel des mois écoulés)
   var el = function(id){ return document.getElementById(id); };
-  if (el('cond-diag-ca')) el('cond-diag-ca').textContent = ca > 0 ? fE(ca) : '—';
+  if (el('cond-diag-ca')) el('cond-diag-ca').textContent = caActuel > 0 ? fE(caActuel) : '—';
   if (el('cond-diag-mb')) {
     el('cond-diag-mb').textContent = mb > 0 ? mb.toFixed(1).replace('.',',') + '%' : '—';
     el('cond-diag-mb').style.color = mb >= 35 ? 'var(--accent-text)' : mb >= 28 ? 'var(--warn)' : 'var(--danger)';
   }
   if (el('cond-diag-marge')) {
-    el('cond-diag-marge').textContent = marge > 0 ? fE(marge) : '—';
+    el('cond-diag-marge').textContent = margeActuelle_ > 0 ? fE(margeActuelle_) : '—';
   }
 
-  // Fill projection KPIs
+  // Fill projection KPIs (extrapolation sur mois restants)
   if (el('cond-proj-ca')) el('cond-proj-ca').textContent = caProjTotal > 0 ? fE(caProjTotal) : '—';
   if (el('cond-proj-mb')) {
     el('cond-proj-mb').textContent = mbProj > 0 ? mbProj.toFixed(1).replace('.',',') + '%' : '—';
@@ -3802,7 +3828,7 @@ function condUpdateDiag() {
     el('cond-proj-marge').textContent = margeProjTotal > 0 ? fE(margeProjTotal) : '—';
   }
   if (el('cond-proj-mois')) {
-    el('cond-proj-mois').textContent = 'Annualise depuis rotation moyenne 12 mois';
+    el('cond-proj-mois').textContent = moisAvecCA + ' mois réels + ' + moisRestants + ' mois projetés à ' + fE(Math.round(caMoyMois)) + '/mois';
   }
 
   // Diag body: use produit data if available

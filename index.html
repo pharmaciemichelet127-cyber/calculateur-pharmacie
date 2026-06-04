@@ -1327,7 +1327,7 @@
       </p>
       <div id="cat-status" style="font-size:12px;color:var(--text-sec);margin-bottom:10px;min-height:18px"></div>
 
-      <div>
+      <div style="overflow-x:auto">
         <table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto">
           <thead><tr style="background:var(--text);color:#fff">
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:180px">Produit</th>
@@ -3792,7 +3792,7 @@ function condCalc() {
 
   // Detail
   var thS = 'padding:6px 10px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left';
-  var html = '<table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed"><thead><tr>' +
+  var html = '<table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto"><thead><tr>' +
     '<th style="'+thS+'">Type</th><th style="'+thS+'">Condition</th><th style="'+thS+'">Remise eff.</th><th style="'+thS+'">Gain annuel</th><th style="'+thS+'">Detail</th>' +
     '</tr></thead><tbody>';
   details.forEach(function(d) {
@@ -3927,7 +3927,7 @@ function updateScenarios(){
     {label:'Agressif',ts:Math.min(40,tsV+2),s:Math.min(50,sV+4),ps:Math.min(60,psV+6),bg:'var(--accent-bg)',tc:'var(--accent-text)'}
   ];
   var thS='padding:7px 10px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap';
-  var html='<div style="overflow-x:auto"><table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed"><thead><tr>';
+  var html='<div style="overflow-x:auto"><table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto"><thead><tr>';
   ['Scenario','MB% TS/S/PS','MB% apres','MB% avant','Marge apres','Marge avant','Gain marge','Produits affectes'].forEach(function(c){html+='<th style="'+thS+'">'+c+'</th>';});
   html+='</tr></thead><tbody>';
   scenarios.forEach(function(sc){

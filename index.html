@@ -1006,7 +1006,7 @@
           <span class="hint" id="cond-mb-hint" style="font-family:'DM Mono',monospace"></span>
         </div>
         <div class="row">
-          <label>Marge annuelle actuelle (euro)</label>
+          <label id="cond-marge-lbl">Marge Jan–Mai (euro)</label>
           <input type="number" id="cond-marge-actuelle" placeholder="ex : 1511" step="10" min="0" oninput="condCalc()">
           <span class="hint" id="cond-marge-hint"></span>
         </div>
@@ -1034,7 +1034,7 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <div class="met"><p class="lbl" id="cond-diag-ca-lbl">CA TTC Jan–Mai 2026</p><p class="val" id="cond-diag-ca" style="font-size:14px">—</p></div>
               <div class="met"><p class="lbl">MB% actuel</p><p class="val" id="cond-diag-mb" style="font-size:14px">—</p></div>
-              <div class="met hi" style="grid-column:1/-1"><p class="lbl">Marge annuelle</p><p class="val" id="cond-diag-marge" style="font-size:18px">—</p></div>
+              <div class="met hi" style="grid-column:1/-1"><p class="lbl" id="cond-diag-marge-lbl">Marge Jan–Mai 2026</p><p class="val" id="cond-diag-marge" style="font-size:18px">—</p></div>
             </div>
           </div>
           <div style="background:var(--accent-bg);border-radius:var(--radius-sm);padding:14px">
@@ -3785,39 +3785,51 @@ function condUpdateDiag() {
   // Formule : index_jan = 12 - (12 - moisEcoules) - moisEcoules + 1 = trop complexe
   // Plus simple : l'index de Jan de l'année éval = 12 - moisEcoules + 1 - 1 = 12 - moisEcoules
   // Vérifié : si date=juin 2026 (moisEcoules=6), jan26=index 7 = 12-6+1=7 ✓
-  var idxJan = 12 - moisEcoules + 1; // index de janvier année en cours dans ventes12
-  // CA réel YTD = somme des mois de janvier au mois précédent l'évaluation
-  var caReel = 0;
-  var moisAvecCA = 0;
+  // ventes12 = [Jun25(0), Jul25(1), ..., Dec25(6), Jan26(7), ..., Mai26(11)]
+  // idxJan = index de janvier de l'année éval dans ventes12
+  // Pour date 03/06/2026 : moisEcoules=6 → idxJan = 12-6+1 = 7
+  var idxJan = 12 - moisEcoules + 1;
+  var tvaRCalc = parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055;
+
+  // CA réel YTD = somme Jan → mois précédent dateEval (indices idxJan à 11)
+  var caReel = 0, moisAvecCA = 0;
   for (var mi = idxJan; mi < 12; mi++) {
     caReel += ventes12[mi] || 0;
     if ((ventes12[mi]||0) > 0) moisAvecCA++;
   }
-  // CA moyen sur les mois de l'année civile avec CA > 0
-  var caMoyMois = moisAvecCA > 0 ? caReel / moisAvecCA : 0;
-  // Mois restants jusqu'au 31/12 (mois en cours + mois suivants)
-  var moisRestants = Math.max(0, 12 - (moisEcoules - 1));
-  // Projection = CA réel YTD + mois restants × CA moyen mensuel
+  // Nb mois complets écoulés dans l'exercice (Jan à mois avant dateEval)
+  var nbMoisEcoules = 12 - idxJan; // ex: idxJan=7 → 5 mois (Jan-Mai)
+  // CA moyen mensuel sur les mois écoulés (même si certains = 0)
+  var caMoyMois = nbMoisEcoules > 0 ? caReel / nbMoisEcoules : 0;
+  // Mois restants = mois en cours + mois suivants jusqu'au 31/12
+  var moisRestants = moisEcoules; // ex: juin 2026 → 7 mois restants (juin→déc) mais on a déjà jan-mai=5 mois
+  // Correction : moisRestants = 12 - nbMoisEcoules
+  moisRestants = Math.max(0, 12 - nbMoisEcoules);
+  // Projection CA = CA réel + mois restants × CA moyen mensuel
   var caProjTotal = caReel + moisRestants * caMoyMois;
-  // Marge projetée au même MB%
+  // Marge réelle YTD = margeActuelle (calculée dans import LGPI sur exercice)
+  var margeReelle = marge > 0 ? marge : (caReel > 0 ? caReel / (1 + tvaRCalc) * (mb / 100) : 0);
+  // Marge projetée = marge réelle + mois restants × marge mensuelle moyenne
+  var margeMoyMois = nbMoisEcoules > 0 ? margeReelle / nbMoisEcoules : 0;
+  var margeProjTotal = margeReelle + moisRestants * margeMoyMois;
+  // MB% projeté = même taux
   var mbProj = mb;
-  var tvaRCalc = parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055;
-  var margeProjTotal = caProjTotal > 0 ? caProjTotal / (1 + tvaRCalc) * (mb / 100) : marge;
-  // CA actuel = CA réel des mois écoulés (pas annualisé)
   var caActuel = caReel > 0 ? caReel : ca;
-  var margeActuelle_ = caActuel > 0 ? caActuel / (1 + tvaRCalc) * (mb / 100) : marge;
+  var margeActuelle_ = margeReelle;
 
-  // Fill actuel KPIs (CA réel des mois écoulés)
+  // Labels dynamiques avec période
+  var mNoms = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  var mFinLabel = mNoms[Math.min(nbMoisEcoules - 1, 11)];
+  var periodeLabel = 'Jan–' + mFinLabel + ' ' + evalYear;
   var el = function(id){ return document.getElementById(id); };
-  if (el('cond-diag-ca')) el('cond-diag-ca').textContent = caActuel > 0 ? fE(caActuel) : '—';
-  // Mettre à jour le label CA actuel avec les mois concernés
   var lblCA = document.getElementById('cond-diag-ca-lbl');
-  if (lblCA && moisEcoules > 0) {
-    var mNoms = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-    var mDebut = mNoms[0]; // toujours janvier
-    var mFin = mNoms[Math.min(moisEcoules-2, 11)];
-    lblCA.textContent = 'CA TTC (Jan–' + mFin + ' ' + evalYear + ')';
-  }
+  if (lblCA) lblCA.textContent = 'CA TTC (' + periodeLabel + ')';
+  var lblMarge = document.getElementById('cond-diag-marge-lbl');
+  if (lblMarge) lblMarge.textContent = 'Marge (' + periodeLabel + ')';
+  var lblMargeField = document.getElementById('cond-marge-lbl');
+  if (lblMargeField) lblMargeField.textContent = 'Marge ' + periodeLabel + ' (euro)';
+
+  if (el('cond-diag-ca')) el('cond-diag-ca').textContent = caActuel > 0 ? fE(caActuel) : '—';
   if (el('cond-diag-mb')) {
     el('cond-diag-mb').textContent = mb > 0 ? mb.toFixed(1).replace('.',',') + '%' : '—';
     el('cond-diag-mb').style.color = mb >= 35 ? 'var(--accent-text)' : mb >= 28 ? 'var(--warn)' : 'var(--danger)';

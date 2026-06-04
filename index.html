@@ -4402,9 +4402,39 @@ async function condImportPDFDiag(input) {
 
     condLabos[condLaboActif].alertes = alertes;
     condLabos[condLaboActif].produits = prods;
-    condLabos[condLaboActif].mbActuel = parseFloat(mbGlobal.toFixed(1));
-    condLabos[condLaboActif].margeActuelle = Math.round(totMarge);
-    // Recompute caTTC from product data for accuracy
+
+    // Calculer CA et marge sur l'exercice Jan→dateEval (mois de l'année civile)
+    // PDF order: mois[0]=jun26, mois[1]=mai26, ..., mois[11]=juil25
+    // App ventes: [0]=Jun25...[7]=Jan26...[11]=Mai26
+    // Pour date 03/06/2026 : moisEcoules=6, idxJan=7, mois exercice = indices 7..11 (Jan→Mai)
+    var dateEvalStr = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
+    var dateEvalObj = new Date(dateEvalStr);
+    var moisEcoulesEx = dateEvalObj.getMonth() + 1; // 1=jan, 6=juin
+    var idxJanEx = 12 - moisEcoulesEx + 1; // index de janvier dans ventes12
+    // Nb de mois de l'exercice avec données (jan → mois avant dateEval)
+    var nbMoisEx = Math.max(0, 12 - idxJanEx); // = moisEcoulesEx - 1
+
+    var caHTex = 0, margeEx = 0;
+    prods.forEach(function(p) {
+      if (!p.mois || p.mois.length < 12) return;
+      var pvHT = p.pv_ttc > 0 ? p.pv_ttc / tvaFactor : 0;
+      // mois PDF: [0]=mois le plus récent...
+      // app index appIdx → pdfIdx = 11 - appIdx
+      for (var appIdx = idxJanEx; appIdx < 12; appIdx++) {
+        var pdfIdx = 11 - appIdx;
+        var qte = p.mois[pdfIdx] || 0;
+        caHTex   += qte * pvHT;
+        margeEx  += qte * (pvHT - (p.pa_net||0));
+      }
+    });
+    var mbExercice = caHTex > 0 ? margeEx / caHTex * 100 : mbGlobal;
+    var margeExercice = margeEx;
+
+    condLabos[condLaboActif].mbActuel = parseFloat(mbExercice.toFixed(1));
+    condLabos[condLaboActif].margeActuelle = Math.round(margeExercice);
+    condLabos[condLaboActif].mbGlobal12m = parseFloat(mbGlobal.toFixed(1)); // garder 12 mois glissants
+
+    // CA 12 mois glissants (pour référence)
     var caTTCfinal = 0;
     prods.forEach(function(p){ caTTCfinal += (p.moy||0) * 12 * (p.pv_ttc||0); });
     var caTTC2 = caTTCfinal > 0 ? caTTCfinal : caTTC;

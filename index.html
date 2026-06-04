@@ -996,7 +996,7 @@
           <input type="date" id="cond-date-eval" oninput="condAutoSave()" style="font-family:'DM Mono',monospace;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
         </div>
         <div class="row">
-          <label>CA annuel TTC (euro)</label>
+          <label>CA 12 mois glissants TTC (euro)</label>
           <input type="number" id="cond-ca-annuel" placeholder="ex : 9780" step="100" min="0" oninput="condCalc()">
           <span class="hint" id="cond-ca-hint"></span>
         </div>
@@ -1032,7 +1032,7 @@
           <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
             <p style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-ter);margin-bottom:10px">Situation actuelle</p>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div class="met"><p class="lbl">CA TTC annuel</p><p class="val" id="cond-diag-ca" style="font-size:14px">—</p></div>
+              <div class="met"><p class="lbl" id="cond-diag-ca-lbl">CA TTC Jan–Mai 2026</p><p class="val" id="cond-diag-ca" style="font-size:14px">—</p></div>
               <div class="met"><p class="lbl">MB% actuel</p><p class="val" id="cond-diag-mb" style="font-size:14px">—</p></div>
               <div class="met hi" style="grid-column:1/-1"><p class="lbl">Marge annuelle</p><p class="val" id="cond-diag-marge" style="font-size:18px">—</p></div>
             </div>
@@ -3742,7 +3742,7 @@ function condUpdateDiag() {
   var margeHint = document.getElementById('cond-marge-hint');
   if (margeHint && marge > 0 && caHT > 0) {
     var mbCalc = marge / caHT * 100;
-    margeHint.textContent = 'soit MB% = ' + mbCalc.toFixed(1).replace('.',',') + '% sur CA HT';
+    margeHint.textContent = 'soit MB% réel = ' + mbCalc.toFixed(1).replace('.',',') + '% sur CA HT (12 mois)';
     margeHint.style.color = 'var(--text-ter)';
   }
 
@@ -3810,6 +3810,14 @@ function condUpdateDiag() {
   // Fill actuel KPIs (CA réel des mois écoulés)
   var el = function(id){ return document.getElementById(id); };
   if (el('cond-diag-ca')) el('cond-diag-ca').textContent = caActuel > 0 ? fE(caActuel) : '—';
+  // Mettre à jour le label CA actuel avec les mois concernés
+  var lblCA = document.getElementById('cond-diag-ca-lbl');
+  if (lblCA && moisEcoules > 0) {
+    var mNoms = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    var mDebut = mNoms[0]; // toujours janvier
+    var mFin = mNoms[Math.min(moisEcoules-2, 11)];
+    lblCA.textContent = 'CA TTC (Jan–' + mFin + ' ' + evalYear + ')';
+  }
   if (el('cond-diag-mb')) {
     el('cond-diag-mb').textContent = mb > 0 ? mb.toFixed(1).replace('.',',') + '%' : '—';
     el('cond-diag-mb').style.color = mb >= 35 ? 'var(--accent-text)' : mb >= 28 ? 'var(--warn)' : 'var(--danger)';

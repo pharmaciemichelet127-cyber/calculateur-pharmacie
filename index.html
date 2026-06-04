@@ -1374,6 +1374,7 @@
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:130px">Sous-categorie</th>
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:160px">Marche</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:80px">Palier</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:70px">Colis.</th>
           </tr></thead>
           <tbody id="cat-tbody"></tbody>
         </table>
@@ -3956,8 +3957,8 @@ async function condImportCatalogueLabo(input) {
 
   var allRefs = {};
   var prompts = [
-    'Listing produits labo page 1. Extrais chaque produit avec : nom (désignation, max 30 cars), ean (GTIN/EAN 13 chiffres, vide si absent), format (ex: 60 gél, 500g), pu_catalogue (prix unitaire HT ou TTC catalogue, nombre décimal). Réponds UNIQUEMENT en JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0}]}',
-    'Listing produits labo page 2. Même extraction : nom, ean, format, pu_catalogue. UNIQUEMENT JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0}]}'
+    'Listing produits labo page 1. Extrais chaque produit avec : nom (désignation, max 30 cars), ean (GTIN/EAN 13 chiffres, vide si absent), format (ex: 60 gél, 500g), pu_catalogue (prix unitaire catalogue, nombre décimal), colisage (nombre entier d\'unités par colis/boite — ex: si format "60 gél" le colisage est 1 boite; si le labo livre par carton de 6 alors colisage=6; par défaut 1). Réponds UNIQUEMENT en JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}',
+    'Listing produits labo page 2. Même extraction : nom, ean, format, pu_catalogue, colisage. UNIQUEMENT JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}'
   ];
 
   try {
@@ -4010,6 +4011,7 @@ async function condImportCatalogueLabo(input) {
       existing.push({
         nom: r.nom, ean: ean, format: r.format || '',
         pu_catalogue: r.pu_catalogue || 0,
+        colisage: r.colisage || 1,
         moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0,
         rem_cat: 0, mois: new Array(12).fill(0)
       });
@@ -4688,11 +4690,13 @@ function cmdGenerer() {
 
     // marche_id par EAN depuis catalogue
     var catalogue = laboData ? (laboData.catalogue || {}) : {};
+    var colisageByEan = {};
     Object.keys(catalogue).forEach(function(ean) {
       marcheByEan[ean] = catalogue[ean].marche_id || '';
+      colisageByEan[ean] = catalogue[ean].colisage || 1;
     });
     var prods_ = laboData ? (laboData.produits || []) : [];
-    prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; });
+    prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; if (p.ean && p.colisage) colisageByEan[p.ean] = p.colisage; });
   } catch(e) {}
 
   function getMarcheDef(prod) {
@@ -4730,6 +4734,12 @@ function cmdGenerer() {
     var stock  = stockMode === 'deduct' ? (p.stock || 0) : 0;
     var qte    = Math.max(0, Math.ceil(besoin - stock));
     if (qte <= 0) return;
+
+    // Arrondir qte au multiple de colisage immédiatement supérieur
+    var colisage = colisageByEan[p.ean||''] || p.colisage || 1;
+    if (colisage > 1 && qte > 0) {
+      qte = Math.ceil(qte / colisage) * colisage;
+    }
 
     var marcheDef = getMarcheDef(p);
     // Si pas de marche_id catalogue mais remise générale négociée → traiter comme général
@@ -4798,6 +4808,7 @@ function cmdGenerer() {
     lignes.push({
       nom: p.nom||'', ean: p.ean||'',
       marche: marcheDef ? marcheDef.label : '',
+      colisage: colisage,
       moy:moy, besoin:besoin, stock:stock, qte:qte,
       palierLabel:palierLabel, rem:rem,
       ugLabel:ugLabel, ugObtenues:ugObtenues, qteTotal:qteTotal,
@@ -4848,6 +4859,7 @@ function cmdGenerer() {
     '<th style="'+thSR+'">Rot./mois</th>'+
     '<th style="'+thSR+'">Besoin '+moisCible+'m</th>'+
     '<th style="'+thSR+'">Qté à cder</th>'+
+    '<th style="'+thSR+'">Colis.</th>'+
     '<th style="'+thSR+'">Rem%</th>'+
     '<th style="'+thSR+'">UG</th>'+
     '<th style="'+thSR+'">Qté totale</th>'+
@@ -4870,6 +4882,7 @@ function cmdGenerer() {
       '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
       '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
       '<td style="'+tdR+';font-weight:600">'+l.qte+'</td>'+
+      '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+(l.colisage>1?'×'+l.colisage:'-')+'</td>'+
       '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+
       '<td style="'+tdR+'">'+ugBadge+'</td>'+
       '<td style="'+tdR+';font-weight:700;color:var(--accent-text)">'+l.qteTotal+'</td>'+
@@ -5282,6 +5295,7 @@ function catChargeLabo() {
       marche:       saved.marche       || autoClass.marche,
       marche_id:    saved.marche_id    || '',
       palier_id:    saved.palier_id    || '',
+      colisage:     saved.colisage      || p.colisage || 1,
       classified:   !!saved.categorie
     };
   });
@@ -5395,11 +5409,11 @@ function catSauvegarder() {
   var catalogue = {};
   catProduits.forEach(function(p) {
     var key = p.ean || p.nom;
-    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id };
+    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id, colisage:p.colisage||1 };
     // Also update the produit in condLabos
     var prods = condLabos[catLaboActif].produits || [];
     var orig = prods.find(function(x){ return (x.ean||x.nom) === key; });
-    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; }
+    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; orig.colisage = p.colisage||1; }
   });
   condLabos[catLaboActif].catalogue = catalogue;
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
@@ -5477,6 +5491,9 @@ function catRenderTable() {
         palierTxt = mDef.note || '';
       }
       html += '<td style="' + td + 'text-align:center;font-size:10px;font-weight:600;color:var(--accent-text)">' + palierTxt + '</td>';
+      // Colisage
+      var inSC = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:50px;text-align:center;box-sizing:border-box;';
+      html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + (p.colisage||1) + '" min="1" step="1" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'colisage\',+this.value)"></td>';
       html += '</tr>';
     });
   });

@@ -1333,7 +1333,7 @@
     </div>
 
     <div class="card" id="cmd-result-card" style="display:none">
-      <p class="card-title">Resultat — Commande recommandee</p>
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between"><span>Résultat — Commande recommandée</span><button type="button" onclick="cmdImprimer()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer">&#128438; Imprimer</button></p>
       <div class="rgrid" id="cmd-kpis" style="margin-bottom:14px"></div>
       <div style="overflow-x:auto">
         <table id="cmd-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
@@ -5043,6 +5043,42 @@ function wfRender() {
   });
 
   stepsEl.innerHTML = html;
+}
+
+function cmdImprimer() {
+  var laboNom = (document.getElementById('cmd-labo-sel').selectedOptions[0]||{}).text || 'Commande';
+  var date = new Date().toLocaleDateString('fr-FR');
+  var kpis = document.getElementById('cmd-kpis').innerHTML;
+  var table = document.getElementById('cmd-table').outerHTML;
+  var conclusion = document.getElementById('cmd-conclusion').innerHTML;
+  var w = window.open('', '_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + laboNom + ' — ' + date + '</title><style>' +
+    'body{font-family:DM Sans,Arial,sans-serif;font-size:12px;color:#1a1a18;padding:24px;max-width:1100px;margin:0 auto}' +
+    'h1{font-size:16px;font-weight:700;margin-bottom:4px}' +
+    '.sub{font-size:11px;color:#6b6a64;margin-bottom:20px}' +
+    '.kpis{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}' +
+    '.kpi{background:#f5f4f0;border-radius:8px;padding:10px 16px;min-width:140px}' +
+    '.kpi .lbl{font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#9e9d96;margin-bottom:4px}' +
+    '.kpi .val{font-size:18px;font-weight:700}' +
+    'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px}' +
+    'th{padding:6px 8px;background:#1a1a18;color:#fff;text-align:left;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}' +
+    'th:not(:first-child):not(:nth-child(2)){text-align:right}' +
+    'td{padding:5px 8px;border-bottom:0.5px solid #e0e0e0}' +
+    'td:not(:first-child):not(:nth-child(2)){text-align:right;font-family:monospace}' +
+    'tr:nth-child(even){background:#f9f9f7}' +
+    '.conclusion{background:#e8f5ee;border-radius:8px;padding:12px 16px;font-size:11px;line-height:1.7}' +
+    '.footer{margin-top:24px;font-size:10px;color:#9e9d96;border-top:1px solid #e0e0e0;padding-top:8px}' +
+    '@media print{body{padding:12px}button{display:none}}' +
+    '</style></head><body>' +
+    '<h1>Commande — ' + laboNom + '</h1>' +
+    '<div class="sub">Générée le ' + date + ' · Pharmacie Michelet</div>' +
+    '<div class="kpis">' + kpis + '</div>' +
+    table +
+    '<div class="conclusion">' + conclusion + '</div>' +
+    '<div class="footer">Calculateur Pharmacie Michelet · calculateur-pharmacie.vercel.app</div>' +
+    '</body></html>');
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 400);
 }
 
 var cmdInited = false;

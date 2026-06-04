@@ -113,7 +113,7 @@
 <div class="main">
 
   <div class="tabs">
-    <button type="button" class="tab-btn active" id="tab-neg" onclick="showTab('neg')">Négociation</button>
+    <button type="button" class="tab-btn" id="tab-neg" onclick="showTab('neg')">Négociation</button>
     <button type="button" class="tab-btn" id="tab-prix" onclick="showTab('prix')">Prix de vente</button>
     <button type="button" class="tab-btn" id="tab-lex" onclick="showTab('lex')">Lexique</button>
     <button type="button" class="tab-btn" id="tab-pm" onclick="showTab('pm')">Point mort</button>
@@ -126,12 +126,12 @@
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-sim" onclick="showTab('sim')">Simulation</button>
-    <button type="button" class="tab-btn" id="tab-workflow" onclick="showTab('workflow')">Workflow</button>
+    <button type="button" class="tab-btn active" id="tab-workflow" onclick="showTab('workflow')">Workflow</button>
     <button type="button" class="tab-btn" id="tab-guide" onclick="showTab('guide')">Guide</button>
   </div>
 
   <!-- ===== NÉGOCIATION ===== -->
-  <div id="panel-neg">
+  <div id="panel-neg" style="display:none">
 
     <div class="card">
       <p class="card-title">Produit</p>
@@ -1119,7 +1119,7 @@
 
 
   <!-- ===== WORKFLOW ===== -->
-  <div id="panel-workflow" style="display:none">
+  <div id="panel-workflow">
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between">
         <span>Workflow — Préparer une commande labo</span>
@@ -5949,6 +5949,10 @@ function simLancer() {
 }
 
 var simInited = false;
+
+window.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function(){ wfInit(); wfRender(); }, 100);
+});
 
 </script>
 

@@ -3528,7 +3528,7 @@ function condRenderTabs() {
 
 function condNouveauLabo() {
   var id = condNextId++;
-  condLabos[id] = { nom: '', caAnnuel: 0, mbActuel: 0, margeActuelle: 0, dateEval: new Date().toISOString().slice(0,10), tva: 20, ventes: new Array(12).fill(0), conditions: [] };
+  condLabos[id] = { nom: '', caAnnuel: 0, mbActuel: 0, margeActuelle: 0, dateEval: new Date().toISOString().slice(0,10), tva: 5.5, ventes: new Array(12).fill(0), conditions: [] };
   condSelectionnerLabo(id);
   var nomEl = document.getElementById('cond-labo-nom');
   if (nomEl) { nomEl.value = ''; nomEl.focus(); }
@@ -3558,7 +3558,7 @@ function condSelectionnerLabo(id) {
   document.getElementById('cond-ca-annuel').value = labo.caAnnuel || '';
   document.getElementById('cond-mb-actuel').value = labo.mbActuel || '';
   document.getElementById('cond-marge-actuelle').value = labo.margeActuelle || '';
-  document.getElementById('cond-tva').value = labo.tva || 20;
+  document.getElementById('cond-tva').value = labo.tva !== undefined ? labo.tva : 5.5;
   condUpdateDiag();
   condBuildGrid();
   condRenderConditions();
@@ -3621,7 +3621,7 @@ function condAutoSave() {
   condLabos[condLaboActif].dateEval = document.getElementById('cond-date-eval').value || '';
   condLabos[condLaboActif].mbActuel = parseFloat(document.getElementById('cond-mb-actuel').value) || 0;
   condLabos[condLaboActif].margeActuelle = parseFloat(document.getElementById('cond-marge-actuelle').value) || 0;
-  condLabos[condLaboActif].tva = parseFloat(document.getElementById('cond-tva').value) || 20;
+  condLabos[condLaboActif].tva = parseFloat(document.getElementById('cond-tva').value) || 5.5;
   condUpdateDiag();
   condRenderTabs();
   condCalc();
@@ -4327,7 +4327,7 @@ async function condImportPDFDiag(input) {
     }
 
     // Compute math client-side
-    var tvaFactor = 1 + ((condLabos[condLaboActif] || {}).tva || 20) / 100;
+    var tvaFactor = 1 + ((condLabos[condLaboActif] || {}).tva || 5.5) / 100;
     var totCAHT = 0, totMarge = 0;
     prods.forEach(function(p){
       p.pv_ht  = p.pv_ttc > 0 ? p.pv_ttc / tvaFactor : 0;

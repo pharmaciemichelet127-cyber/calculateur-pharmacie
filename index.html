@@ -1019,6 +1019,11 @@
             <option value="2.1">TVA 2,1%</option>
           </select>
         </div>
+        <div class="row" id="cond-stock-row" style="display:none">
+          <label>Stock immobilisé</label>
+          <span id="cond-stock-immo" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--warn)"></span>
+          <span id="cond-stock-immo-hint" style="font-size:11px;color:var(--text-ter)"></span>
+        </div>
       </div>
 
       <div class="card" id="cond-diag-card" style="display:none">
@@ -1375,6 +1380,7 @@
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:160px">Marche</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:80px">Palier</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:70px">Colis.</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:70px">TVA%</th>
           </tr></thead>
           <tbody id="cat-tbody"></tbody>
         </table>
@@ -3740,6 +3746,19 @@ function condUpdateDiag() {
     margeHint.style.color = 'var(--text-ter)';
   }
 
+  // Stock immobilisé
+  var labo_ = condLabos[condLaboActif];
+  var stockRow = document.getElementById('cond-stock-row');
+  var stockEl  = document.getElementById('cond-stock-immo');
+  var stockHint = document.getElementById('cond-stock-immo-hint');
+  if (labo_ && labo_.stockImmoVal !== undefined && stockRow && stockEl) {
+    var fE_ = function(v){ return v.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; };
+    stockRow.style.display = 'flex';
+    stockEl.textContent = fE_(labo_.stockImmoVal);
+    var couv = (labo_.caAnnuel > 0) ? (labo_.stockImmoVal / (labo_.caAnnuel / 12)) : 0;
+    if (stockHint) stockHint.textContent = labo_.stockImmoQte + ' unités · ' + couv.toFixed(1).replace('.',',') + ' mois de couverture';
+  } else if (stockRow) { stockRow.style.display = 'none'; }
+
   if (mb <= 0 && marge <= 0 && ca <= 0) { document.getElementById('cond-diag-card').style.display='none'; return; }
 
   function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; }
@@ -4356,6 +4375,11 @@ async function condImportPDFDiag(input) {
     prods.forEach(function(p){ caTTCfinal += (p.moy||0) * 12 * (p.pv_ttc||0); });
     var caTTC2 = caTTCfinal > 0 ? caTTCfinal : caTTC;
     condLabos[condLaboActif].caAnnuel = Math.round(caTTC2);
+    // Calcul valeur stock immobilisé (stock × PA net)
+    var stockImmoVal = 0, stockImmoQte = 0;
+    prods.forEach(function(p){ var s = p.stock||0; stockImmoQte += s; stockImmoVal += s * (p.pa_net||0); });
+    condLabos[condLaboActif].stockImmoQte = stockImmoQte;
+    condLabos[condLaboActif].stockImmoVal = Math.round(stockImmoVal * 100) / 100;
 
     // Save to historique
     var dateImport = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
@@ -4691,12 +4715,14 @@ function cmdGenerer() {
     // marche_id par EAN depuis catalogue
     var catalogue = laboData ? (laboData.catalogue || {}) : {};
     var colisageByEan = {};
+    var tvaByEan = {};
     Object.keys(catalogue).forEach(function(ean) {
       marcheByEan[ean] = catalogue[ean].marche_id || '';
       colisageByEan[ean] = catalogue[ean].colisage || 1;
+      if (catalogue[ean].tva !== undefined) tvaByEan[ean] = catalogue[ean].tva;
     });
     var prods_ = laboData ? (laboData.produits || []) : [];
-    prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; if (p.ean && p.colisage) colisageByEan[p.ean] = p.colisage; });
+    prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; if (p.ean && p.colisage) colisageByEan[p.ean] = p.colisage; if (p.ean && p.tva !== undefined) tvaByEan[p.ean] = p.tva; });
   } catch(e) {}
   var laboTva = 1 + ((condLabos[laboId] || condLabos[parseInt(laboId)] || {}).tva || 5.5) / 100;
 
@@ -4800,7 +4826,8 @@ function cmdGenerer() {
     var paCat    = p.pa_net || p.paCat || 0;
     var paNet    = paCat * (1 - rem/100);
     var pvTTC    = p.pv_ttc || 0;
-    var pvHT     = pvTTC > 0 ? pvTTC / laboTva : 0;
+    var prodTva  = tvaByEan[p.ean||''] !== undefined ? (1 + tvaByEan[p.ean||''] / 100) : laboTva;
+    var pvHT     = pvTTC > 0 ? pvTTC / prodTva : 0;
     var mb       = (pvHT > 0 && paNet > 0) ? (pvHT - paNet) / pvHT * 100 : null;
     var caCde    = qte * paNet;
 
@@ -4810,6 +4837,7 @@ function cmdGenerer() {
       nom: p.nom||'', ean: p.ean||'',
       marche: marcheDef ? marcheDef.label : '',
       colisage: colisage,
+      tva: tvaByEan[p.ean||''] !== undefined ? tvaByEan[p.ean||''] : ((condLabos[laboId]||condLabos[parseInt(laboId)]||{}).tva||5.5),
       moy:moy, besoin:besoin, stock:p.stock||0, qte:qte,
       palierLabel:palierLabel, rem:rem,
       ugLabel:ugLabel, ugObtenues:ugObtenues, qteTotal:qteTotal,
@@ -4862,6 +4890,7 @@ function cmdGenerer() {
     '<th style="'+thSR+'">Stock</th>'+
     '<th style="'+thSR+'">Qté à cder</th>'+
     '<th style="'+thSR+'">Colis.</th>'+
+    '<th style="'+thSR+'">TVA%</th>'+
     '<th style="'+thSR+'">Rem%</th>'+
     '<th style="'+thSR+'">UG</th>'+
     '<th style="'+thSR+'">Qté totale</th>'+
@@ -4886,6 +4915,7 @@ function cmdGenerer() {
       '<td style="'+tdR+';color:'+(l.stock>0?'var(--warn)':'var(--text-ter)')+'">'+l.stock+'</td>'+
       '<td style="'+tdR+';font-weight:600">'+l.qte+'</td>'+
       '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+(l.colisage>1?'×'+l.colisage:'-')+'</td>'+
+      '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+l.tva+'%</td>'+
       '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+
       '<td style="'+tdR+'">'+ugBadge+'</td>'+
       '<td style="'+tdR+';font-weight:700;color:var(--accent-text)">'+l.qteTotal+'</td>'+
@@ -5055,7 +5085,7 @@ function cmdImprimer() {
   var tbl = document.getElementById('cmd-table');
   var rows = tbl.querySelectorAll('tbody tr');
   var tableHtml = '<table><thead><tr>' +
-    '<th>Produit</th><th>Marché</th><th>Rot./mois</th><th>Besoin '+moisCible+'m</th><th>Stock</th><th>Qté à cder</th><th>Colis.</th><th>Rem%</th><th>UG</th><th>Qté totale</th><th>PA net HT</th><th>CA cde</th><th>MB%</th>' +
+    '<th>Produit</th><th>Marché</th><th>Rot./mois</th><th>Besoin '+moisCible+'m</th><th>Stock</th><th>Qté à cder</th><th>Colis.</th><th>TVA%</th><th>Rem%</th><th>UG</th><th>Qté totale</th><th>PA net HT</th><th>CA cde</th><th>MB%</th>' +
     '</tr></thead><tbody>';
   rows.forEach(function(row) {
     tableHtml += '<tr>';
@@ -5351,6 +5381,7 @@ function catChargeLabo() {
       marche_id:    saved.marche_id    || '',
       palier_id:    saved.palier_id    || '',
       colisage:     saved.colisage      || p.colisage || 1,
+      tva:          saved.tva !== undefined ? saved.tva : (p.tva !== undefined ? p.tva : undefined),
       classified:   !!saved.categorie
     };
   });
@@ -5464,11 +5495,11 @@ function catSauvegarder() {
   var catalogue = {};
   catProduits.forEach(function(p) {
     var key = p.ean || p.nom;
-    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id, colisage:p.colisage||1 };
+    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id, colisage:p.colisage||1, tva:p.tva };
     // Also update the produit in condLabos
     var prods = condLabos[catLaboActif].produits || [];
     var orig = prods.find(function(x){ return (x.ean||x.nom) === key; });
-    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; orig.colisage = p.colisage||1; }
+    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; orig.colisage = p.colisage||1; if (p.tva !== undefined) orig.tva = p.tva; }
   });
   condLabos[catLaboActif].catalogue = catalogue;
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
@@ -5549,6 +5580,9 @@ function catRenderTable() {
       // Colisage
       var inSC = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:50px;text-align:center;box-sizing:border-box;';
       html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + (p.colisage||1) + '" min="1" step="1" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'colisage\',+this.value)"></td>';
+      // TVA par produit
+      var laboTvaDefault = condLabos[catLaboActif] ? (condLabos[catLaboActif].tva || 5.5) : 5.5;
+      html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + (p.tva !== undefined ? p.tva : laboTvaDefault) + '" min="0" max="100" step="0.5" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'tva\',+this.value)"></td>';
       html += '</tr>';
     });
   });

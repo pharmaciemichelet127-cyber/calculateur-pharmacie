@@ -4685,7 +4685,7 @@ function cmdGenerer() {
     // Remises négociées par marché (saisies dans Cond. commerciales)
     var marchesNeg = laboData ? (laboData.marches_negocies || []) : [];
     marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id] = parseFloat(m.rem)||0; });
-    console.log('remisesNegociees:', JSON.stringify(remisesNegociees));
+    alert('laboId=' + laboId + ' | laboData=' + (laboData?'OK':'NULL') + ' | marchesNeg=' + marchesNeg.length + ' | remises=' + JSON.stringify(remisesNegociees));
     // marche_id par EAN depuis catalogue
     var catalogue = laboData ? (laboData.catalogue || {}) : {};
     Object.keys(catalogue).forEach(function(ean) {

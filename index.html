@@ -17,10 +17,11 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   #panel-prixnet { margin: 0 -16px; }
-  #panel-cat { margin: 0 -16px; }
-  #panel-cat .card { border-radius: 0; border-left: none; border-right: none; }
-  #panel-cmd { margin: 0 -16px; }
-  #panel-sim { margin: 0 -16px; }
+  #panel-cat { margin: 0 calc(-50vw + 360px); padding: 0; }
+  #panel-cat .card { border-radius: 0; border-left: none; border-right: none; max-width: none; }
+  #panel-cmd { margin: 0 calc(-50vw + 360px); padding: 0; }
+  #panel-cmd .card { border-radius: 0; border-left: none; border-right: none; }
+  #panel-sim { margin: 0 calc(-50vw + 360px); padding: 0; }
   #panel-sim .card { border-radius: 0; border-left: none; border-right: none; }
   #panel-cmd .card { border-radius: 0; border-left: none; border-right: none; }
   #panel-prixnet .card { border-radius: 0; border-left: none; border-right: none; }
@@ -33,6 +34,10 @@
   header .logo span { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 400; opacity: 0.45; margin-left: 8px; }
   header .ver { font-size: 11px; opacity: 0.35; font-family: 'DM Mono', monospace; }
   .main { max-width: 720px; margin: 0 auto; padding: 22px 16px 60px; }
+  .main:has(#panel-cat[style*="block"]),
+  .main:has(#panel-sim[style*="block"]),
+  .main:has(#panel-cmd[style*="block"]),
+  .main:has(#panel-prixnet[style*="block"]) { max-width: 100%; padding-left: 24px; padding-right: 24px; }
   .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
   .tab-btn { flex: 1; padding: 10px 0; font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; border: none; background: transparent; color: var(--text-sec); cursor: pointer; border-right: 1px solid var(--border); transition: all 0.15s; }
   .tab-btn:last-child { border-right: none; }

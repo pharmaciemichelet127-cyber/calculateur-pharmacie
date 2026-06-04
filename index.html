@@ -4676,10 +4676,16 @@ function cmdGenerer() {
   var marcheByEan = {};
   var remisesNegociees = {}; // marche_id -> remise négociée au RDV
   try {
+    // Relire condLabos depuis localStorage pour être sûr d'avoir les dernières valeurs
+    try {
+      var _fresh = localStorage.getItem('cond_labos');
+      if (_fresh) condLabos = JSON.parse(_fresh);
+    } catch(e) {}
     var laboData = condLabos[laboId] || condLabos[parseInt(laboId)];
     // Remises négociées par marché (saisies dans Cond. commerciales)
     var marchesNeg = laboData ? (laboData.marches_negocies || []) : [];
-    marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id] = m.rem; });
+    marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id] = parseFloat(m.rem)||0; });
+    console.log('remisesNegociees:', JSON.stringify(remisesNegociees));
     // marche_id par EAN depuis catalogue
     var catalogue = laboData ? (laboData.catalogue || {}) : {};
     Object.keys(catalogue).forEach(function(ean) {

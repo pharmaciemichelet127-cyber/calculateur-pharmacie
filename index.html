@@ -3769,11 +3769,20 @@ function condUpdateDiag() {
   // Ordre app: index 0=Jun25, 1=Jul25, ..., 10=Avr26, 11=Mai26
   // PDF order inverse: jun26=pdfIdx0=appIdx11, mai26=pdfIdx1=appIdx10, ...
   // Reconstituer CA réel depuis ventes mensuelles stockées
-  // Lire directement depuis la grille affichée (source de vérité)
-  var ventes12 = [];
+  // Source de vérité : condLabos.ventes (toujours à jour après import ou saisie)
+  // Fallback sur la grille si les inputs existent
+  var ventes12 = (condLabos[condLaboActif] && condLabos[condLaboActif].ventes) ? condLabos[condLaboActif].ventes.slice() : new Array(12).fill(0);
+  // Sync depuis la grille si elle est rendue (les inputs existent)
+  var grilleSynced = false;
+  var ventesGrille = [];
   for (var vi = 0; vi < 12; vi++) {
     var vel = document.getElementById('cond-v-' + vi);
-    ventes12.push(vel ? (parseFloat(vel.value) || 0) : 0);
+    if (!vel) { grilleSynced = false; break; }
+    ventesGrille.push(parseFloat(vel.value) || 0);
+    grilleSynced = true;
+  }
+  if (grilleSynced && ventesGrille.length === 12 && ventesGrille.some(function(v){ return v > 0; })) {
+    ventes12 = ventesGrille;
   }
   // ventes12 order: [0]=Jun25, [1]=Jul25, [2]=Aou25, [3]=Sep25, [4]=Oct25,
   //                 [5]=Nov25, [6]=Dec25, [7]=Jan26, [8]=Fev26, [9]=Mar26, [10]=Avr26, [11]=Mai26
@@ -3853,7 +3862,7 @@ function condUpdateDiag() {
     el('cond-proj-marge').textContent = margeProjTotal > 0 ? fE(margeProjTotal) : '—';
   }
   if (el('cond-proj-mois')) {
-    el('cond-proj-mois').textContent = moisAvecCA + ' mois réels + ' + moisRestants + ' mois projetés à ' + fE(Math.round(caMoyMois)) + '/mois';
+    el('cond-proj-mois').textContent = nbMoisEcoules + ' mois réels + ' + moisRestants + ' mois projetés à ' + fE(Math.round(caMoyMois)) + '/mois';
   }
 
   // Diag body: use produit data if available

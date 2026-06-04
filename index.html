@@ -126,6 +126,7 @@
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-sim" onclick="showTab('sim')">Simulation</button>
+    <button type="button" class="tab-btn" id="tab-workflow" onclick="showTab('workflow')">Workflow</button>
     <button type="button" class="tab-btn" id="tab-guide" onclick="showTab('guide')">Guide</button>
   </div>
 
@@ -1070,6 +1071,16 @@
 
       <div class="card">
         <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Marchés ouverts &amp; remises négociées</span>
+          <span style="font-size:10px;color:var(--text-ter)">Ces remises s'appliquent dans l'onglet Commande</span>
+        </p>
+        <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">Pour chaque marché ouvert lors du RDV labo, saisissez la remise négociée. Elle s'appliquera à tous les produits de ce marché dans la commande, indépendamment du nombre de références commandées.</p>
+        <div id="cond-marches-list" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button type="button" onclick="condAjouterMarche()" style="margin-top:8px;font-size:12px;padding:4px 12px;background:transparent;color:var(--accent-text);border:1px solid var(--accent);border-radius:var(--radius-sm);cursor:pointer;">+ Marché</button>
+      </div>
+
+      <div class="card">
+        <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
           <span>Conditions negociees</span>
           <div style="display:flex;gap:6px">
             <button type="button" onclick="condAjouterUG()" style="font-size:11px;padding:4px 10px;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(139,28,28,.2);border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ UG</button>
@@ -1106,6 +1117,26 @@
   </div>
 
 
+
+  <!-- ===== WORKFLOW ===== -->
+  <div id="panel-workflow" style="display:none">
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Workflow — Préparer une commande labo</span>
+        <select id="wf-labo-sel" onchange="wfChargeLabo()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+          <option value="">-- Choisir un labo --</option>
+        </select>
+      </p>
+      <p style="font-size:11px;color:var(--text-ter);margin-bottom:16px">Suivez ces étapes dans l'ordre pour préparer une commande optimale avec remises et UG corrects.</p>
+      <div id="wf-steps"></div>
+    </div>
+    <div id="wf-launch" style="display:none">
+      <div class="card" style="background:var(--accent-bg);border-color:var(--accent)">
+        <p style="font-size:13px;font-weight:600;color:var(--accent-text);margin-bottom:10px">✓ Labo prêt — vous pouvez générer la commande</p>
+        <button type="button" onclick="showTab('cmd');setTimeout(function(){document.getElementById('cmd-labo-sel').value=wfLaboActif;cmdChargeLabo();},100)" style="font-size:13px;padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">→ Aller à la Commande</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== GUIDE ===== -->
   <div id="panel-guide" style="display:none">
@@ -1430,7 +1461,7 @@ function setSituation(s) {
 function showTab(t) {
   var WIDE = ['cat','sim','cmd','prixnet'];
   var mainEl = document.querySelector('.main');
-  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat','sim'].forEach(function(x) {
+  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat','sim','workflow'].forEach(function(x) {
     var p = document.getElementById('panel-'+x);
     var b = document.getElementById('tab-'+x);
     if (p) p.style.display = x===t ? 'block' : 'none';
@@ -1456,6 +1487,7 @@ function showTab(t) {
   if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
   if (t === 'cat') { if(!catInited){catInited=true;} catInit(); }
   if (t === 'sim') { if(!simInited){simInited=true;} simInit(); }
+  if (t === 'workflow') { wfInit(); wfRender(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
 }
 
@@ -3522,9 +3554,57 @@ function condSelectionnerLabo(id) {
   condUpdateDiag();
   condBuildGrid();
   condRenderConditions();
+  condRenderMarches();
   condCalc();
   condRenderTabs();
   condAfficherHistorique();
+}
+
+// ===== MARCHÉS OUVERTS =====
+function condRenderMarches() {
+  var container = document.getElementById('cond-marches-list');
+  if (!container) return;
+  var labo = condLabos[condLaboActif];
+  if (!labo) return;
+  var marches = labo.marches_negocies || [];
+  var inS = 'font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);';
+  if (marches.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-ter);padding:8px 0">Aucun marché ouvert. Cliquez sur + Marché.</p>';
+    return;
+  }
+  container.innerHTML = marches.map(function(m, i) {
+    return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--accent)">' +
+      '<input type="text" value="' + (m.label||'') + '" placeholder="Nom du marché (ex: Marché général)" style="' + inS + 'flex:1;min-width:180px" oninput="condUpdateMarche(' + i + ','label',this.value)">' +
+      '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">Remise négociée</span>' +
+      '<input type="number" value="' + (m.rem||0) + '" min="0" max="60" step="0.5" style="' + inS + 'width:60px;font-weight:600;color:var(--accent-text)" oninput="condUpdateMarche(' + i + ','rem',this.value)"> %' +
+      '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">ID marché</span>' +
+      '<input type="text" value="' + (m.marche_id||'') + '" placeholder="general / prot / isolat / barres" style="' + inS + 'width:140px;font-size:11px" oninput="condUpdateMarche(' + i + ','marche_id',this.value)">' +
+      '<button type="button" onclick="condSupprimerMarche(' + i + ')" style="font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>' +
+      '</div>';
+  }).join('');
+}
+
+function condAjouterMarche() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  if (!condLabos[condLaboActif].marches_negocies) condLabos[condLaboActif].marches_negocies = [];
+  condLabos[condLaboActif].marches_negocies.push({ label:'', marche_id:'', rem:30 });
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condUpdateMarche(i, key, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var m = (condLabos[condLaboActif].marches_negocies || [])[i];
+  if (!m) return;
+  m[key] = key === 'rem' ? parseFloat(val)||0 : val;
+  condSauvegarder();
+}
+
+function condSupprimerMarche(i) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].marches_negocies.splice(i, 1);
+  condRenderMarches();
+  condSauvegarder();
 }
 
 function condAutoSave() {
@@ -4585,166 +4665,345 @@ function cmdGenerer() {
     alert('Chargez d\'abord un labo avec des produits (via Cond. commerciales > Importer PDF LGPI).');
     return;
   }
-  var moisCible  = parseFloat(document.getElementById('cmd-mois').value) || 2;
-  var rotMin     = parseFloat(document.getElementById('cmd-rot-min').value) || 0;
-  var stockMode  = document.getElementById('cmd-stock-mode').value;
+  var moisCible = parseFloat(document.getElementById('cmd-mois').value) || 2;
+  var rotMin    = parseFloat(document.getElementById('cmd-rot-min').value) || 0;
+  var stockMode = document.getElementById('cmd-stock-mode').value;
 
-  // Filter products with enough rotation
-  var prods = cmdProduitsSource.filter(function(p){ return (p.moy||0) >= rotMin; });
-  var nRefs = prods.length;
+  // Récupérer marche_id par EAN depuis localStorage catalogue
+  var sel = document.getElementById('cmd-labo-sel');
+  var laboId = sel ? (parseInt(sel.value) || sel.value) : null;
+  var marcheByEan = {};
+  var remisesNegociees = {}; // marche_id -> remise négociée au RDV
+  try {
+    var laboData = condLabos[laboId] || condLabos[parseInt(laboId)];
+    // Remises négociées par marché (saisies dans Cond. commerciales)
+    var marchesNeg = laboData ? (laboData.marches_negocies || []) : [];
+    marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id] = m.rem; });
+    // marche_id par EAN depuis catalogue
+    var catalogue = laboData ? (laboData.catalogue || {}) : {};
+    Object.keys(catalogue).forEach(function(ean) {
+      marcheByEan[ean] = catalogue[ean].marche_id || '';
+    });
+    var prods_ = laboData ? (laboData.produits || []) : [];
+    prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; });
+  } catch(e) {}
 
-  // Find applicable palier based on nb refs
-  // Priority: categorie-specific paliers first, then general paliers by refs count
-  function getPalier(prod) {
-    // Try category match first (if prod has a categorie field)
-    var cat = (prod.categorie||'').toLowerCase();
-    if (cat) {
-      var catPalier = cmdPaliers.find(function(p){ return p.categorie && cat.indexOf(p.categorie.toLowerCase()) >= 0; });
-      if (catPalier) return catPalier;
+  function getMarcheDef(prod) {
+    var ean = prod.ean || '';
+    var mid = marcheByEan[ean] || prod.marche_id || '';
+    if (mid && typeof MARCHES_NUTRICO !== 'undefined') {
+      return MARCHES_NUTRICO.find(function(m){ return m.id === mid; }) || null;
     }
-    // General palier by refs count
-    return cmdPaliers.find(function(p){ return !p.categorie && nRefs >= p.refs_min && nRefs <= p.refs_max; }) || null;
+    return null;
   }
 
-  // Use the dominant palier (most products) for global UG calc
-  var dominantPalier = cmdPaliers.find(function(p){ return !p.categorie && nRefs >= p.refs_min && nRefs <= p.refs_max; });
+  // UG marché général : paliers cumulatifs par tranches sur la qté commandée
+  // 6+1, 12+3, 24+8 → sur chaque tranche : floor(q/24)*8 + floor((q%24)/12)*3 + floor((q%12)/6)*1
+  function calcUGGeneral(qte) {
+    var t24 = Math.floor(qte / 24);
+    var r24 = qte % 24;
+    var t12 = Math.floor(r24 / 12);
+    var r12 = r24 % 12;
+    var t6  = Math.floor(r12 / 6);
+    return t24 * 8 + t12 * 3 + t6 * 1;
+  }
 
-  // Build command lines
+  var prods = cmdProduitsSource.filter(function(p){ return (p.moy||0) >= rotMin; });
+  var nRefs = prods.length;
+  // Nb de refs marché général pour déterminer remise 30% ou 25%
+  var nRefsGeneral = prods.filter(function(p){ var md = getMarcheDef(p); return !md || md.id === 'general'; }).length;
+  var remGeneral = nRefsGeneral >= 30 ? 30 : 25;
+
   var lignes = [];
   var totQteCde = 0, totCA = 0, totUG = 0;
 
   prods.forEach(function(p) {
-    var moy     = p.moy || 0;
-    var besoin  = moy * moisCible;
-    var stock   = stockMode === 'deduct' ? (p.stock || 0) : 0;
-    var qteNette = Math.max(0, besoin - stock);
-    var qte     = Math.ceil(qteNette);
+    var moy   = p.moy || 0;
+    var besoin = moy * moisCible;
+    var stock  = stockMode === 'deduct' ? (p.stock || 0) : 0;
+    var qte    = Math.max(0, Math.ceil(besoin - stock));
     if (qte <= 0) return;
 
-    var palier = getPalier(p) || dominantPalier;
-    var rem    = palier ? palier.rem : 0;
-    var ugOff  = palier ? palier.ug_offerts : 0;
-    var ugAch  = palier ? palier.ug_achetes : 0;
+    var marcheDef = getMarcheDef(p);
+    var rem, ugObtenues, ugLabel, palierLabel;
 
-    // UG: how many lots of ugAch can we order?
-    var lots   = (ugAch > 0 && qte >= ugAch) ? Math.floor(qte / ugAch) : 0;
-    var ugObtenues = lots * ugOff;
-    var qteTotal   = qte + ugObtenues;
+    if (marcheDef) {
+      // Remise : priorité à la remise négociée au RDV, sinon remise catalogue
+      if (marcheDef.id === 'general') {
+        rem = remisesNegociees['general'] !== undefined ? remisesNegociees['general'] : remGeneral;
+        ugObtenues = calcUGGeneral(qte);
+        var t24=Math.floor(qte/24), r24=qte%24, t12=Math.floor(r24/12), r12=r24%12, t6=Math.floor(r12/6);
+        var parts = [];
+        if (t24 > 0) parts.push(t24+'×(24+8)');
+        if (t12 > 0) parts.push(t12+'×(12+3)');
+        if (t6  > 0) parts.push(t6+'×(6+1)');
+        ugLabel = parts.length ? parts.join(' + ') : '-';
+        var remSrc = remisesNegociees['general'] !== undefined ? ' (négocié)' : ' (' + nRefsGeneral + ' refs)';
+        palierLabel = 'Général ' + rem + '%' + remSrc;
+      } else {
+        rem = remisesNegociees[marcheDef.id] !== undefined ? remisesNegociees[marcheDef.id] : marcheDef.rem_30;
+        ugObtenues = marcheDef.ug_ach > 0 ? Math.floor(qte / marcheDef.ug_ach) * marcheDef.ug_off : 0;
+        ugLabel = marcheDef.ug_ach > 0 ? marcheDef.ug_ach + '+' + marcheDef.ug_off : '-';
+        var remSrc2 = remisesNegociees[marcheDef.id] !== undefined ? ' (négocié)' : '';
+        palierLabel = marcheDef.label + ' ' + rem + '%' + remSrc2;
+      }
+    } else {
+      // Fallback cmdPaliers legacy
+      var cat = (p.categorie||'').toLowerCase();
+      var cp = null;
+      if (cat) cp = cmdPaliers.find(function(pl){ return pl.categorie && cat.indexOf(pl.categorie.toLowerCase()) >= 0; });
+      if (!cp) cp = cmdPaliers.find(function(pl){ return !pl.categorie && nRefs >= pl.refs_min && nRefs <= pl.refs_max; });
+      rem = cp ? cp.rem : 0;
+      var ugAch = cp ? cp.ug_achetes : 0;
+      var ugOff = cp ? cp.ug_offerts : 0;
+      ugObtenues = (ugAch > 0) ? Math.floor(qte / ugAch) * ugOff : 0;
+      ugLabel = ugAch > 0 ? ugAch + '+' + ugOff : '-';
+      palierLabel = cp ? cp.label : '-';
+    }
 
-    // Price calc
-    var paCat  = p.pa_net || p.paCat || 0; // use pa_cat before remise
-    var paNet  = paCat * (1 - rem/100);
-    var pvTTC  = p.pv_ttc || 0;
-    var pvHT   = pvTTC > 0 ? pvTTC / 1.2 : 0;
-    var mb     = (pvHT > 0 && paNet > 0) ? (pvHT - paNet) / pvHT * 100 : null;
-    var caCde  = qte * paNet;
+    var qteTotal = qte + ugObtenues;
+    var paCat    = p.pa_net || p.paCat || 0;
+    var paNet    = paCat * (1 - rem/100);
+    var pvTTC    = p.pv_ttc || 0;
+    var pvHT     = pvTTC > 0 ? pvTTC / 1.055 : 0;
+    var mb       = (pvHT > 0 && paNet > 0) ? (pvHT - paNet) / pvHT * 100 : null;
+    var caCde    = qte * paNet;
 
-    totQteCde += qte;
-    totCA     += caCde;
-    totUG     += ugObtenues;
+    totQteCde += qte; totCA += caCde; totUG += ugObtenues;
 
     lignes.push({
-      nom: p.nom || p.libelle || '',
-      ean: p.ean || '',
-      moy: moy,
-      besoin: besoin,
-      stock: stock,
-      qte: qte,
-      palierLabel: palier ? palier.label : '-',
-      rem: rem,
-      ugAch: ugAch,
-      ugOff: ugOff,
-      lots: lots,
-      ugObtenues: ugObtenues,
-      qteTotal: qteTotal,
-      paCat: paCat,
-      paNet: paNet,
-      pvTTC: pvTTC,
-      mb: mb,
-      caCde: caCde
+      nom: p.nom||'', ean: p.ean||'',
+      marche: marcheDef ? marcheDef.label : '',
+      moy:moy, besoin:besoin, stock:stock, qte:qte,
+      palierLabel:palierLabel, rem:rem,
+      ugLabel:ugLabel, ugObtenues:ugObtenues, qteTotal:qteTotal,
+      paCat:paCat, paNet:paNet, pvTTC:pvTTC, mb:mb, caCde:caCde
     });
   });
 
-  // Sort by CA descending
   lignes.sort(function(a,b){ return b.caCde - a.caCde; });
 
-  // KPIs
-  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u20ac'; }
   function f1(v){ return v.toFixed(1).replace('.',','); }
   function f2(v){ return v.toFixed(2).replace('.',','); }
 
-  var kpiEl = document.getElementById('cmd-kpis');
-
-  // Franco
   var franco = parseFloat(document.getElementById('cmd-franco').value) || 0;
-  var totCAnetHT = lignes.reduce(function(s,l){ return s + l.qte * (l.paNet||0); }, 0);
+  var totCAnetHT = lignes.reduce(function(s,l){ return s + l.qte*(l.paNet||0); }, 0);
   var francoOK = franco <= 0 || totCAnetHT >= franco;
-  var francoDiff = Math.round(franco - totCAnetHT);
   var fHint = document.getElementById('cmd-franco-hint');
   if (fHint) {
     if (franco <= 0) { fHint.textContent = ''; }
-    else if (francoOK) { fHint.textContent = '✓ Franco atteint (' + Math.round(totCAnetHT) + ' € HT net)'; fHint.style.color = 'var(--accent-text)'; }
-    else { fHint.textContent = '⚠ ' + francoDiff + ' € manquants (' + Math.round(totCAnetHT) + ' € / ' + franco + ' €)'; fHint.style.color = 'var(--danger)'; }
+    else if (francoOK) { fHint.textContent = '\u2713 Franco atteint (' + Math.round(totCAnetHT) + ' \u20ac HT net)'; fHint.style.color = 'var(--accent-text)'; }
+    else { fHint.textContent = '\u26a0 ' + Math.round(franco-totCAnetHT) + ' \u20ac manquants (' + Math.round(totCAnetHT) + ' / ' + franco + ' \u20ac)'; fHint.style.color = 'var(--danger)'; }
   }
 
-  var palierLabel = dominantPalier ? dominantPalier.label + ' (' + dominantPalier.rem + '%)' : 'Aucun';
-  kpiEl.innerHTML =
-    '<div class="met hi"><p class="lbl">References a commander</p><p class="val">' + lignes.length + '</p><p class="sub">sur ' + nRefs + ' actifs (\u2265' + rotMin + ' u/mois)</p></div>' +
-    '<div class="met"><p class="lbl">Palier general</p><p class="val" style="font-size:14px">' + palierLabel + '</p><p class="sub">' + nRefs + ' ref \u2192 ' + (dominantPalier ? dominantPalier.rem + '% de remise' : '-') + '</p></div>' +
-    '<div class="met warn"><p class="lbl">CA commande (PA net)</p><p class="val">' + fE(totCA) + '</p><p class="sub">' + totQteCde + ' unites payantes</p></div>' +
-    '<div class="met hi"><p class="lbl">UG obtenues</p><p class="val">' + totUG + '</p><p class="sub">unites gratuites sur la commande</p></div>';
+  // Résumé par marché
+  var marchesSummary = {};
+  lignes.forEach(function(l){
+    var k = l.marche || 'Marché général';
+    if (!marchesSummary[k]) marchesSummary[k] = { refs:0, ca:0, ug:0 };
+    marchesSummary[k].refs++; marchesSummary[k].ca += l.caCde; marchesSummary[k].ug += l.ugObtenues;
+  });
+  var summaryHtml = Object.keys(marchesSummary).map(function(k){
+    var s = marchesSummary[k];
+    return '<b>'+k+'</b> : '+s.refs+' refs — '+fE(s.ca)+(s.ug>0?' — <span style="color:var(--accent-text)">+'+s.ug+' UG</span>':'');
+  }).join('<br>');
 
-  // Table
+  var kpiEl = document.getElementById('cmd-kpis');
+  kpiEl.innerHTML =
+    '<div class="met hi"><p class="lbl">Références à commander</p><p class="val">'+lignes.length+'</p><p class="sub">sur '+nRefs+' actifs (\u2265'+rotMin+' u/mois)</p></div>'+
+    '<div class="met warn"><p class="lbl">CA commande (PA net HT)</p><p class="val">'+fE(totCA)+'</p><p class="sub">'+totQteCde+' unités payantes</p></div>'+
+    '<div class="met hi"><p class="lbl">UG totales obtenues</p><p class="val">'+totUG+'</p><p class="sub">unités gratuites</p></div>'+
+    '<div class="met" style="'+(francoOK?'background:var(--accent-bg)':'background:var(--danger-bg)')+'"><p class="lbl">Franco</p><p class="val" style="font-size:14px;color:'+(francoOK?'var(--accent-text)':'var(--danger)')+'">'+(francoOK?'\u2713 OK':'\u26a0 '+Math.round(franco-totCAnetHT)+'\u20ac manquants')+'</p></div>';
+
   var thS = 'padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;text-align:left';
-  var thSR = thS + ';text-align:right';
-  var html = '<thead><tr>' +
-    '<th style="' + thS + '">Produit</th>' +
-    '<th style="' + thSR + '">Rot./mois</th>' +
-    '<th style="' + thSR + '">Besoin ' + moisCible + 'm</th>' +
-    '<th style="' + thSR + '">Qte a commander</th>' +
-    '<th style="' + thS + '">Palier</th>' +
-    '<th style="' + thSR + '">Rem%</th>' +
-    '<th style="' + thSR + '">UG obtenues</th>' +
-    '<th style="' + thSR + '">Qte totale</th>' +
-    '<th style="' + thSR + '">PA net HT</th>' +
-    '<th style="' + thSR + '">CA cde</th>' +
-    '<th style="' + thSR + '">MB%</th>' +
+  var thSR = thS+';text-align:right';
+  var html = '<thead><tr>'+
+    '<th style="'+thS+'">Produit</th>'+
+    '<th style="'+thS+'">Marché</th>'+
+    '<th style="'+thSR+'">Rot./mois</th>'+
+    '<th style="'+thSR+'">Besoin '+moisCible+'m</th>'+
+    '<th style="'+thSR+'">Qté à cder</th>'+
+    '<th style="'+thSR+'">Rem%</th>'+
+    '<th style="'+thSR+'">UG</th>'+
+    '<th style="'+thSR+'">Qté totale</th>'+
+    '<th style="'+thSR+'">PA net HT</th>'+
+    '<th style="'+thSR+'">CA cde</th>'+
+    '<th style="'+thSR+'">MB%</th>'+
     '</tr></thead><tbody>';
 
-  lignes.forEach(function(l, i) {
-    var bg = i % 2 === 0 ? '#fff' : 'var(--surface2)';
-    var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;background:' + bg;
-    var tdR = td + ';text-align:right;font-family:monospace';
-    var mbClr = l.mb === null ? '' : l.mb >= 35 ? ';color:var(--accent-text);font-weight:600' : l.mb >= 28 ? ';color:var(--warn)' : ';color:var(--danger)';
-    var ugBadge = l.ugObtenues > 0
-      ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+' + l.ugObtenues + ' UG</span>'
+  lignes.forEach(function(l,i){
+    var bg = i%2===0?'#fff':'var(--surface2)';
+    var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;background:'+bg;
+    var tdR = td+';text-align:right;font-family:monospace';
+    var mbClr = l.mb===null?'':l.mb>=35?';color:var(--accent-text);font-weight:600':l.mb>=28?';color:var(--warn)':';color:var(--danger)';
+    var ugBadge = l.ugObtenues>0
+      ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+'+l.ugObtenues+'</span><br><span style="font-size:9px;color:var(--text-ter)">'+l.ugLabel+'</span>'
       : '-';
-    html += '<tr>' +
-      '<td style="' + td + ';max-width:200px">' + l.nom + '</td>' +
-      '<td style="' + tdR + '">' + f1(l.moy) + '</td>' +
-      '<td style="' + tdR + '">' + f1(l.besoin) + '</td>' +
-      '<td style="' + tdR + ';font-weight:600">' + l.qte + '</td>' +
-      '<td style="' + td + ';font-size:11px;color:var(--text-sec)">' + l.palierLabel + '</td>' +
-      '<td style="' + tdR + '">' + l.rem + '%</td>' +
-      '<td style="' + tdR + '">' + ugBadge + '</td>' +
-      '<td style="' + tdR + ';font-weight:700;color:var(--accent-text)">' + l.qteTotal + '</td>' +
-      '<td style="' + tdR + '">' + (l.paNet > 0 ? f2(l.paNet) : '-') + '</td>' +
-      '<td style="' + tdR + ';font-weight:600">' + (l.caCde > 0 ? fE(l.caCde) : '-') + '</td>' +
-      '<td style="' + tdR + mbClr + '">' + (l.mb !== null ? f1(l.mb) + '%' : '-') + '</td>' +
+    html += '<tr>'+
+      '<td style="'+td+';max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+l.nom+'">'+l.nom+'</td>'+
+      '<td style="'+td+';font-size:10px;color:var(--text-sec)">'+(l.marche||'-')+'</td>'+
+      '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
+      '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
+      '<td style="'+tdR+';font-weight:600">'+l.qte+'</td>'+
+      '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+
+      '<td style="'+tdR+'">'+ugBadge+'</td>'+
+      '<td style="'+tdR+';font-weight:700;color:var(--accent-text)">'+l.qteTotal+'</td>'+
+      '<td style="'+tdR+'">'+( l.paNet>0?f2(l.paNet):'-')+'</td>'+
+      '<td style="'+tdR+';font-weight:600">'+( l.caCde>0?fE(l.caCde):'-')+'</td>'+
+      '<td style="'+tdR+mbClr+'">'+( l.mb!==null?f1(l.mb)+'%':'-')+'</td>'+
       '</tr>';
   });
   html += '</tbody>';
   document.getElementById('cmd-table').innerHTML = html;
 
-  // Conclusion
   var conEl = document.getElementById('cmd-conclusion');
-  conEl.innerHTML = '<p class="nego-title">Synthese</p><div class="nego-body">' +
-    'Commande recommandee pour <b>' + moisCible + ' mois</b> de couverture sur <b>' + lignes.length + ' references</b>.<br>' +
-    'Palier atteint : <b>' + palierLabel + '</b><br>' +
-    'CA total commande : <b>' + fE(totCA) + '</b> | UG obtenues : <b>' + totUG + ' unites gratuites</b>' +
-    '</div>';
+  conEl.innerHTML = '<p class="nego-title">Synthèse commande</p><div class="nego-body">'+
+    'Couverture <b>'+moisCible+' mois</b> sur <b>'+lignes.length+' références</b> | '+
+    'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b><br><br>'+
+    summaryHtml+'</div>';
   conEl.style.display = 'block';
   document.getElementById('cmd-result-card').style.display = 'block';
+}
+
+// ===== WORKFLOW =====
+var wfLaboActif = null;
+var wfInited = false;
+
+function wfInit() {
+  var sel = document.getElementById('wf-labo-sel');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var labo = condLabos[id];
+    if (!labo || !labo.nom) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = labo.nom;
+    sel.appendChild(opt);
+  });
+}
+
+function wfChargeLabo() {
+  var sel = document.getElementById('wf-labo-sel');
+  wfLaboActif = sel ? (sel.value || null) : null;
+  wfRender();
+}
+
+function wfRender() {
+  var stepsEl = document.getElementById('wf-steps');
+  var launchEl = document.getElementById('wf-launch');
+  if (!stepsEl) return;
+
+  var labo = wfLaboActif ? (condLabos[wfLaboActif] || condLabos[parseInt(wfLaboActif)]) : null;
+
+  var steps = [
+    {
+      num: 1,
+      titre: 'Créer le labo dans Cond. commerciales',
+      desc: 'Aller dans Cond. commerciales → + Nouveau labo → saisir le nom.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() { return !!labo && !!labo.nom; },
+      checkLabel: function() { return labo && labo.nom ? labo.nom + ' — créé le ' + (labo.dateEval||'') : 'Labo non créé'; }
+    },
+    {
+      num: 2,
+      titre: 'Importer le catalogue labo (PDF)',
+      desc: 'Dans Cond. commerciales → bouton "Importer catalogue labo (PDF)" → uploader le listing produits du labo. Claude extrait EAN, nom, format, PU catalogue.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() { return labo && labo.produits && labo.produits.length > 0; },
+      checkLabel: function() { return labo && labo.produits ? labo.produits.length + ' produits chargés' : 'Aucun produit'; }
+    },
+    {
+      num: 3,
+      titre: 'Importer l'état des ventes 12 mois (PDF LGPI)',
+      desc: 'Dans Cond. commerciales → bouton "Importer PDF LGPI (diagnostic)" → uploader l'état des ventes LGPI. Claude enrichit les produits avec PA HT, rotation mensuelle et PV TTC.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() {
+        if (!labo || !labo.produits) return false;
+        return labo.produits.some(function(p){ return (p.moy||0) > 0 && (p.pa_net||0) > 0; });
+      },
+      checkLabel: function() {
+        if (!labo || !labo.produits) return 'Pas de données ventes';
+        var actifs = labo.produits.filter(function(p){ return (p.moy||0) > 0; }).length;
+        return actifs + ' produits avec rotation — CA ' + (labo.caAnnuel ? Math.round(labo.caAnnuel) + '€ TTC' : 'non calculé');
+      }
+    },
+    {
+      num: 4,
+      titre: 'Saisir les marchés ouverts et remises négociées',
+      desc: 'Dans Cond. commerciales → section "Marchés ouverts" → + Marché → saisir le nom, l'ID marché (general / prot / isolat / barres) et la remise négociée lors du RDV. Ces remises s'appliquent dans la commande indépendamment du nombre de références.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() { return labo && labo.marches_negocies && labo.marches_negocies.length > 0; },
+      checkLabel: function() {
+        if (!labo || !labo.marches_negocies || !labo.marches_negocies.length) return 'Aucun marché saisi';
+        return labo.marches_negocies.map(function(m){ return (m.label||m.marche_id) + ' : ' + m.rem + '%'; }).join(' | ');
+      }
+    },
+    {
+      num: 5,
+      titre: 'Classifier les produits par marché (onglet Catalogue)',
+      desc: 'Dans l'onglet Catalogue → choisir le labo → auto-classifier ou affecter manuellement chaque produit à son marché (général, protéines, isolat, barres). → Sauvegarder.',
+      action: "showTab('cat')",
+      actionLabel: 'Aller au Catalogue',
+      check: function() {
+        if (!labo || !labo.catalogue) return false;
+        var keys = Object.keys(labo.catalogue);
+        return keys.length > 0 && keys.some(function(k){ return labo.catalogue[k].marche_id; });
+      },
+      checkLabel: function() {
+        if (!labo || !labo.catalogue) return 'Catalogue non classifié';
+        var total = Object.keys(labo.catalogue).length;
+        var classes = Object.keys(labo.catalogue).filter(function(k){ return labo.catalogue[k].marche_id; }).length;
+        return classes + '/' + total + ' produits avec marché affecté';
+      }
+    },
+    {
+      num: 6,
+      titre: 'Générer la commande',
+      desc: 'Dans l'onglet Commande → choisir le labo → définir la couverture cible (mois) et le franco → Calculer la commande. Les remises et UG s'appliquent par marché.',
+      action: "showTab('cmd')",
+      actionLabel: 'Aller à la Commande',
+      check: function() { return false; }, // toujours proposer
+      checkLabel: function() { return 'Prêt à générer'; },
+      alwaysAction: true
+    }
+  ];
+
+  var allDone = steps.slice(0,5).every(function(s){ return s.check(); });
+  if (launchEl) launchEl.style.display = allDone ? 'block' : 'none';
+
+  var html = '';
+  steps.forEach(function(s) {
+    var done = s.check();
+    var color = done ? 'var(--accent)' : (s.alwaysAction ? 'var(--accent)' : 'var(--border-med)');
+    var bgNum = done ? 'var(--accent)' : 'var(--surface2)';
+    var clrNum = done ? '#fff' : 'var(--text-sec)';
+    var bgCard = done ? 'var(--accent-bg)' : '#fff';
+    var borderCard = done ? 'var(--accent)' : 'var(--border)';
+
+    html += '<div style="display:flex;gap:14px;margin-bottom:12px;padding:14px;background:' + bgCard + ';border:1px solid ' + borderCard + ';border-radius:var(--radius);align-items:flex-start">' +
+      '<div style="min-width:32px;height:32px;border-radius:50%;background:' + bgNum + ';color:' + clrNum + ';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">' +
+        (done ? '✓' : s.num) +
+      '</div>' +
+      '<div style="flex:1">' +
+        '<p style="font-size:13px;font-weight:600;margin-bottom:4px;color:' + (done ? 'var(--accent-text)' : 'var(--text)') + '">' + s.titre + '</p>' +
+        '<p style="font-size:11px;color:var(--text-sec);margin-bottom:8px;line-height:1.6">' + s.desc + '</p>' +
+        '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;background:' + (done ? 'rgba(26,107,74,.15)' : 'var(--surface2)') + ';color:' + (done ? 'var(--accent-text)' : 'var(--text-ter)') + '">' +
+            (labo ? s.checkLabel() : '— Choisir un labo') +
+          '</span>' +
+          (!done || s.alwaysAction ? '<button type="button" onclick="' + s.action + '" style="font-size:11px;padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500">' + s.actionLabel + '</button>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  stepsEl.innerHTML = html;
 }
 
 var cmdInited = false;

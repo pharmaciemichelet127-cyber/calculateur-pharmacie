@@ -1046,7 +1046,10 @@
         <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
           <span>Etat des ventes 12 mois</span>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <button type="button" onclick="condChargerCatalogueNutrico()" style="font-size:11px;color:#fff;padding:4px 10px;border:none;border-radius:var(--radius-sm);background:var(--accent);font-weight:500;cursor:pointer">Catalogue NUTRI&amp;CO</button>
+            <label style="font-size:11px;color:#fff;cursor:pointer;padding:4px 10px;border:none;border-radius:var(--radius-sm);background:var(--accent);font-weight:500;display:flex;align-items:center;gap:4px">
+              Importer catalogue labo (PDF)
+              <input type="file" id="cond-cat-labo" accept=".pdf" style="display:none" onchange="condImportCatalogueLabo(this)">
+            </label>
             <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px">
               Importer PDF LGPI (diagnostic)
               <input type="file" id="cond-pdf-diag" accept=".pdf" style="display:none" onchange="condImportPDFDiag(this)">
@@ -3854,36 +3857,97 @@ function condCalc() {
   document.getElementById('cond-compare-card').style.display = 'block';
 }
 
-// ===== CHARGER CATALOGUE NUTRI&CO DIRECTEMENT =====
-function condChargerCatalogueNutrico() {
+// ===== IMPORT CATALOGUE LABO GENERIQUE (PDF) =====
+async function condImportCatalogueLabo(input) {
+  var file = input.files[0];
+  if (!file) return;
   if (!condLaboActif || !condLabos[condLaboActif]) return;
-  if (typeof NUTRICO_CATALOGUE === 'undefined') {
-    alert('NUTRICO_CATALOGUE non disponible');
-    return;
-  }
-  var existing = condLabos[condLaboActif].produits || [];
-  var eansDejaPresents = {};
-  existing.forEach(function(p){ if (p.ean) eansDejaPresents[p.ean] = true; });
-
-  var nb = 0;
-  Object.keys(NUTRICO_CATALOGUE).forEach(function(ean) {
-    if (!eansDejaPresents[ean]) {
-      var cat = NUTRICO_CATALOGUE[ean];
-      existing.push({ nom: cat.nom, ean: ean, moy: 0, pa_net: 0, pv_ttc: 0,
-        pv_ht: 0, mbu: 0, mb_pct: 0, rem_cat: 30, mois: new Array(12).fill(0) });
-      nb++;
-    }
-  });
-
-  condLabos[condLaboActif].produits = existing;
-  condSauvegarder();
 
   var status = document.getElementById('cond-pdf-status');
-  if (status) {
-    status.textContent = nb + ' refs ajoutées depuis NUTRI&CO catalogue (total : ' + existing.length + ' produits)';
-    status.style.color = 'var(--accent-text)';
+  if (status) { status.textContent = 'Lecture catalogue labo (passe 1/2)...'; status.style.color = 'var(--text-sec)'; }
+
+  var b64 = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  var allRefs = {};
+  var prompts = [
+    'Listing produits labo page 1. Extrais chaque produit avec : nom (désignation, max 30 cars), ean (GTIN/EAN 13 chiffres, vide si absent), format (ex: 60 gél, 500g), pu_catalogue (prix unitaire HT ou TTC catalogue, nombre décimal). Réponds UNIQUEMENT en JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0}]}',
+    'Listing produits labo page 2. Même extraction : nom, ean, format, pu_catalogue. UNIQUEMENT JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0}]}'
+  ];
+
+  try {
+    for (var pi = 0; pi < 2; pi++) {
+      if (status) status.textContent = 'Lecture catalogue labo (passe ' + (pi+1) + '/2)...';
+      var resp = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 8000,
+          messages: [{ role: 'user', content: [
+            { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
+            { type:'text', text: prompts[pi] }
+          ]}]
+        })
+      });
+      var data = await resp.json();
+      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+        var txt = jsonMatch[0].replace(/,\s*$/, '');
+        var opens = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var openb = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        for (var k=0; k<opens; k++) txt += ']';
+        for (var k=0; k<openb; k++) txt += '}';
+        try { parsed = JSON.parse(txt); } catch(e2) { continue; }
+      }
+      (parsed.produits||[]).forEach(function(p) {
+        if (!p.nom) return;
+        var key = (p.ean && p.ean.length >= 10) ? p.ean : p.nom;
+        allRefs[key] = p;
+      });
+    }
+
+    var refs = Object.values(allRefs);
+    if (refs.length === 0) throw new Error('Aucun produit extrait du catalogue');
+
+    // Merger avec produits existants (ne pas écraser les données de ventes)
+    var existing = condLabos[condLaboActif].produits || [];
+    var eansDejaPresents = {};
+    existing.forEach(function(p){ if (p.ean) eansDejaPresents[p.ean] = true; });
+
+    var nb = 0;
+    refs.forEach(function(r) {
+      var ean = (r.ean && r.ean.length >= 10) ? r.ean : '';
+      if (ean && eansDejaPresents[ean]) return; // déjà présent avec données ventes
+      existing.push({
+        nom: r.nom, ean: ean, format: r.format || '',
+        pu_catalogue: r.pu_catalogue || 0,
+        moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0,
+        rem_cat: 0, mois: new Array(12).fill(0)
+      });
+      nb++;
+    });
+
+    condLabos[condLaboActif].produits = existing;
+    condSauvegarder();
+
+    if (status) {
+      status.textContent = nb + ' refs ajoutées depuis catalogue labo (total : ' + existing.length + ' produits)';
+      status.style.color = 'var(--accent-text)';
+    }
+    condUpdateDiag();
+
+  } catch(err) {
+    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
   }
-  condUpdateDiag();
+  input.value = '';
 }
 
 // ===== IMPORT PDF LGPI POUR COND =====

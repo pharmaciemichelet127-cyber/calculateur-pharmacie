@@ -3597,7 +3597,7 @@ function condUpdateMarche(i, key, val) {
   if (!condLaboActif || !condLabos[condLaboActif]) return;
   var m = (condLabos[condLaboActif].marches_negocies || [])[i];
   if (!m) return;
-  m[key] = key === 'rem' ? parseFloat(val)||0 : val;
+  m[key] = key === 'rem' ? parseFloat(val)||0 : val.trim();
   condSauvegarder();
 }
 
@@ -4684,7 +4684,7 @@ function cmdGenerer() {
     var laboData = condLabos[laboId] || condLabos[parseInt(laboId)];
     // Remises négociées par marché (saisies dans Cond. commerciales)
     var marchesNeg = laboData ? (laboData.marches_negocies || []) : [];
-    marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id] = parseFloat(m.rem)||0; });
+    marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id.trim()] = parseFloat(m.rem)||0; });
 
     // marche_id par EAN depuis catalogue
     var catalogue = laboData ? (laboData.catalogue || {}) : {};

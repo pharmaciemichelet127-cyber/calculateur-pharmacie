@@ -4282,7 +4282,7 @@ async function condImportPDFDiag(input) {
     }
 
     // Compute math client-side
-    var tvaFactor = 1.2;
+    var tvaFactor = 1 + ((condLabos[condLaboActif] || {}).tva || 20) / 100;
     var totCAHT = 0, totMarge = 0;
     prods.forEach(function(p){
       p.pv_ht  = p.pv_ttc > 0 ? p.pv_ttc / tvaFactor : 0;
@@ -4698,6 +4698,7 @@ function cmdGenerer() {
     var prods_ = laboData ? (laboData.produits || []) : [];
     prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; if (p.ean && p.colisage) colisageByEan[p.ean] = p.colisage; });
   } catch(e) {}
+  var laboTva = 1 + ((condLabos[laboId] || condLabos[parseInt(laboId)] || {}).tva || 5.5) / 100;
 
   function getMarcheDef(prod) {
     var ean = prod.ean || '';
@@ -4799,7 +4800,7 @@ function cmdGenerer() {
     var paCat    = p.pa_net || p.paCat || 0;
     var paNet    = paCat * (1 - rem/100);
     var pvTTC    = p.pv_ttc || 0;
-    var pvHT     = pvTTC > 0 ? pvTTC / 1.055 : 0;
+    var pvHT     = pvTTC > 0 ? pvTTC / laboTva : 0;
     var mb       = (pvHT > 0 && paNet > 0) ? (pvHT - paNet) / pvHT * 100 : null;
     var caCde    = qte * paNet;
 

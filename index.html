@@ -4755,17 +4755,30 @@ function cmdGenerer() {
         palierLabel = marcheDef.label + ' ' + rem + '%' + remSrc2;
       }
     } else {
-      // Fallback cmdPaliers legacy
-      var cat = (p.categorie||'').toLowerCase();
-      var cp = null;
-      if (cat) cp = cmdPaliers.find(function(pl){ return pl.categorie && cat.indexOf(pl.categorie.toLowerCase()) >= 0; });
-      if (!cp) cp = cmdPaliers.find(function(pl){ return !pl.categorie && nRefs >= pl.refs_min && nRefs <= pl.refs_max; });
-      rem = cp ? cp.rem : 0;
-      var ugAch = cp ? cp.ug_achetes : 0;
-      var ugOff = cp ? cp.ug_offerts : 0;
-      ugObtenues = (ugAch > 0) ? Math.floor(qte / ugAch) * ugOff : 0;
-      ugLabel = ugAch > 0 ? ugAch + '+' + ugOff : '-';
-      palierLabel = cp ? cp.label : '-';
+      // Pas de marche_id catalogue → utiliser remise négociée 'general' si disponible
+      if (remisesNegociees['general'] !== undefined) {
+        rem = remisesNegociees['general'];
+        ugObtenues = calcUGGeneral(qte);
+        var t24=Math.floor(qte/24), r24=qte%24, t12=Math.floor(r24/12), r12=r24%12, t6=Math.floor(r12/6);
+        var parts = [];
+        if (t24 > 0) parts.push(t24+'×(24+8)');
+        if (t12 > 0) parts.push(t12+'×(12+3)');
+        if (t6  > 0) parts.push(t6+'×(6+1)');
+        ugLabel = parts.length ? parts.join(' + ') : '-';
+        palierLabel = 'Général ' + rem + '% (négocié)';
+      } else {
+        // Fallback cmdPaliers legacy
+        var cat = (p.categorie||'').toLowerCase();
+        var cp = null;
+        if (cat) cp = cmdPaliers.find(function(pl){ return pl.categorie && cat.indexOf(pl.categorie.toLowerCase()) >= 0; });
+        if (!cp) cp = cmdPaliers.find(function(pl){ return !pl.categorie && nRefs >= pl.refs_min && nRefs <= pl.refs_max; });
+        rem = cp ? cp.rem : 0;
+        var ugAch = cp ? cp.ug_achetes : 0;
+        var ugOff = cp ? cp.ug_offerts : 0;
+        ugObtenues = (ugAch > 0) ? Math.floor(qte / ugAch) * ugOff : 0;
+        ugLabel = ugAch > 0 ? ugAch + '+' + ugOff : '-';
+        palierLabel = cp ? cp.label : '-';
+      }
     }
 
     var qteTotal = qte + ugObtenues;

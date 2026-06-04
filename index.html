@@ -4390,15 +4390,19 @@ async function condImportPDFDiag(input) {
       }
     });
 
-    // Normaliser : si le total calculé diffère du CA annuel connu, appliquer un ratio correcteur
+    // Normaliser par rapport au CA annuel calculé depuis moy×12×PV (plus stable que qté×PV)
     var totalVentes = ventesMensuelles.reduce(function(s,v){return s+v;},0);
     var caTTCproduits = prods.reduce(function(s,p){return s+(p.moy||0)*12*(p.pv_ttc||0);},0);
-    if (totalVentes > 0 && caTTCproduits > 0 && Math.abs(totalVentes - caTTCproduits) / caTTCproduits > 0.05) {
+    if (totalVentes > 0 && caTTCproduits > 0) {
       var ratio = caTTCproduits / totalVentes;
       ventesMensuelles = ventesMensuelles.map(function(v){ return Math.round(v * ratio); });
+    } else if (caTTCproduits > 0) {
+      // Pas de données mensuelles : distribuer uniformément
+      var moyMois = Math.round(caTTCproduits / 12);
+      ventesMensuelles = new Array(12).fill(moyMois);
     }
 
-    // Fill CA grid
+    // Fill CA grid — toujours écraser pour rester cohérent avec l'import
     ventesMensuelles.forEach(function(v, i) {
       var el = document.getElementById('cond-v-' + i);
       if (el) el.value = v > 0 ? v.toFixed(0) : 0;

@@ -1045,10 +1045,13 @@
       <div class="card">
         <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
           <span>Etat des ventes 12 mois</span>
-          <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px">
-            Importer PDF LGPI (diagnostic)
-            <input type="file" id="cond-pdf-diag" accept=".pdf" style="display:none" onchange="condImportPDFDiag(this)">
-          </label>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button type="button" onclick="condChargerCatalogueNutrico()" style="font-size:11px;color:#fff;padding:4px 10px;border:none;border-radius:var(--radius-sm);background:var(--accent);font-weight:500;cursor:pointer">Catalogue NUTRI&amp;CO</button>
+            <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px">
+              Importer PDF LGPI (diagnostic)
+              <input type="file" id="cond-pdf-diag" accept=".pdf" style="display:none" onchange="condImportPDFDiag(this)">
+            </label>
+          </div>
         </p>
         <p style="font-size:11px;color:var(--text-ter);margin-bottom:10px">Saisissez le CA mensuel TTC ou importez le PDF LGPI pour un diagnostic automatique des marges produit.</p>
         <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
@@ -3851,6 +3854,38 @@ function condCalc() {
   document.getElementById('cond-compare-card').style.display = 'block';
 }
 
+// ===== CHARGER CATALOGUE NUTRI&CO DIRECTEMENT =====
+function condChargerCatalogueNutrico() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  if (typeof NUTRICO_CATALOGUE === 'undefined') {
+    alert('NUTRICO_CATALOGUE non disponible');
+    return;
+  }
+  var existing = condLabos[condLaboActif].produits || [];
+  var eansDejaPresents = {};
+  existing.forEach(function(p){ if (p.ean) eansDejaPresents[p.ean] = true; });
+
+  var nb = 0;
+  Object.keys(NUTRICO_CATALOGUE).forEach(function(ean) {
+    if (!eansDejaPresents[ean]) {
+      var cat = NUTRICO_CATALOGUE[ean];
+      existing.push({ nom: cat.nom, ean: ean, moy: 0, pa_net: 0, pv_ttc: 0,
+        pv_ht: 0, mbu: 0, mb_pct: 0, rem_cat: 30, mois: new Array(12).fill(0) });
+      nb++;
+    }
+  });
+
+  condLabos[condLaboActif].produits = existing;
+  condSauvegarder();
+
+  var status = document.getElementById('cond-pdf-status');
+  if (status) {
+    status.textContent = nb + ' refs ajoutées depuis NUTRI&CO catalogue (total : ' + existing.length + ' produits)';
+    status.style.color = 'var(--accent-text)';
+  }
+  condUpdateDiag();
+}
+
 // ===== IMPORT PDF LGPI POUR COND =====
 async function condImportPDF(input) {
   var file = input.files[0];
@@ -4086,6 +4121,18 @@ async function condImportPDFDiag(input) {
 
     var prods = Object.values(allProds);
     if (prods.length === 0) throw new Error('Aucun produit extrait');
+
+    // Merger avec NUTRICO_CATALOGUE : ajouter les refs manquantes (non vendues) avec moy=0
+    if (typeof NUTRICO_CATALOGUE !== 'undefined') {
+      var eansDansProds = {};
+      prods.forEach(function(p){ if (p.ean && p.ean.length >= 10) eansDansProds[p.ean] = true; });
+      Object.keys(NUTRICO_CATALOGUE).forEach(function(ean) {
+        if (!eansDansProds[ean]) {
+          var cat = NUTRICO_CATALOGUE[ean];
+          prods.push({ nom: cat.nom, ean: ean, moy: 0, pa_net: 0, pv_ttc: 0, mois: new Array(12).fill(0) });
+        }
+      });
+    }
 
     // Compute math client-side
     var tvaFactor = 1.2;

@@ -4920,6 +4920,7 @@ function cmdGenerer() {
     '<th style="'+thSR+'">Rem%</th>'+
     '<th style="'+thSR+'">UG</th>'+
     '<th style="'+thSR+'">Qté totale</th>'+
+    '<th style="'+thSR+'">PA cat HT</th>'+
     '<th style="'+thSR+'">PA net HT</th>'+
     '<th style="'+thSR+'">CA cde</th>'+
     '<th style="'+thSR+'">MB%</th>'+
@@ -4945,6 +4946,7 @@ function cmdGenerer() {
       '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+
       '<td style="'+tdR+'">'+ugBadge+'</td>'+
       '<td style="'+tdR+';font-weight:700;color:var(--accent-text)">'+l.qteTotal+'</td>'+
+      '<td style="'+tdR+';color:var(--text-ter)">'+( l.paCat>0?f2(l.paCat):'-')+'</td>'+
       '<td style="'+tdR+'">'+( l.paNet>0?f2(l.paNet):'-')+'</td>'+
       '<td style="'+tdR+';font-weight:600">'+( l.caCde>0?fE(l.caCde):'-')+'</td>'+
       '<td style="'+tdR+mbClr+'">'+( l.mb!==null?f1(l.mb)+'%':'-')+'</td>'+
@@ -5111,7 +5113,7 @@ function cmdImprimer() {
   var tbl = document.getElementById('cmd-table');
   var rows = tbl.querySelectorAll('tbody tr');
   var tableHtml = '<table><thead><tr>' +
-    '<th>Produit</th><th>Marché</th><th>Rot./mois</th><th>Besoin '+moisCible+'m</th><th>Stock</th><th>Qté à cder</th><th>Colis.</th><th>TVA%</th><th>Rem%</th><th>UG</th><th>Qté totale</th><th>PA net HT</th><th>CA cde</th><th>MB%</th>' +
+    '<th>Produit</th><th>Marché</th><th>Rot./mois</th><th>Besoin '+moisCible+'m</th><th>Stock</th><th>Qté à cder</th><th>Colis.</th><th>TVA%</th><th>Rem%</th><th>UG</th><th>Qté totale</th><th>PA cat HT</th><th>PA net HT</th><th>CA cde</th><th>MB%</th>' +
     '</tr></thead><tbody>';
   rows.forEach(function(row) {
     tableHtml += '<tr>';

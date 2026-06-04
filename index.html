@@ -4779,7 +4779,7 @@ function cmdGenerer() {
   var remGeneral = nRefsGeneral >= 30 ? 30 : 25;
 
   var lignes = [];
-  var totQteCde = 0, totCA = 0, totUG = 0;
+  var totQteCde = 0, totCA = 0, totUG = 0, totCAHT_cmd = 0, totMarge_cmd = 0;
 
   prods.forEach(function(p) {
     var moy   = p.moy || 0;
@@ -4858,6 +4858,8 @@ function cmdGenerer() {
     var caCde    = qte * paNet;
 
     totQteCde += qte; totCA += caCde; totUG += ugObtenues;
+    totCAHT_cmd += qte * pvHT;
+    totMarge_cmd += qte * (pvHT - paNet);
 
     lignes.push({
       nom: p.nom||'', ean: p.ean||'',
@@ -4899,10 +4901,13 @@ function cmdGenerer() {
     return '<b>'+k+'</b> : '+s.refs+' refs — '+fE(s.ca)+(s.ug>0?' — <span style="color:var(--accent-text)">+'+s.ug+' UG</span>':'');
   }).join('<br>');
 
+  var mbCmdPondere = totCAHT_cmd > 0 ? totMarge_cmd / totCAHT_cmd * 100 : 0;
+  var mbCmdClr = mbCmdPondere >= 35 ? 'var(--accent-text)' : mbCmdPondere >= 28 ? 'var(--warn)' : 'var(--danger)';
   var kpiEl = document.getElementById('cmd-kpis');
   kpiEl.innerHTML =
     '<div class="met hi"><p class="lbl">Références à commander</p><p class="val">'+lignes.length+'</p><p class="sub">sur '+nRefs+' actifs (\u2265'+rotMin+' u/mois)</p></div>'+
     '<div class="met warn"><p class="lbl">CA commande (PA net HT)</p><p class="val">'+fE(totCA)+'</p><p class="sub">'+totQteCde+' unités payantes</p></div>'+
+    '<div class="met"><p class="lbl">MB% moyen pondéré</p><p class="val" style="color:'+mbCmdClr+'">'+mbCmdPondere.toFixed(1).replace('.',',')+' %</p><p class="sub">sur CA de cette commande</p></div>'+
     '<div class="met hi"><p class="lbl">UG totales obtenues</p><p class="val">'+totUG+'</p><p class="sub">unités gratuites</p></div>'+
     '<div class="met" style="'+(francoOK?'background:var(--accent-bg)':'background:var(--danger-bg)')+'"><p class="lbl">Franco</p><p class="val" style="font-size:14px;color:'+(francoOK?'var(--accent-text)':'var(--danger)')+'">'+(francoOK?'\u2713 OK':'\u26a0 '+Math.round(franco-totCAnetHT)+'\u20ac manquants')+'</p></div>';
 

@@ -4685,7 +4685,7 @@ function cmdGenerer() {
     // Remises négociées par marché (saisies dans Cond. commerciales)
     var marchesNeg = laboData ? (laboData.marches_negocies || []) : [];
     marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id] = parseFloat(m.rem)||0; });
-    alert('laboId=' + laboId + ' | laboData=' + (laboData?'OK':'NULL') + ' | marchesNeg=' + marchesNeg.length + ' | remises=' + JSON.stringify(remisesNegociees));
+
     // marche_id par EAN depuis catalogue
     var catalogue = laboData ? (laboData.catalogue || {}) : {};
     Object.keys(catalogue).forEach(function(ean) {
@@ -4732,6 +4732,10 @@ function cmdGenerer() {
     if (qte <= 0) return;
 
     var marcheDef = getMarcheDef(p);
+    // Si pas de marche_id catalogue mais remise générale négociée → traiter comme général
+    if (!marcheDef && remisesNegociees['general'] !== undefined) {
+      marcheDef = MARCHES_NUTRICO ? MARCHES_NUTRICO.find(function(m){ return m.id === 'general'; }) : null;
+    }
     var rem, ugObtenues, ugLabel, palierLabel;
 
     if (marcheDef) {

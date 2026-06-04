@@ -1072,7 +1072,7 @@
       <div class="card">
         <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
           <span>Marchés ouverts &amp; remises négociées</span>
-          <span style="font-size:10px;color:var(--text-ter)">Ces remises s'appliquent dans l'onglet Commande</span>
+          <span style="font-size:10px;color:var(--text-ter)">Ces remises s\'appliquent dans l'onglet Commande</span>
         </p>
         <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">Pour chaque marché ouvert lors du RDV labo, saisissez la remise négociée. Elle s'appliquera à tous les produits de ce marché dans la commande, indépendamment du nombre de références commandées.</p>
         <div id="cond-marches-list" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -3574,11 +3574,11 @@ function condRenderMarches() {
   }
   container.innerHTML = marches.map(function(m, i) {
     return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--accent)">' +
-      '<input type="text" value="' + (m.label||'') + '" placeholder="Nom du marché (ex: Marché général)" style="' + inS + 'flex:1;min-width:180px" oninput="condUpdateMarche(' + i + ','label',this.value)">' +
+      '<input type="text" value="' + (m.label||'') + '" placeholder="Nom du marché (ex: Marché général)" style="' + inS + 'flex:1;min-width:180px" oninput="condUpdateMarche(' + i + ',\'label\',this.value)">' +
       '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">Remise négociée</span>' +
-      '<input type="number" value="' + (m.rem||0) + '" min="0" max="60" step="0.5" style="' + inS + 'width:60px;font-weight:600;color:var(--accent-text)" oninput="condUpdateMarche(' + i + ','rem',this.value)"> %' +
+      '<input type="number" value="' + (m.rem||0) + '" min="0" max="60" step="0.5" style="' + inS + 'width:60px;font-weight:600;color:var(--accent-text)" oninput="condUpdateMarche(' + i + ',\'rem\',this.value)"> %' +
       '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">ID marché</span>' +
-      '<input type="text" value="' + (m.marche_id||'') + '" placeholder="general / prot / isolat / barres" style="' + inS + 'width:140px;font-size:11px" oninput="condUpdateMarche(' + i + ','marche_id',this.value)">' +
+      '<input type="text" value="' + (m.marche_id||'') + '" placeholder="general / prot / isolat / barres" style="' + inS + 'width:140px;font-size:11px" oninput="condUpdateMarche(' + i + ',\'marche_id\',this.value)">' +
       '<button type="button" onclick="condSupprimerMarche(' + i + ')" style="font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>' +
       '</div>';
   }).join('');
@@ -4918,8 +4918,8 @@ function wfRender() {
     },
     {
       num: 3,
-      titre: 'Importer l'état des ventes 12 mois (PDF LGPI)',
-      desc: 'Dans Cond. commerciales → bouton "Importer PDF LGPI (diagnostic)" → uploader l'état des ventes LGPI. Claude enrichit les produits avec PA HT, rotation mensuelle et PV TTC.',
+      titre: 'Importer l\'état des ventes 12 mois (PDF LGPI)',
+      desc: 'Dans Cond. commerciales → bouton "Importer PDF LGPI (diagnostic)" → uploader l\'état des ventes LGPI. Claude enrichit les produits avec PA HT, rotation mensuelle et PV TTC.',
       action: "showTab('cond')",
       actionLabel: 'Aller à Cond. commerciales',
       check: function() {
@@ -4935,7 +4935,7 @@ function wfRender() {
     {
       num: 4,
       titre: 'Saisir les marchés ouverts et remises négociées',
-      desc: 'Dans Cond. commerciales → section "Marchés ouverts" → + Marché → saisir le nom, l'ID marché (general / prot / isolat / barres) et la remise négociée lors du RDV. Ces remises s'appliquent dans la commande indépendamment du nombre de références.',
+      desc: 'Dans Cond. commerciales → section "Marchés ouverts" → + Marché → saisir le nom, l\'ID marché (general / prot / isolat / barres) et la remise négociée lors du RDV. Ces remises s\'appliquent dans la commande indépendamment du nombre de références.',
       action: "showTab('cond')",
       actionLabel: 'Aller à Cond. commerciales',
       check: function() { return labo && labo.marches_negocies && labo.marches_negocies.length > 0; },
@@ -4947,7 +4947,7 @@ function wfRender() {
     {
       num: 5,
       titre: 'Classifier les produits par marché (onglet Catalogue)',
-      desc: 'Dans l'onglet Catalogue → choisir le labo → auto-classifier ou affecter manuellement chaque produit à son marché (général, protéines, isolat, barres). → Sauvegarder.',
+      desc: 'Dans l\'onglet Catalogue → choisir le labo → auto-classifier ou affecter manuellement chaque produit à son marché (général, protéines, isolat, barres). → Sauvegarder.',
       action: "showTab('cat')",
       actionLabel: 'Aller au Catalogue',
       check: function() {
@@ -4965,7 +4965,7 @@ function wfRender() {
     {
       num: 6,
       titre: 'Générer la commande',
-      desc: 'Dans l'onglet Commande → choisir le labo → définir la couverture cible (mois) et le franco → Calculer la commande. Les remises et UG s'appliquent par marché.',
+      desc: 'Dans l\'onglet Commande → choisir le labo → définir la couverture cible (mois) et le franco → Calculer la commande. Les remises et UG s\'appliquent par marché.',
       action: "showTab('cmd')",
       actionLabel: 'Aller à la Commande',
       check: function() { return false; }, // toujours proposer

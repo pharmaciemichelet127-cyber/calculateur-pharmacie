@@ -37,8 +37,9 @@
   .main:has(#panel-sim[style*="block"]),
   .main:has(#panel-cmd[style*="block"]),
   .main:has(#panel-prixnet[style*="block"]) { max-width: 100%; padding-left: 24px; padding-right: 24px; }
-  .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
-  .tab-btn { flex: 1; padding: 10px 0; font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; border: none; background: transparent; color: var(--text-sec); cursor: pointer; border-right: 1px solid var(--border); transition: all 0.15s; }
+  .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; overflow-y: hidden; margin-bottom: 18px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn { flex: 0 0 auto; padding: 10px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; border: none; background: transparent; color: var(--text-sec); cursor: pointer; border-right: 1px solid var(--border); transition: all 0.15s; white-space: nowrap; }
   .tab-btn:last-child { border-right: none; }
   .tab-btn.active { background: var(--text); color: #fff; font-weight: 500; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 12px; }
@@ -5951,7 +5952,7 @@ function simLancer() {
 var simInited = false;
 
 window.addEventListener('DOMContentLoaded', function() {
-  setTimeout(function(){ wfInit(); wfRender(); }, 100);
+  setTimeout(function(){ showTab('workflow'); }, 100);
 });
 
 </script>

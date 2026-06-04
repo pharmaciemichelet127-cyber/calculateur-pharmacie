@@ -5049,7 +5049,22 @@ function cmdImprimer() {
   var laboNom = (document.getElementById('cmd-labo-sel').selectedOptions[0]||{}).text || 'Commande';
   var date = new Date().toLocaleDateString('fr-FR');
   var kpis = document.getElementById('cmd-kpis').innerHTML;
-  var table = document.getElementById('cmd-table').outerHTML;
+  // Reconstruire le tableau proprement pour l'impression
+  var moisCible = parseFloat(document.getElementById('cmd-mois').value) || 2;
+  var tbl = document.getElementById('cmd-table');
+  var rows = tbl.querySelectorAll('tbody tr');
+  var tableHtml = '<table><thead><tr>' +
+    '<th>Produit</th><th>Marché</th><th>Rot./mois</th><th>Besoin '+moisCible+'m</th><th>Stock</th><th>Qté à cder</th><th>Colis.</th><th>Rem%</th><th>UG</th><th>Qté totale</th><th>PA net HT</th><th>CA cde</th><th>MB%</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function(row) {
+    tableHtml += '<tr>';
+    row.querySelectorAll('td').forEach(function(td) {
+      tableHtml += '<td>' + td.innerHTML + '</td>';
+    });
+    tableHtml += '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+  var table = tableHtml;
   var conclusion = document.getElementById('cmd-conclusion').innerHTML;
   var w = window.open('', '_blank');
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + laboNom + ' — ' + date + '</title><style>' +
@@ -5061,11 +5076,12 @@ function cmdImprimer() {
     '.kpi .lbl{font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#9e9d96;margin-bottom:4px}' +
     '.kpi .val{font-size:18px;font-weight:700}' +
     'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px}' +
-    'th{padding:6px 8px;background:#1a1a18;color:#fff;text-align:left;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}' +
+    'th{padding:6px 8px;background:#1a1a18 !important;color:#fff !important;text-align:left;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'th:not(:first-child):not(:nth-child(2)){text-align:right}' +
     'td{padding:5px 8px;border-bottom:0.5px solid #e0e0e0}' +
     'td:not(:first-child):not(:nth-child(2)){text-align:right;font-family:monospace}' +
     'tr:nth-child(even){background:#f9f9f7}' +
+    'thead tr{background:#1a1a18 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     '.conclusion{background:#e8f5ee;border-radius:8px;padding:12px 16px;font-size:11px;line-height:1.7}' +
     '.footer{margin-top:24px;font-size:10px;color:#9e9d96;border-top:1px solid #e0e0e0;padding-top:8px}' +
     '@media print{body{padding:12px}button{display:none}}' +

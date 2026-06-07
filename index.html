@@ -4994,6 +4994,7 @@ async function condImportPDFDiag(input) {
         for (var k=0; k<openb; k++) txt += '}';
         try { parsed = JSON.parse(txt); } catch(e2) { console.warn('Pass ' + (pi+1) + ': JSON repair failed', e2.message); continue; }
       }
+      console.log("Passe " + (pi+1) + " parsed:", JSON.stringify({nbProduits:(parsed.produits||[]).length,totaux_mois:parsed.totaux_mois,total_ventes_pa_net:parsed.total_ventes_pa_net}));
       (parsed.produits||[]).forEach(function(p) {
         var key = p.ean && p.ean.length >= 10 ? p.ean : p.nom;
         if (!key) return;

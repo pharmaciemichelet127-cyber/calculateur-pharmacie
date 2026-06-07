@@ -6099,7 +6099,7 @@ function catRenderTable() {
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
       // Marche = dropdown des 5 marchés officiels
-      html += '<td style="' + td + 'background:#e8f8f0;min-width:80px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
+      html += '<td style="' + td + 'background:#e8f8f0;min-width:118px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
         marcheOpts.replace('value="' + (p.marche_id||'') + '"', 'value="' + (p.marche_id||'') + '" selected') + '</select></td>';
       // Palier: conditions auto depuis marche_id
       var palierTxt = '-';

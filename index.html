@@ -1080,7 +1080,7 @@
               <input type="file" id="cond-cat-labo" accept=".pdf" style="display:none" onchange="condImportCatalogueLabo(this)">
             </label>
             <label style="font-size:11px;color:var(--accent-text);cursor:pointer;padding:4px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);font-weight:500;display:flex;align-items:center;gap:4px">
-              Importer catalogue labo (XLSX)
+              Importer catalogue COALIA (XLSX)
               <input type="file" id="cond-cat-labo-xlsx" accept=".xlsx,.xls" style="display:none" onchange="condImportCatalogueLaboXLSX(this)">
             </label>
             <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px">
@@ -4467,7 +4467,8 @@ function condImportCatalogueLaboXLSX(input) {
         var colisage = colMap.colisage !== undefined ? (parseInt(row2[colMap.colisage]) || 1) : 1;
         var pu = colMap.pu_catalogue !== undefined ? (parseFloat(String(row2[colMap.pu_catalogue]).replace(',','.')) || 0) : 0;
         var prixNetRendu = colMap.prix_net_rendu !== undefined ? (parseFloat(String(row2[colMap.prix_net_rendu]).replace(',','.')) || 0) : 0;
-        var tva = colMap.tva !== undefined ? (parseFloat(String(row2[colMap.tva]).replace(',','.').replace('%','')) || 5.5) : 5.5;
+        var tvaRaw = colMap.tva !== undefined ? (parseFloat(String(row2[colMap.tva]).replace(',','.').replace('%','')) || 0.055) : 0.055;
+        var tva = tvaRaw > 0 && tvaRaw < 1 ? Math.round(tvaRaw * 1000) / 10 : tvaRaw; // 0.055 → 5.5
 
         if (!ean && !nom) continue;
         if (ean && ean.length < 10) ean = '';
@@ -6092,8 +6093,8 @@ function catRenderTable() {
       var p = item.p; var i = item.i;
       var rowBg = isNA ? '#fff8ec' : bg;
       html += '<tr style="background:' + rowBg + '">';
-      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:140px" title="' + p.nom + '">' + p.nom + '</td>';
-      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center;white-space:nowrap;min-width:90px">' + (p.ean||'-') + '</td>';
+      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:120px;max-width:160px" title="' + p.nom + '">' + p.nom + '</td>';
+      html += '<td style="' + td + 'font-family:monospace;font-size:9px;color:var(--text-ter);text-align:center;white-space:nowrap;min-width:80px">' + (p.ean||'-') + '</td>';
       html += '<td style="' + td + 'text-align:center;font-family:monospace;min-width:44px">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
@@ -6111,7 +6112,10 @@ function catRenderTable() {
       html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + (p.colisage||1) + '" min="1" step="1" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'colisage\',+this.value)"></td>';
       // TVA par produit
       var laboTvaDefault = condLabos[catLaboActif] ? (condLabos[catLaboActif].tva || 5.5) : 5.5;
-      html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + (p.tva !== undefined ? p.tva : laboTvaDefault) + '" min="0" max="100" step="0.5" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'tva\',+this.value)"></td>';
+      var tvaDisplay = p.tva !== undefined ? p.tva : laboTvaDefault;
+      // Convertir 0.055 → 5.5 si la valeur est < 1
+      if (tvaDisplay > 0 && tvaDisplay < 1) tvaDisplay = Math.round(tvaDisplay * 1000) / 10;
+      html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + tvaDisplay + '" min="0" max="100" step="0.5" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'tva\',+this.value)"></td>';
       html += '</tr>';
     });
   });

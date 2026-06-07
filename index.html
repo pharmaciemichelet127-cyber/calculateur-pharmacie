@@ -1037,6 +1037,15 @@
           <span id="cond-stock-immo" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--warn)"></span>
           <span id="cond-stock-immo-hint" style="font-size:11px;color:var(--text-ter)"></span>
         </div>
+        <div class="row">
+          <label>Tarifs valables jusqu'au</label>
+          <input type="date" id="cond-tarif-validite" oninput="condAutoSave();condSyncGitHubAuto();condCheckValidite()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+          <span id="cond-validite-hint" style="font-size:11px"></span>
+        </div>
+        <div class="row">
+          <label>Dernière MAJ catalogue</label>
+          <span id="cond-catalogue-maj" style="font-size:12px;color:var(--text-sec);font-family:'DM Mono',monospace">—</span>
+        </div>
       </div>
 
       <div class="card" id="cond-diag-card" style="display:none">
@@ -3573,6 +3582,11 @@ function condSelectionnerLabo(id) {
   document.getElementById('cond-mb-actuel').value = labo.mbActuel || '';
   document.getElementById('cond-marge-actuelle').value = labo.margeActuelle || '';
   document.getElementById('cond-tva').value = labo.tva !== undefined ? labo.tva : 5.5;
+  var validEl = document.getElementById('cond-tarif-validite');
+  if (validEl) validEl.value = labo.tarifValidite || '';
+  condCheckValidite();
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = labo.catalogueMaj ? new Date(labo.catalogueMaj).toLocaleDateString('fr-FR') : '—';
   condBuildGrid();
   condUpdateDiag();
   condRenderConditions();
@@ -3775,6 +3789,28 @@ function condImporterTout(input) {
   input.value = '';
 }
 
+// ===== VALIDITÉ CATALOGUE =====
+function condCheckValidite() {
+  var ve = document.getElementById('cond-tarif-validite');
+  var hint = document.getElementById('cond-validite-hint');
+  if (!ve || !hint) return;
+  var val = ve.value;
+  if (!val) { hint.textContent = ''; return; }
+  var today = new Date();
+  var expire = new Date(val);
+  var diffDays = Math.round((expire - today) / (1000*60*60*24));
+  if (diffDays < 0) {
+    hint.textContent = '⚠ Expiré depuis ' + Math.abs(diffDays) + ' jours — mettre à jour le catalogue';
+    hint.style.color = 'var(--danger)';
+  } else if (diffDays <= 30) {
+    hint.textContent = '⚠ Expire dans ' + diffDays + ' jours';
+    hint.style.color = 'var(--warn)';
+  } else {
+    hint.textContent = '✓ Valide encore ' + diffDays + ' jours';
+    hint.style.color = 'var(--accent-text)';
+  }
+}
+
 // ===== MARCHÉS OUVERTS =====
 function condRenderMarches() {
   var container = document.getElementById('cond-marches-list');
@@ -3829,6 +3865,8 @@ function condAutoSave() {
   condLabos[condLaboActif].mbActuel = parseFloat(document.getElementById('cond-mb-actuel').value) || 0;
   condLabos[condLaboActif].margeActuelle = parseFloat(document.getElementById('cond-marge-actuelle').value) || 0;
   condLabos[condLaboActif].tva = parseFloat(document.getElementById('cond-tva').value) || 5.5;
+  var ve = document.getElementById('cond-tarif-validite');
+  if (ve) condLabos[condLaboActif].tarifValidite = ve.value || '';
   condUpdateDiag();
   condRenderTabs();
   condCalc();
@@ -4250,7 +4288,8 @@ async function condImportCatalogueLabo(input) {
   });
 
   var allRefs = {};
-  var promptCatalogue = 'Tarif labo pharmacie. Extrais TOUS les produits de cette page avec : nom (désignation complète max 40 cars), ean (EAN/GTIN 13 chiffres, vide si absent — les codes 8 chiffres ne sont pas des EAN13), format (contenance ex: 40ml, 200ml), pu_catalogue (PRIX CAT / prix unitaire catalogue, nombre décimal), colisage (colonne UNITE DE COMMANDE si présente, sinon colonne COLISAGE CARTON, sinon 1). Réponds UNIQUEMENT en JSON valide sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}';
+  var allDateValidite = '';
+  var promptCatalogue = 'Tarif labo pharmacie. Extrais TOUS les produits de cette page avec : nom (désignation complète max 40 cars), ean (EAN/GTIN 13 chiffres, vide si absent — les codes 8 chiffres ne sont pas des EAN13), format (contenance ex: 40ml, 200ml), pu_catalogue (PRIX CAT / prix unitaire catalogue, nombre décimal), colisage (colonne UNITE DE COMMANDE si présente, sinon colonne COLISAGE CARTON, sinon 1). Si tu vois une date de validité des tarifs (ex: "Tarifs valables jusqu\'au 31 Octobre 2025" ou "au 1er Mars 2026"), inclus-la dans le champ "date_validite" au format YYYY-MM-DD. Réponds UNIQUEMENT en JSON valide sans texte ni backticks. Format: {"date_validite":"2026-03-01","produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}';
   var prompts = [
     promptCatalogue + ' PAGES 1-2.',
     promptCatalogue + ' PAGES 3-4.',
@@ -4291,6 +4330,7 @@ async function condImportCatalogueLabo(input) {
         var key = (p.ean && p.ean.length >= 10) ? p.ean : p.nom;
         allRefs[key] = p;
       });
+      if (parsed.date_validite && !allDateValidite) allDateValidite = parsed.date_validite;
     }
 
     var refs = Object.values(allRefs);
@@ -4316,7 +4356,27 @@ async function condImportCatalogueLabo(input) {
     });
 
     condLabos[condLaboActif].produits = existing;
+    // Enregistrer date de MAJ catalogue et date de validité extraite
+    condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
+    if (allDateValidite) {
+      condLabos[condLaboActif].tarifValidite = allDateValidite;
+      var ve2 = document.getElementById('cond-tarif-validite');
+      if (ve2) { ve2.value = allDateValidite; condCheckValidite(); }
+    }
+    // Extraire date de validité depuis le texte du PDF si présente dans les refs
+    var validiteFound = '';
+    refs.forEach(function(r) {
+      if (!validiteFound && r.nom) {
+        var m = r.nom.match(/(\d{1,2})[\/\-\s](\d{4})/);
+        if (m) validiteFound = m[0];
+      }
+    });
+    // Aussi chercher dans la réponse brute (date "jusqu'au XX/XX/XXXX")
     condSauvegarder();
+
+    // Mettre à jour l'affichage
+    var majEl = document.getElementById('cond-catalogue-maj');
+    if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
 
     if (status) {
       status.textContent = nb + ' refs ajoutées depuis catalogue labo (total : ' + existing.length + ' produits)';

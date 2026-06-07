@@ -4340,10 +4340,9 @@ async function condImportCatalogueLabo(input) {
     var refs = Object.values(allRefs);
     if (refs.length === 0) throw new Error('Aucun produit extrait — vérifiez que le PDF est un listing produits/tarif labo lisible');
 
-    // Merger avec produits existants (ne pas écraser les données de ventes)
-    var existing = condLabos[condLaboActif].produits || [];
+    // Remplacer les produits existants (vider le catalogue avant d'importer)
+    var existing = [];
     var eansDejaPresents = {};
-    existing.forEach(function(p){ if (p.ean) eansDejaPresents[p.ean] = true; });
 
     var nb = 0;
     refs.forEach(function(r) {
@@ -4452,9 +4451,9 @@ function condImportCatalogueLaboXLSX(input) {
       // Si pas de colonne désignation trouvée, utiliser gamme
       if (colMap.nom === undefined && colMap.gamme !== undefined) colMap.nom = colMap.gamme;
 
-      var existing = condLabos[condLaboActif].produits || [];
+      // Remplacer le catalogue existant
+      var existing = [];
       var eansDejaPresents = {};
-      existing.forEach(function(p){ if (p.ean) eansDejaPresents[p.ean] = true; });
 
       var nb = 0;
       for (var ri2 = headerIdx + 1; ri2 < rows.length; ri2++) {

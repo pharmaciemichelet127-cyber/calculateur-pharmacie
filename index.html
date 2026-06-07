@@ -795,7 +795,7 @@
       <div class="row">
         <label>PA HT remise (euro)</label>
         <input type="number" id="b-pa-a" value="6.38" step="0.001" min="0" oninput="calcBundle()">
-        <label style="min-width:80px">PV TTC (euro)</label>
+        <label style="min-width:60px">PV TTC (euro)</label>
         <input type="number" id="b-pv-a" value="14.90" step="0.01" min="0" oninput="calcBundle()">
       </div>
       <div class="row"><label>Stock disponible</label><input type="number" id="b-stock-a" value="12" step="1" min="0" oninput="calcBundle()"></div>
@@ -852,7 +852,7 @@
       <div class="row">
         <label>PA HT remise (euro)</label>
         <input type="number" id="b-pa-b" value="4.84" step="0.001" min="0" oninput="calcBundle()">
-        <label style="min-width:80px">PV TTC (euro)</label>
+        <label style="min-width:60px">PV TTC (euro)</label>
         <input type="number" id="b-pv-b" value="10.90" step="0.01" min="0" oninput="calcBundle()">
       </div>
       <div class="row"><label>Stock disponible</label><input type="number" id="b-stock-b" value="12" step="1" min="0" oninput="calcBundle()"></div>
@@ -1398,15 +1398,15 @@
       <div style="overflow-x:auto;width:100%">
         <table id="cat-tbl" style="border-collapse:collapse;font-size:12px;table-layout:auto">
           <thead><tr style="background:var(--text);color:#fff">
-            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:180px">Produit</th>
-            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:115px">EAN</th>
-            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:50px">Rot.</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:130px">Categorie</th>
-            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:130px">Sous-categorie</th>
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:140px">Produit</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:90px">EAN</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;min-width:44px">Rot.</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:100px">Categorie</th>
+            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:100px">Sous-categorie</th>
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:160px">Marche</th>
-            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:80px">Palier</th>
-            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:70px">Colis.</th>
-            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:70px">TVA%</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:60px">Palier</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:55px">Colis.</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:55px">TVA%</th>
           </tr></thead>
           <tbody id="cat-tbody"></tbody>
         </table>
@@ -6042,7 +6042,7 @@ function catRenderTable() {
   if (!tbody) return;
   var inS  = 'font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:100%;box-sizing:border-box;';
   var selS = 'font-size:11px;padding:3px 4px;border:1px solid var(--accent);border-radius:3px;background:#e8f8f0;width:100%;box-sizing:border-box;font-weight:500;cursor:pointer;';
-  var td   = 'padding:4px 6px;border-bottom:0.5px solid var(--border);font-size:11px;';
+  var td   = 'padding:3px 5px;border-bottom:0.5px solid var(--border);font-size:10px;';
 
   // Build marche options from MARCHES_NUTRICO
   var marcheOpts = '<option value="">\u2014 choisir \u2014</option>';
@@ -6092,13 +6092,13 @@ function catRenderTable() {
       var p = item.p; var i = item.i;
       var rowBg = isNA ? '#fff8ec' : bg;
       html += '<tr style="background:' + rowBg + '">';
-      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:180px" title="' + p.nom + '">' + p.nom + '</td>';
-      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center;white-space:nowrap;min-width:115px">' + (p.ean||'-') + '</td>';
-      html += '<td style="' + td + 'text-align:center;font-family:monospace;min-width:50px">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
+      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:140px" title="' + p.nom + '">' + p.nom + '</td>';
+      html += '<td style="' + td + 'font-family:monospace;font-size:10px;color:var(--text-ter);text-align:center;white-space:nowrap;min-width:90px">' + (p.ean||'-') + '</td>';
+      html += '<td style="' + td + 'text-align:center;font-family:monospace;min-width:44px">' + (p.moy||0).toFixed(2).replace('.',',') + '</td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
       // Marche = dropdown des 5 marchés officiels
-      html += '<td style="' + td + 'background:#e8f8f0;min-width:200px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
+      html += '<td style="' + td + 'background:#e8f8f0;min-width:140px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
         marcheOpts.replace('value="' + (p.marche_id||'') + '"', 'value="' + (p.marche_id||'') + '" selected') + '</select></td>';
       // Palier: conditions auto depuis marche_id
       var palierTxt = '-';

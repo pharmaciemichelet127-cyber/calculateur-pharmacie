@@ -1079,6 +1079,10 @@
               Importer catalogue labo (PDF)
               <input type="file" id="cond-cat-labo" accept=".pdf" style="display:none" onchange="condImportCatalogueLabo(this)">
             </label>
+            <label style="font-size:11px;color:var(--warn);cursor:pointer;padding:4px 10px;border:1px solid var(--warn);border-radius:var(--radius-sm);background:#fff8ee;font-weight:500;display:flex;align-items:center;gap:4px" title="Met à jour uniquement les prix des produits présents dans le PDF, sans toucher au reste du catalogue">
+              Importer avenant tarifs (PDF)
+              <input type="file" id="cond-avenant-labo" accept=".pdf" style="display:none" onchange="condImportAvenantLabo(this)">
+            </label>
             <label style="font-size:11px;color:var(--accent-text);cursor:pointer;padding:4px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);font-weight:500;display:flex;align-items:center;gap:4px">
               Importer catalogue COALIA (XLSX)
               <input type="file" id="cond-cat-labo-xlsx" accept=".xlsx,.xls" style="display:none" onchange="condImportCatalogueLaboXLSX(this)">
@@ -4509,6 +4513,122 @@ function condImportCatalogueLaboXLSX(input) {
     }
   };
   reader.readAsArrayBuffer(file);
+  input.value = '';
+}
+
+// ===== IMPORT AVENANT TARIFS LABO =====
+async function condImportAvenantLabo(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('cond-pdf-status');
+  if (!condLaboActif || !condLabos[condLaboActif]) {
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  var existing = condLabos[condLaboActif].produits || [];
+  if (existing.length === 0) {
+    if (status) { status.textContent = 'Importez d\'abord le catalogue complet avant un avenant.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+
+  if (status) { status.textContent = 'Lecture avenant (passe 1/4)...'; status.style.color = 'var(--text-sec)'; }
+
+  var b64 = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  var promptAvenant = 'Avenant/mise à jour de tarifs labo. Extrais UNIQUEMENT les produits avec leur nouveau prix avec : ean (EAN/GTIN 13 chiffres uniquement), nom (désignation), pu_catalogue (nouveau prix unitaire HT catalogue, nombre décimal), colisage (UNITE DE COMMANDE si présente, sinon ne pas inclure). Si tu vois une date de validité, inclus-la dans "date_validite" (format YYYY-MM-DD). Réponds UNIQUEMENT en JSON valide. Format: {"date_validite":"2026-03-01","produits":[{"nom":"...","ean":"...","pu_catalogue":0}]}';
+  var prompts = [
+    promptAvenant + ' PAGES 1-2.',
+    promptAvenant + ' PAGES 3-4.',
+    promptAvenant + ' PAGES 5-6 si présentes.',
+    promptAvenant + ' PAGES 7+ si présentes.'
+  ];
+
+  var allRefs = {};
+  var allDateValidite = '';
+
+  try {
+    for (var pi = 0; pi < 4; pi++) {
+      if (status) status.textContent = 'Lecture avenant (passe ' + (pi+1) + '/4)...';
+      var resp = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16000,
+          messages: [{ role: 'user', content: [
+            { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
+            { type:'text', text: prompts[pi] }
+          ]}]
+        })
+      });
+      var data = await resp.json();
+      if (data.error) { if (status) { status.textContent = 'Erreur API: ' + data.error.message; status.style.color = 'var(--danger)'; } return; }
+      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      if (!raw || raw.length < 10) continue;
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+        var txt = jsonMatch[0].replace(/,\s*$/, '');
+        var opens = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var openb = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        for (var k=0; k<opens; k++) txt += ']';
+        for (var k=0; k<openb; k++) txt += '}';
+        try { parsed = JSON.parse(txt); } catch(e2) { continue; }
+      }
+      (parsed.produits||[]).forEach(function(p) {
+        if (!p.nom && !p.ean) return;
+        var key = (p.ean && p.ean.length >= 10) ? p.ean : p.nom;
+        allRefs[key] = p;
+      });
+      if (parsed.date_validite && !allDateValidite) allDateValidite = parsed.date_validite;
+    }
+
+    var refs = Object.values(allRefs);
+    if (refs.length === 0) throw new Error('Aucun produit trouvé dans l\'avenant');
+
+    // Mettre à jour UNIQUEMENT les produits existants
+    var nb = 0;
+    refs.forEach(function(r) {
+      var ean = (r.ean && r.ean.length >= 10) ? r.ean : '';
+      var prod = existing.find(function(p) {
+        if (ean && p.ean === ean) return true;
+        if (!ean && r.nom && p.nom && p.nom.toLowerCase().indexOf(r.nom.toLowerCase().slice(0,10)) >= 0) return true;
+        return false;
+      });
+      if (prod) {
+        if (r.pu_catalogue > 0) prod.pu_catalogue = r.pu_catalogue;
+        if (r.colisage > 0) prod.colisage = r.colisage;
+        nb++;
+      }
+    });
+
+    condLabos[condLaboActif].produits = existing;
+    condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
+    if (allDateValidite) {
+      condLabos[condLaboActif].tarifValidite = allDateValidite;
+      var ve = document.getElementById('cond-tarif-validite');
+      if (ve) { ve.value = allDateValidite; condCheckValidite(); }
+    }
+    condSauvegarder();
+
+    var majEl = document.getElementById('cond-catalogue-maj');
+    if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
+
+    if (status) {
+      status.textContent = nb + ' produits mis à jour sur ' + refs.length + ' dans l\'avenant';
+      status.style.color = 'var(--accent-text)';
+    }
+    condUpdateDiag();
+
+  } catch(err) {
+    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+  }
   input.value = '';
 }
 

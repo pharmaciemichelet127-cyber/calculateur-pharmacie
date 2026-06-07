@@ -4475,6 +4475,9 @@ async function condImportCatalogueLabo(input) {
         allRefs[key] = p;
       });
       if (parsed.date_validite && !allDateValidite) allDateValidite = parsed.date_validite;
+      if (parsed.total_ventes_pa_net && parsed.total_ventes_pa_net > 0) {
+        lgpiTotaux = { valPA: parsed.total_ventes_pa_net };
+      }
     }
 
     var refs = Object.values(allRefs);
@@ -4954,12 +4957,13 @@ async function condImportPDFDiag(input) {
 
   var prompts = [
     'Etat des ventes LGPI page 1. Extrais : (1) pour chaque produit : nom (max 20 cars), ean (13 chiffres ou vide), stock (entier), moy (Moy. decimal), pa_net (PA Cat Net decimal), pv_ttc (PV TTC decimal), mois (12 entiers : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si vide). (2) la ligne de TOTAUX en bas de page si présente : totaux_mois (12 entiers CA TTC total par mois dans le meme ordre). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}],"totaux_mois":[0,0,0,0,0,0,0,0,0,0,0,0]}',
-    'Etat des ventes LGPI page 2. Meme extraction : produits (nom, ean, stock, moy, pa_net, pv_ttc, mois) ET totaux_mois (ligne totaux en bas si presente). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}],"totaux_mois":[0,0,0,0,0,0,0,0,0,0,0,0]}'
+    'Etat des ventes LGPI page 2. Meme extraction : produits (nom, ean, stock, moy, pa_net, pv_ttc, mois) ET totaux_mois (ligne totaux en bas si presente). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}],"totaux_mois":[0,0,0,0,0,0,0,0,0,0,0,0]}',
+    'Etat des ventes LGPI pages 3, 4, 5 et 6 (si elles existent). Meme extraction : produits + totaux_mois. En plus si tu vois un recapitulatif TOTAL avec "Vente sur les 12 derniers mois" et une valorisation PA Cat Net, inclus-le dans "total_ventes_pa_net" (nombre decimal). UNIQUEMENT JSON sans texte. Format: {"produits":[...],"totaux_mois":[...],"total_ventes_pa_net":0}'
   ];
 
   try {
-    for (var pi = 0; pi < 2; pi++) {
-      if (status) status.textContent = 'Lecture PDF (passe ' + (pi+1) + '/2)...';
+    for (var pi = 0; pi < 3; pi++) {
+      if (status) status.textContent = 'Lecture PDF (passe ' + (pi+1) + '/3)...';
       var resp = await fetch('/api/claude', {
         method: 'POST',
         headers: {"Content-Type":"application/json"},

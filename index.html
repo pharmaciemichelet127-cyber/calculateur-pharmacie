@@ -5141,14 +5141,7 @@ function cmdInit() {
     opt.textContent = labo.nom + (labo.produits ? ' (' + labo.produits.length + ' produits)' : '');
     sel.appendChild(opt);
   });
-  // Init default paliers
-  if (cmdPaliers.length === 0) {
-    cmdAjouterPalier({ label:'Marche >= 30 ref', refs_min:30, refs_max:999, rem:30, ug_offerts:0, ug_achetes:0 });
-    cmdAjouterPalier({ label:'Marche 8-29 ref',  refs_min:8,  refs_max:29,  rem:25, ug_offerts:0, ug_achetes:0 });
-    cmdAjouterPalier({ label:'Proteines',         refs_min:1,  refs_max:999, rem:25, ug_offerts:2, ug_achetes:12, categorie:'proteine' });
-    cmdAjouterPalier({ label:'Proteines isolats', refs_min:1,  refs_max:999, rem:20, ug_offerts:2, ug_achetes:12, categorie:'isolat' });
-    cmdAjouterPalier({ label:'Barres proteines',  refs_min:1,  refs_max:999, rem:20, ug_offerts:1, ug_achetes:6,  categorie:'barre' });
-  }
+  // Paliers chargés par cmdChargeLabo selon le labo sélectionné
 }
 
 function cmdAjouterPalier(data) {
@@ -5162,6 +5155,8 @@ function cmdAjouterPalier(data) {
 function cmdSupprimerPalier(id) {
   cmdPaliers = cmdPaliers.filter(function(p){ return p.id !== id; });
   cmdRenderPaliers();
+  var _s = document.getElementById('cmd-labo-sel');
+  if (_s && _s.value) cmdSauvegarderPaliers(parseInt(_s.value) || _s.value);
 }
 
 function cmdUpdatePalier(id, key, val) {
@@ -5192,6 +5187,15 @@ function cmdRenderPaliers() {
   }).join('');
 }
 
+function cmdSauvegarderPaliers(id) {
+  // Sauvegarder les paliers du labo actif
+  if (!id || !condLabos[id]) return;
+  condLabos[id].cmdPaliers = cmdPaliers.map(function(p) {
+    return { label:p.label, refs_min:p.refs_min, refs_max:p.refs_max, rem:p.rem, ug_offerts:p.ug_offerts, ug_achetes:p.ug_achetes, categorie:p.categorie||'' };
+  });
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+}
+
 function cmdChargeLabo() {
   var sel = document.getElementById('cmd-labo-sel');
   if (!sel) return;
@@ -5203,6 +5207,19 @@ function cmdChargeLabo() {
   }
   cmdProduitsSource = condLabos[id].produits || [];
   document.getElementById('cmd-result-card').style.display = 'none';
+
+  // Charger les paliers spécifiques au labo
+  var laboData = condLabos[id];
+  cmdPaliers = [];
+  cmdPalierId = 1;
+  if (laboData.cmdPaliers && laboData.cmdPaliers.length > 0) {
+    // Paliers sauvegardés pour ce labo
+    laboData.cmdPaliers.forEach(function(p) { cmdAjouterPalier(p); });
+  } else {
+    // Paliers vides par défaut — pas de conditions pré-remplies
+    // L'utilisateur saisit les conditions de ce labo
+  }
+  cmdRenderPaliers();
 }
 
 function cmdGenerer() {
@@ -5210,6 +5227,9 @@ function cmdGenerer() {
     alert('Chargez d\'abord un labo avec des produits (via Cond. commerciales > Importer PDF LGPI).');
     return;
   }
+  // Sauvegarder les paliers du labo actif avant de calculer
+  var _selCmd = document.getElementById('cmd-labo-sel');
+  if (_selCmd && _selCmd.value) cmdSauvegarderPaliers(parseInt(_selCmd.value) || _selCmd.value);
   var moisCible = parseFloat(document.getElementById('cmd-mois').value) || 2;
   var rotMin    = parseFloat(document.getElementById('cmd-rot-min').value) || 0;
   var stockMode = document.getElementById('cmd-stock-mode').value;

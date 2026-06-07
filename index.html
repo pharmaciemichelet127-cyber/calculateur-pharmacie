@@ -4318,8 +4318,14 @@ async function condImportCatalogueLabo(input) {
       });
       var data = await resp.json();
       var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      if (status) status.textContent = 'Passe ' + (pi+1) + '/4 — ' + raw.length + ' chars reçus...';
+      if (!raw || raw.length < 10) {
+        // Afficher l'erreur API si présente
+        if (data.error) { if (status) { status.textContent = 'Erreur API: ' + data.error.message; status.style.color = 'var(--danger)'; } return; }
+        continue;
+      }
       var jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) continue;
+      if (!jsonMatch) { console.log('Passe ' + pi + ' raw:', raw.slice(0,200)); continue; }
       var parsed;
       try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
         var txt = jsonMatch[0].replace(/,\s*$/, '');

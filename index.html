@@ -5043,41 +5043,35 @@ async function condImportPDFDiag(input) {
     });
     var mbGlobal = totCAHT > 0 ? totMarge / totCAHT * 100 : 0;
 
-    // Reconstruct monthly CA TTC from product monthly quantities
-    // PDF order: [jun26(0),mai26(1),avr26(2),mar26(3),fev26(4),jan26(5),dec25(6),nov25(7),oct25(8),sep25(9),aou25(10),juil25(11)]
-    // App grid: [Jun25(0)=juil25, Jul25(1)=aou25, ..., Mai26(11)=jun26]  → app[i] = pdf[11-i]
+    // Reconstruction CA mensuel TTC depuis les colonnes mois par produit (qté × PV TTC)
+    // PDF order: [jun26(0),mai26(1),...,juil25(11)] → app order: appIdx = 11 - pdfIdx
+    // Les totaux_mois du PDF sont des quantités (unités), pas du CA → on les ignore pour le CA
     var ventesMensuelles = new Array(12).fill(0);
     prods.forEach(function(p){
       if (!p.mois || p.mois.length !== 12) return;
+      var pvTTC = p.pv_ttc || 0;
+      if (pvTTC <= 0) return;
       for (var appIdx = 0; appIdx < 12; appIdx++) {
         var pdfIdx = 11 - appIdx;
-        ventesMensuelles[appIdx] += (p.mois[pdfIdx] || 0) * (p.pv_ttc || 0);
+        ventesMensuelles[appIdx] += (p.mois[pdfIdx] || 0) * pvTTC;
       }
     });
 
-    // Priorité 1 : totaux mensuels extraits directement du PDF (ligne totaux)
-    // Priorité 2 : reconstruction qté×PV normalisée par moy×12×PV
+    // CA TTC annuel = somme des CA mensuels reconstuits depuis les produits
     var caTTCproduits = prods.reduce(function(s,p){return s+(p.moy||0)*12*(p.pv_ttc||0);},0);
-    var totalTotaux = allTotauxMois.reduce(function(s,v){return s+v;},0);
+    var totalVentesMensuelles = ventesMensuelles.reduce(function(s,v){return s+v;},0);
 
+    // ventesFinales : CA TTC par mois depuis colonnes produits (source la plus précise)
+    // Si les colonnes mois sont renseignées → utiliser ventesMensuelles directement
+    // Sinon normaliser depuis moy×PV×12
     var ventesFinales;
-    if (totalTotaux > 0) {
-      // Utiliser les totaux PDF — source la plus fiable
-      // Convertir de l'ordre PDF (jun26=0...juil25=11) vers ordre app (jun25=0...mai26=11)
-      // allTotauxMois est déjà en ordre app (rempli avec appIdx)
-      ventesFinales = allTotauxMois.map(function(v){ return Math.round(v); });
+    if (totalVentesMensuelles > 0) {
+      ventesFinales = ventesMensuelles.map(function(v){ return Math.round(v); });
+    } else if (caTTCproduits > 0) {
+      var moyMois = Math.round(caTTCproduits / 12);
+      ventesFinales = new Array(12).fill(moyMois);
     } else {
-      // Fallback : reconstruction normalisée
-      var totalVentes = ventesMensuelles.reduce(function(s,v){return s+v;},0);
-      if (totalVentes > 0 && caTTCproduits > 0) {
-        var ratio = caTTCproduits / totalVentes;
-        ventesFinales = ventesMensuelles.map(function(v){ return Math.round(v * ratio); });
-      } else if (caTTCproduits > 0) {
-        var moyMois = Math.round(caTTCproduits / 12);
-        ventesFinales = new Array(12).fill(moyMois);
-      } else {
-        ventesFinales = ventesMensuelles;
-      }
+      ventesFinales = new Array(12).fill(0);
     }
 
     // Fill CA grid
@@ -5156,28 +5150,14 @@ async function condImportPDFDiag(input) {
     condLabos[condLaboActif].margeActuelle = Math.round(margeExercice);
     condLabos[condLaboActif].mbGlobal12m = parseFloat(mbGlobal.toFixed(1)); // garder 12 mois glissants
 
-    // CA 12 mois glissants — sources par ordre de fiabilité :
-    // 1. Somme des totaux mensuels PDF (ligne TOTAUX par page) → CA TTC réel
-    // 2. total_ventes_pa_net (récap dernière page) → reconstitution via MB%
-    // 3. Reconstruction moy×12×PV produit par produit
-    var caTTCfinal = 0;
-    prods.forEach(function(p){ caTTCfinal += (p.moy||0) * 12 * (p.pv_ttc||0); });
-    var totalTotauxCA = allTotauxMois.reduce(function(s,v){return s+(v||0);},0);
-    var caTTC2;
-    if (totalTotauxCA > 0) {
-      // Source 1 : totaux mensuels directs (CA TTC/mois) — le plus fiable
-      caTTC2 = totalTotauxCA;
-    } else if (lgpiTotaux && lgpiTotaux.valPA > 0) {
-      // Source 2 : PA Cat Net total → CA TTC via MB% et TVA
-      var tvaFacteur = 1 + (parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055);
-      var mbDecimal = (mbGlobal || 30) / 100;
-      caTTC2 = lgpiTotaux.valPA / (1 - mbDecimal) * tvaFacteur;
-    } else if (caTTCfinal > 0) {
-      // Source 3 : reconstruction produit par produit
-      caTTC2 = caTTCfinal;
-    } else {
-      caTTC2 = caTTC;
+    // CA 12 mois glissants TTC
+    // Source 1 : somme de ventesFinales (qté×PV TTC depuis colonnes mois par produit)
+    // Source 2 : moy×PV×12 si colonnes mois absentes
+    var caTTC2 = ventesFinales.reduce(function(s,v){return s+(v||0);},0);
+    if (caTTC2 <= 0) {
+      caTTC2 = prods.reduce(function(s,p){return s+(p.moy||0)*12*(p.pv_ttc||0);},0);
     }
+    if (caTTC2 <= 0) caTTC2 = caTTC;
     condLabos[condLaboActif].caAnnuel = Math.round(caTTC2);
     // Mettre à jour le champ CA affiché avec la valeur finale (après lgpiTotaux)
     document.getElementById('cond-ca-annuel').value = Math.round(caTTC2);

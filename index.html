@@ -1079,6 +1079,10 @@
               Importer catalogue labo (PDF)
               <input type="file" id="cond-cat-labo" accept=".pdf" style="display:none" onchange="condImportCatalogueLabo(this)">
             </label>
+            <label style="font-size:11px;color:var(--accent-text);cursor:pointer;padding:4px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);font-weight:500;display:flex;align-items:center;gap:4px">
+              Importer catalogue labo (XLSX)
+              <input type="file" id="cond-cat-labo-xlsx" accept=".xlsx,.xls" style="display:none" onchange="condImportCatalogueLaboXLSX(this)">
+            </label>
             <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px">
               Importer PDF LGPI (diagnostic)
               <input type="file" id="cond-pdf-diag" accept=".pdf" style="display:none" onchange="condImportPDFDiag(this)">
@@ -4387,6 +4391,110 @@ async function condImportCatalogueLabo(input) {
   } catch(err) {
     if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
   }
+  input.value = '';
+}
+
+// ===== IMPORT XLSX CATALOGUE LABO =====
+function condImportCatalogueLaboXLSX(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('cond-pdf-status');
+  if (!condLaboActif || !condLabos[condLaboActif]) {
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (status) { status.textContent = 'Lecture XLSX...'; status.style.color = 'var(--text-sec)'; }
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // Trouver la ligne header (contient "CODE 13" ou "LABO")
+      var headerIdx = -1;
+      var colMap = {};
+      for (var ri = 0; ri < Math.min(rows.length, 10); ri++) {
+        var row = rows[ri];
+        for (var ci = 0; ci < row.length; ci++) {
+          var cell = String(row[ci] || '').trim().toUpperCase();
+          if (cell === 'CODE 13' || cell.indexOf('CODE 13') >= 0) { headerIdx = ri; break; }
+          if (cell === 'LABO') { headerIdx = ri; break; }
+        }
+        if (headerIdx >= 0) break;
+      }
+      if (headerIdx < 0) throw new Error('Header non trouvé — vérifiez que le fichier a une colonne CODE 13 ou LABO');
+
+      // Mapper les colonnes
+      var headers = rows[headerIdx].map(function(h){ return String(h||'').trim().toUpperCase(); });
+      headers.forEach(function(h, i) {
+        if (h === 'LABO') colMap.labo = i;
+        if (h === 'CODE 13' || h.indexOf('CODE 13') >= 0) colMap.ean = i;
+        if (h === 'T.V.A' || h === 'TVA') colMap.tva = i;
+        if (h.indexOf('GAMME') >= 0) colMap.gamme = i;
+        if (h === 'COLISAGE') colMap.colisage = i;
+        if (h.indexOf('PRIX TARIF HT') >= 0 || h.indexOf('PRIX NET') >= 0 && h.indexOf('RENDU') < 0) colMap.pu_catalogue = i;
+        if (h.indexOf('RENDU OFFICINE') >= 0 || h.indexOf('PRIX NET') >= 0 && h.indexOf('RENDU') >= 0) colMap.prix_net_rendu = i;
+        if (h.indexOf('PRIX TARIF') >= 0) colMap.pu_catalogue = i;
+        if (h.indexOf('DÉSIGNATION') >= 0 || h.indexOf('DESIGNATION') >= 0 || h.indexOf('LIBELLÉ') >= 0 || h.indexOf('LIBELLE') >= 0) colMap.nom = i;
+      });
+
+      // Si pas de colonne désignation trouvée, utiliser gamme
+      if (colMap.nom === undefined && colMap.gamme !== undefined) colMap.nom = colMap.gamme;
+
+      var existing = condLabos[condLaboActif].produits || [];
+      var eansDejaPresents = {};
+      existing.forEach(function(p){ if (p.ean) eansDejaPresents[p.ean] = true; });
+
+      var nb = 0;
+      for (var ri2 = headerIdx + 1; ri2 < rows.length; ri2++) {
+        var row2 = rows[ri2];
+        if (!row2 || row2.every(function(c){ return !c; })) continue;
+
+        var ean = colMap.ean !== undefined ? String(row2[colMap.ean] || '').trim().replace(/\D/g,'') : '';
+        var nom = colMap.nom !== undefined ? String(row2[colMap.nom] || '').trim() : '';
+        var labo = colMap.labo !== undefined ? String(row2[colMap.labo] || '').trim() : '';
+        var colisage = colMap.colisage !== undefined ? (parseInt(row2[colMap.colisage]) || 1) : 1;
+        var pu = colMap.pu_catalogue !== undefined ? (parseFloat(String(row2[colMap.pu_catalogue]).replace(',','.')) || 0) : 0;
+        var prixNetRendu = colMap.prix_net_rendu !== undefined ? (parseFloat(String(row2[colMap.prix_net_rendu]).replace(',','.')) || 0) : 0;
+        var tva = colMap.tva !== undefined ? (parseFloat(String(row2[colMap.tva]).replace(',','.').replace('%','')) || 5.5) : 5.5;
+
+        if (!ean && !nom) continue;
+        if (ean && ean.length < 10) ean = '';
+        if (ean && eansDejaPresents[ean]) continue;
+        if (!nom) nom = labo + ' ' + ean;
+
+        existing.push({
+          nom: nom, ean: ean, labo: labo,
+          format: '', colisage: colisage,
+          pu_catalogue: pu, prix_net_rendu: prixNetRendu,
+          tva: tva,
+          moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0,
+          rem_cat: 0, mois: new Array(12).fill(0)
+        });
+        if (ean) eansDejaPresents[ean] = true;
+        nb++;
+      }
+
+      condLabos[condLaboActif].produits = existing;
+      condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
+      condSauvegarder();
+
+      var majEl = document.getElementById('cond-catalogue-maj');
+      if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
+
+      if (status) {
+        status.textContent = nb + ' refs ajoutées depuis XLSX (total : ' + existing.length + ' produits)';
+        status.style.color = 'var(--accent-text)';
+      }
+      condUpdateDiag();
+    } catch(err) {
+      if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+    }
+  };
+  reader.readAsArrayBuffer(file);
   input.value = '';
 }
 

@@ -3582,6 +3582,36 @@ function condSelectionnerLabo(id) {
 }
 
 // ===== GITHUB SYNC =====
+async function condSyncGitHubAuto() {
+  // Sync silencieux — ne s'exécute que si token présent
+  var token = localStorage.getItem('gh_token');
+  if (!token) return;
+  try {
+    var sha = null;
+    var getResp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (getResp.ok) { var existing = await getResp.json(); sha = existing.sha; }
+    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabos }, null, 2);
+    var b64 = btoa(unescape(encodeURIComponent(data)));
+    var body = { message: 'Auto-save ' + new Date().toISOString().slice(0,16).replace('T',' '), content: b64, branch: GH_BRANCH };
+    if (sha) body.sha = sha;
+    await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE, {
+      method: 'PUT',
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    // Indicateur discret
+    var status = document.getElementById('cond-backup-status');
+    if (status) {
+      status.textContent = '☁ GitHub ✓';
+      status.style.color = 'var(--accent-text)';
+      setTimeout(function(){ status.textContent = ''; }, 3000);
+    }
+  } catch(e) { /* silencieux */ }
+}
+
+// ===== GITHUB SYNC =====
 var GH_OWNER = 'pharmaciemichelet127-cyber';
 var GH_REPO  = 'calculateur-pharmacie';
 var GH_FILE  = 'data-labos.json';
@@ -3786,6 +3816,7 @@ function condSauvegarder() {
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
   var btn = document.querySelector('[onclick="condSauvegarder()"]');
   if (btn) { btn.textContent = 'Sauvegarde !'; setTimeout(function(){ btn.textContent = 'Sauvegarder'; }, 1500); }
+  condSyncGitHubAuto();
 }
 
 // ===== AJOUTER CONDITIONS =====
@@ -5799,6 +5830,7 @@ function catSauvegarder() {
   });
   condLabos[catLaboActif].catalogue = catalogue;
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
   var status = document.getElementById('cat-status');
   if (status) { status.textContent = 'Sauvegarde ! ' + Object.keys(catalogue).length + ' produits classes.'; status.style.color = 'var(--accent-text)'; }
   setTimeout(function(){ if(status) status.style.color = ''; }, 2000);

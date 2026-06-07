@@ -355,116 +355,6 @@
 
   <!-- ===== LEXIQUE ===== -->
   <div id="panel-lex" style="display:none">
-
-    <!-- SECTION WORKFLOW -->
-    <div class="card">
-      <p class="card-title">📋 Place de cet outil dans le workflow commande</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:18px">
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
-          <div style="font-size:18px;margin-bottom:6px">🔍</div>
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-ter);margin-bottom:6px">1. ANALYSE ZONE</div>
-          <div style="font-size:12px;color:var(--text-sec);line-height:1.5"><strong>Quoi référencer ?</strong><br>DN% zone Ospharm · urgences stock · règle par segment SOCLE/CŒUR/COMPLÉMENT</div>
-        </div>
-        <div style="background:var(--accent-bg);border:1px solid rgba(26,107,74,0.2);border-radius:var(--radius-sm);padding:14px;text-align:center">
-          <div style="font-size:18px;margin-bottom:6px">🧮</div>
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-text);opacity:0.7;margin-bottom:6px">2. CE CALCULATEUR</div>
-          <div style="font-size:12px;color:var(--accent-text);line-height:1.5"><strong>Combien commander ?</strong><br>Rotation ventes · paliers remise · UG · franco · MB%</div>
-        </div>
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
-          <div style="font-size:18px;margin-bottom:6px">💊</div>
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-ter);margin-bottom:6px">3. LGPI</div>
-          <div style="font-size:12px;color:var(--text-sec);line-height:1.5"><strong>Saisir la commande</strong><br>Quantités finales validées · transmission au grossiste</div>
-        </div>
-      </div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-ter);margin-bottom:10px">Les deux outils proposent une quantité — quelle différence ?</div>
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead>
-            <tr style="border-bottom:1px solid var(--border)">
-              <th style="text-align:left;padding:6px 8px;color:var(--text-ter);font-weight:600;width:160px"> </th>
-              <th style="text-align:left;padding:6px 8px;color:var(--text-ter);font-weight:600">ANALYSE ZONE — QTÉ FINALE</th>
-              <th style="text-align:left;padding:6px 8px;color:var(--accent-text);font-weight:600">CE CALCULATEUR — QTÉ À CDER</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:7px 8px;color:var(--text-ter);font-weight:500">Basé sur</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">max(QTÉ MOTEUR, QTÉ ZONE) — sécurité stock + zone</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">Rotation LGPI × couverture cible − stock actuel</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:7px 8px;color:var(--text-ter);font-weight:500">Objectif</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">Ne pas être en rupture · quantité minimale de sécurité</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">Vérifier le franco · optimiser remise + UG + MB%</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:7px 8px;color:var(--text-ter);font-weight:500">Remise / UG</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">Non pris en compte</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">Paliers remise + UG + franco intégrés</td>
-            </tr>
-            <tr>
-              <td style="padding:7px 8px;color:var(--text-ter);font-weight:500">En pratique</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">→ Décide quoi commander + qté minimale par produit</td>
-              <td style="padding:7px 8px;color:var(--text-sec)">→ Valide le montant global + optimise les conditions</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div style="background:var(--accent-bg);border:1px solid rgba(26,107,74,0.2);border-radius:var(--radius-sm);padding:14px;font-size:12px;color:var(--accent-text);line-height:1.8">
-        <strong>✅ Flux recommandé en 3 étapes :</strong><br><br>
-        <strong>1. ANALYSE ZONE</strong> → identifie quels produits commander + calcule la QTÉ FINALE par produit (= max entre ce que le Moteur suggère et ce que la zone demande)<br><br>
-        <strong>2. CE CALCULATEUR</strong> → reprend ces produits pour vérifier que le montant total atteint le franco, et optimise les paliers de remise et UG avant de valider<br><br>
-        <strong>3. LGPI</strong> → saisie de la commande finale<br><br>
-        <span style="opacity:0.75">Le calculateur ne recalcule pas les quantités produit par produit — il optimise les conditions commerciales sur la commande déjà construite par ANALYSE ZONE.</span>
-      </div>
-    </div>
-
-    <!-- SECTION ONGLETS -->
-    <div class="card">
-      <p class="card-title">🗂 À quoi sert chaque onglet</p>
-      <table class="lex-table">
-        <thead><tr><th style="width:140px">Onglet</th><th>Rôle</th></tr></thead>
-        <tbody>
-          <tr><td><span class="lex-abbr">Workflow</span></td><td>Paramètres généraux du labo : PA catalogue, remise, TVA, PV TTC. Point de départ obligatoire.</td></tr>
-          <tr><td><span class="lex-abbr">Cond. commerciales</span></td><td>Paliers de remise selon le nombre de références commandées. Permet de savoir quel palier atteindre pour maximiser la remise.</td></tr>
-          <tr><td><span class="lex-abbr">Catalogue</span></td><td>Liste complète des produits du labo avec leur rotation mensuelle (ventes LGPI). Base de calcul de la commande.</td></tr>
-          <tr><td><span class="lex-abbr">Commande</span></td><td><strong>Onglet principal.</strong> Calcule automatiquement QTÉ À COMMANDER = besoin 2 mois − stock actuel, avec colisage et franco. Affiche MB% par produit.</td></tr>
-          <tr><td><span class="lex-abbr">Simulation</span></td><td>Simulateur de commande avec paliers de conditions. Répond à : "Si je commande X références, quel est mon montant HT et ma remise ?"</td></tr>
-          <tr><td><span class="lex-abbr">Prix nets</span></td><td>Calcul du PA net après remise et UG. Utile pour comparer deux offres différentes.</td></tr>
-          <tr><td><span class="lex-abbr">Marge compensée</span></td><td>Module AVENE/QuartzPharma. Calcule la marge réelle en tenant compte du prix de vente zone (PMC Quartier Ospharm) et de la sensibilité prix Quartz.</td></tr>
-          <tr><td><span class="lex-abbr">Négociation</span></td><td>Simule l'impact d'une remise supplémentaire ou d'UG supplémentaires sur la MB%. Outil de préparation RDV labo.</td></tr>
-          <tr><td><span class="lex-abbr">Prix de vente</span></td><td>Calcule le PV TTC optimal à partir du PA HT et du taux de marge cible.</td></tr>
-          <tr><td><span class="lex-abbr">Point mort</span></td><td>Calcule le volume de ventes nécessaire pour couvrir les coûts fixes. Utile pour évaluer la viabilité d'un nouveau référencement.</td></tr>
-          <tr><td><span class="lex-abbr">Verdict promo</span></td><td>Évalue si une promotion est rentable : compare la perte de marge unitaire avec le gain de volume nécessaire.</td></tr>
-          <tr><td><span class="lex-abbr">Stratégie</span></td><td>Vue d'ensemble stratégique : positionnement prix vs zone, recommandations par profil de produit.</td></tr>
-          <tr><td><span class="lex-abbr">Bundle</span></td><td>Calcule la marge d'un lot ou pack promotionnel combinant plusieurs références.</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- SECTION COMMANDE — COLONNES -->
-    <div class="card">
-      <p class="card-title">📦 Onglet Commande — détail des colonnes</p>
-      <table class="lex-table">
-        <thead><tr><th style="width:140px">Colonne</th><th>Définition</th></tr></thead>
-        <tbody>
-          <tr><td><span class="lex-abbr">ROT./MOIS</span></td><td>Rotation mensuelle = ventes moyennes par mois sur la période LGPI. Base de tout le calcul de besoin.</td></tr>
-          <tr><td><span class="lex-abbr">BESOIN 2M</span></td><td>Besoin pour 2 mois de couverture = ROT./MOIS × 2. Paramétrable dans le simulateur.</td></tr>
-          <tr><td><span class="lex-abbr">STOCK</span></td><td>Stock actuel en boîtes. Affiché en orange si stock > 0 (à déduire du besoin).</td></tr>
-          <tr><td><span class="lex-abbr">QTÉ À CDER</span></td><td>Quantité à commander = BESOIN 2M − STOCK, arrondie au colisage supérieur.</td></tr>
-          <tr><td><span class="lex-abbr">COLIS.</span></td><td>Colisage = multiple minimum de commande imposé par le labo (ex: ×3 = commander 3, 6, 9...).</td></tr>
-          <tr><td><span class="lex-abbr">REM%</span></td><td>Remise obtenue sur ce produit selon le palier de conditions commerciales atteint.</td></tr>
-          <tr><td><span class="lex-abbr">UG</span></td><td>Unités gratuites obtenues. Réduisent le PA net effectif sans apparaître dans la facture.</td></tr>
-          <tr><td><span class="lex-abbr">PA CAT HT</span></td><td>Prix d'achat catalogue HT avant remise.</td></tr>
-          <tr><td><span class="lex-abbr">PA NET HT</span></td><td>Prix d'achat réel = PA CAT HT × (1 − REM%). C'est ce montant qui détermine ta marge réelle.</td></tr>
-          <tr><td><span class="lex-abbr">PV TTC</span></td><td>Prix de vente conseillé TTC. Modifiable produit par produit.</td></tr>
-          <tr><td><span class="lex-abbr">CA CDE</span></td><td>Chiffre d'affaires de la commande = PA NET HT × QTÉ TOTALE. Utilisé pour le calcul du franco.</td></tr>
-          <tr><td><span class="lex-abbr">MB%</span></td><td>Taux de marque = (PV HT − PA NET HT) / PV HT. Objectif pharmacie : &gt; 35% sur compléments alimentaires.</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- SECTION ABRÉVIATIONS -->
     <div class="card">
       <p class="card-title">Lexique des abréviations</p>
       <table class="lex-table">
@@ -486,9 +376,8 @@
           <tr><td><span class="lex-abbr">Coop. com.</span></td><td>Coopération commerciale — remise en € (avoir, RFA)</td></tr>
         </tbody>
       </table>
-    </div><!-- fin card abréviations -->
-
-  </div><!-- fin panel-lex -->
+    </div>
+  </div>
 
 
   <!-- ===== POINT MORT ===== -->
@@ -1257,115 +1146,8 @@
 
   <!-- ===== GUIDE ===== -->
   <div id="panel-guide" style="display:none">
-
-    <!-- GUIDE GÉNÉRAL — COMMANDE LABO -->
     <div class="card" style="background:var(--text);color:#fff;border:none">
       <p style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:6px">Guide complet</p>
-      <p style="font-size:18px;font-weight:600;margin-bottom:4px">Préparer une commande labo de A à Z</p>
-      <p style="font-size:13px;opacity:.6">Pharmacie Michelet — Workflow opérationnel</p>
-    </div>
-
-    <div class="card">
-      <p class="card-title">Vue d'ensemble — 3 outils, 3 questions</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
-          <div style="font-size:22px;margin-bottom:6px">🔍</div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-ter);margin-bottom:6px">ANALYSE ZONE<br><span style="opacity:0.6">Google Sheets</span></div>
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Est-ce que je dois l'avoir ?</div>
-          <div style="font-size:12px;color:var(--text-sec);line-height:1.6">DN% zone · urgences stock · règle SOCLE/CŒUR/COMPLÉMENT · QTÉ FINALE minimale</div>
-        </div>
-        <div style="background:var(--accent-bg);border:1px solid rgba(26,107,74,0.2);border-radius:var(--radius-sm);padding:14px">
-          <div style="font-size:22px;margin-bottom:6px">🧮</div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent-text);opacity:0.7;margin-bottom:6px">CE CALCULATEUR<br><span style="opacity:0.6">calculateur-pharmacie.vercel.app</span></div>
-          <div style="font-size:13px;font-weight:600;color:var(--accent-text);margin-bottom:4px">Combien et à quel prix ?</div>
-          <div style="font-size:12px;color:var(--accent-text);opacity:0.8;line-height:1.6">Rotation LGPI · franco · paliers remise · UG · MB% · validation montant commande</div>
-        </div>
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
-          <div style="font-size:22px;margin-bottom:6px">💊</div>
-          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-ter);margin-bottom:6px">LGPI<br><span style="opacity:0.6">Logiciel officine</span></div>
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Saisir et transmettre</div>
-          <div style="font-size:12px;color:var(--text-sec);line-height:1.6">Saisie des quantités finales · transmission au grossiste ou labo direct</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="card-title">Étape 1 — Préparer le stock (Moteur de Commandes)</p>
-      <div style="font-size:13px;color:var(--text-sec);line-height:1.9">
-        <b>Dans LGPI :</b> exporter le stock temps réel → coller dans IMPORT_STOCK_REALTIME du Moteur.<br>
-        <b>Dans ANALYSE ZONE :</b> Menu → 🔄 Mettre à jour PARAMS_PRODUITS.<br>
-        <b>Pourquoi :</b> tous les calculs de quantité (STS, SDC, PLS) sont basés sur ce stock. Si le stock est périmé, les alertes RUPTURE/DANGER sont fausses.
-      </div>
-      <div style="background:var(--danger-bg);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--danger);margin-top:10px">
-        <b>⚠️ OBLIGATOIRE avant tout RDV labo.</b> Ne jamais générer un RDV avec un stock non mis à jour.
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="card-title">Étape 2 — Analyser la zone (ANALYSE ZONE)</p>
-      <div style="font-size:13px;color:var(--text-sec);line-height:1.9;margin-bottom:10px">
-        <b>Dans Ospharm :</b> Proximité → Top Labo → sélectionner le labo → Exporter le fichier TOP_100_LABO_PANEL.<br>
-        <b>Dans ANALYSE ZONE :</b> coller dans un nouvel onglet brut → Menu → 🏭 Importer TOP 100 LABO PANEL → Générer RDV LABO UNIQUE.<br>
-        <b>Ce qu'on obtient :</b> 3 sections — urgences stock / à référencer / sous-performants.
-      </div>
-      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px 14px;font-size:12px;color:var(--text-sec);line-height:1.8">
-        <b>Règle DN par segment pour cocher :</b><br>
-        • <b>SOCLE</b> (0→80% de ton CA) → cocher si DN ≥ 20%<br>
-        • <b>CŒUR</b> (80→95%) → cocher si DN ≥ 30%<br>
-        • <b>COMPLÉMENT</b> (95→100%) → cocher si DN ≥ 50% seulement
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="card-title">Étape 3 — Valider les quantités (ce calculateur)</p>
-      <div style="font-size:13px;color:var(--text-sec);line-height:1.9;margin-bottom:10px">
-        <b>Sélectionner le labo</b> dans le menu déroulant → <b>Calculer la commande</b>.<br>
-        Le calculateur propose une QTÉ À CDER basée sur tes rotations LGPI réelles × couverture 2 mois − stock actuel.<br><br>
-        <b>Vérifier :</b>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-        <div style="background:var(--accent-bg);border-radius:var(--radius-sm);padding:10px 12px;color:var(--accent-text)">
-          <b>✅ Franco atteint ?</b><br>Si non → ajouter des produits SOCLE avec stock bas pour compléter.
-        </div>
-        <div style="background:var(--accent-bg);border-radius:var(--radius-sm);padding:10px 12px;color:var(--accent-text)">
-          <b>✅ Palier remise optimal ?</b><br>Vérifier si quelques références supplémentaires font basculer sur un meilleur palier.
-        </div>
-        <div style="background:var(--warn-bg);border-radius:var(--radius-sm);padding:10px 12px;color:var(--warn)">
-          <b>⚠️ MB% &lt; 35% sur un produit ?</b><br>Vérifier le PV TTC — peut-être à ajuster avant la commande.
-        </div>
-        <div style="background:var(--warn-bg);border-radius:var(--radius-sm);padding:10px 12px;color:var(--warn)">
-          <b>⚠️ UG disponibles ?</b><br>Les UG réduisent le PA net effectif — vérifier les conditions du labo.
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="card-title">Étape 4 — Saisir dans LGPI</p>
-      <div style="font-size:13px;color:var(--text-sec);line-height:1.9">
-        Utiliser la <b>QTÉ TOTALE</b> de l'onglet Commande du calculateur (arrondie au colisage).<br>
-        Pour les produits identifiés par ANALYSE ZONE mais absents du calculateur (nouveaux référencements) → saisir manuellement la QTÉ FINALE d'ANALYSE ZONE.<br><br>
-        Vérifier que le montant total dans LGPI correspond au <b>CA CDE</b> affiché dans la synthèse commande.
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="card-title">Récapitulatif rapide</p>
-      <table class="lex-table">
-        <thead><tr><th style="width:40px">Étape</th><th style="width:160px">Outil</th><th>Action</th></tr></thead>
-        <tbody>
-          <tr><td style="text-align:center;font-weight:700">1</td><td><span class="lex-abbr">Moteur + ANALYSE ZONE</span></td><td>Exporter stock LGPI → IMPORT_STOCK_REALTIME → Mettre à jour PARAMS_PRODUITS</td></tr>
-          <tr><td style="text-align:center;font-weight:700">2</td><td><span class="lex-abbr">ANALYSE ZONE</span></td><td>Exporter TOP 100 Ospharm → Importer → Générer RDV LABO UNIQUE → Cocher selon règle DN</td></tr>
-          <tr><td style="text-align:center;font-weight:700">3</td><td><span class="lex-abbr">Ce calculateur</span></td><td>Sélectionner labo → Vérifier franco + paliers + MB% → Valider montant</td></tr>
-          <tr><td style="text-align:center;font-weight:700">4</td><td><span class="lex-abbr">LGPI</span></td><td>Saisir quantités finales → Transmettre commande</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <hr style="border:none;border-top:2px solid var(--border);margin:8px 0 16px">
-
-    <!-- GUIDE AVENE existant — titre séparateur -->
-    <div class="card" style="background:var(--text);color:#fff;border:none">
-      <p style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:6px">Guide spécifique</p>
       <p style="font-size:18px;font-weight:600;margin-bottom:4px">Marge compensee AVENE — Workflow & Strategie</p>
       <p style="font-size:13px;opacity:.6">De l export Ospharm a la decision de prix</p>
     </div>
@@ -1514,24 +1296,6 @@
         <span>Simulateur de commande</span>
         <button type="button" onclick="cmdGenerer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Calculer la commande</button>
       </p>
-
-      <!-- IMPORT ANALYSE ZONE -->
-      <div id="cmd-az-zone" style="background:var(--accent-bg);border:1px solid rgba(26,107,74,0.2);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--accent-text)">🔍 Import ANALYSE ZONE (optionnel)</span>
-          <button type="button" onclick="cmdAZToggle()" id="cmd-az-toggle-btn" style="font-size:11px;padding:3px 10px;background:transparent;color:var(--accent-text);border:1px solid rgba(26,107,74,0.3);border-radius:4px;cursor:pointer">Afficher</button>
-        </div>
-        <p style="font-size:11px;color:var(--accent-text);opacity:0.8;margin-bottom:8px;line-height:1.5">Colle le JSON exporté depuis ANALYSE ZONE (Menu → 📤 Exporter JSON → Calculateur Vercel) pour imposer les quantités minimales de sécurité.</p>
-        <div id="cmd-az-input-zone" style="display:none">
-          <textarea id="cmd-az-json" placeholder='{"labo":"NUTRI CO","produits":[...]}' style="width:100%;height:100px;font-family:DM Mono,monospace;font-size:11px;border:1px solid rgba(26,107,74,0.3);border-radius:var(--radius-sm);padding:8px;background:#fff;resize:vertical;margin-bottom:8px"></textarea>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button type="button" onclick="cmdAZImporter()" style="font-size:12px;padding:5px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Importer</button>
-            <button type="button" onclick="cmdAZEffacer()" style="font-size:12px;padding:5px 10px;background:transparent;color:var(--text-ter);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer">Effacer</button>
-            <span id="cmd-az-status" style="font-size:11px;color:var(--accent-text);font-family:DM Mono,monospace"></span>
-          </div>
-        </div>
-        <div id="cmd-az-summary" style="display:none;margin-top:8px;font-size:11px;color:var(--accent-text);font-family:DM Mono,monospace"></div>
-      </div>
 
       <div style="display:flex;flex-direction:column;gap:0;margin-bottom:0">
         <div>
@@ -4263,10 +4027,12 @@ function condCalc() {
 async function condImportCatalogueLabo(input) {
   var file = input.files[0];
   if (!file) return;
-  if (!condLaboActif || !condLabos[condLaboActif]) return;
-
   var status = document.getElementById('cond-pdf-status');
-  if (status) { status.textContent = 'Lecture catalogue labo (passe 1/2)...'; status.style.color = 'var(--text-sec)'; }
+  if (!condLaboActif || !condLabos[condLaboActif]) {
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné. Sélectionnez ou créez un labo d\'abord.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (status) { status.textContent = 'Lecture catalogue labo (passe 1/4)...'; status.style.color = 'var(--text-sec)'; }
 
   var b64 = await new Promise(function(res, rej){
     var r = new FileReader();
@@ -4276,14 +4042,17 @@ async function condImportCatalogueLabo(input) {
   });
 
   var allRefs = {};
+  var promptCatalogue = 'Tarif labo pharmacie. Extrais TOUS les produits de cette page avec : nom (désignation complète max 40 cars), ean (EAN/GTIN 13 chiffres, vide si absent — les codes 8 chiffres ne sont pas des EAN13), format (contenance ex: 40ml, 200ml), pu_catalogue (PRIX CAT / prix unitaire catalogue, nombre décimal), colisage (colonne UNITE DE COMMANDE si présente, sinon colonne COLISAGE CARTON, sinon 1). Réponds UNIQUEMENT en JSON valide sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}';
   var prompts = [
-    'Listing produits labo page 1. Extrais chaque produit avec : nom (désignation, max 30 cars), ean (GTIN/EAN 13 chiffres, vide si absent), format (ex: 60 gél, 500g), pu_catalogue (prix unitaire catalogue, nombre décimal), colisage (nombre entier d\'unités par colis/boite — ex: si format "60 gél" le colisage est 1 boite; si le labo livre par carton de 6 alors colisage=6; par défaut 1). Réponds UNIQUEMENT en JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}',
-    'Listing produits labo page 2. Même extraction : nom, ean, format, pu_catalogue, colisage. UNIQUEMENT JSON sans texte ni backticks. Format: {"produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}'
+    promptCatalogue + ' PAGES 1-2.',
+    promptCatalogue + ' PAGES 3-4.',
+    promptCatalogue + ' PAGES 5-6 si elles existent.',
+    promptCatalogue + ' PAGES 7+ si elles existent.'
   ];
 
   try {
-    for (var pi = 0; pi < 2; pi++) {
-      if (status) status.textContent = 'Lecture catalogue labo (passe ' + (pi+1) + '/2)...';
+    for (var pi = 0; pi < 4; pi++) {
+      if (status) status.textContent = 'Lecture catalogue labo (passe ' + (pi+1) + '/4)...';
       var resp = await fetch('/api/claude', {
         method: 'POST',
         headers: {"Content-Type":"application/json"},
@@ -4317,7 +4086,7 @@ async function condImportCatalogueLabo(input) {
     }
 
     var refs = Object.values(allRefs);
-    if (refs.length === 0) throw new Error('Aucun produit extrait du catalogue');
+    if (refs.length === 0) throw new Error('Aucun produit extrait — vérifiez que le PDF est un listing produits/tarif labo lisible');
 
     // Merger avec produits existants (ne pas écraser les données de ventes)
     var existing = condLabos[condLaboActif].produits || [];
@@ -4540,10 +4309,11 @@ async function condImportPDFDiag(input) {
   });
 
   var allProds = {};
+  var allTotauxMois = new Array(12).fill(0);
 
   var prompts = [
-    'Etat des ventes LGPI page 1. Pour chaque produit extrais : nom (max 20 cars), ean (13 chiffres ou vide si absent), stock (entier, colonne Stock), moy (Moy. decimal), pa_net (PA Cat Net decimal), pv_ttc (PV TTC decimal), mois (12 entiers dans cet ordre : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si vide). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}',
-    'Etat des ventes LGPI page 2. Meme extraction : nom (max 20 cars), ean, stock (entier), moy, pa_net, pv_ttc, mois (12 entiers : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}'
+    'Etat des ventes LGPI page 1. Extrais : (1) pour chaque produit : nom (max 20 cars), ean (13 chiffres ou vide), stock (entier), moy (Moy. decimal), pa_net (PA Cat Net decimal), pv_ttc (PV TTC decimal), mois (12 entiers : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si vide). (2) la ligne de TOTAUX en bas de page si présente : totaux_mois (12 entiers CA TTC total par mois dans le meme ordre). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}],"totaux_mois":[0,0,0,0,0,0,0,0,0,0,0,0]}',
+    'Etat des ventes LGPI page 2. Meme extraction : produits (nom, ean, stock, moy, pa_net, pv_ttc, mois) ET totaux_mois (ligne totaux en bas si presente). UNIQUEMENT JSON sans texte. Format: {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0,"pa_net":0,"pv_ttc":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}],"totaux_mois":[0,0,0,0,0,0,0,0,0,0,0,0]}'
   ];
 
   try {
@@ -4584,6 +4354,12 @@ async function condImportPDFDiag(input) {
         if (!key) return;
         allProds[key] = p;
       });
+      // Récupérer totaux_mois si présents (source la plus fiable pour CA mensuel)
+      if (parsed.totaux_mois && parsed.totaux_mois.length === 12) {
+        parsed.totaux_mois.forEach(function(v, i) {
+          if ((v||0) > 0) allTotauxMois[i] = (allTotauxMois[i]||0) + (v||0);
+        });
+      }
     }
 
     var prods = Object.values(allProds);
@@ -4626,23 +4402,37 @@ async function condImportPDFDiag(input) {
       }
     });
 
-    // Normaliser par rapport au CA annuel calculé depuis moy×12×PV (plus stable que qté×PV)
-    var totalVentes = ventesMensuelles.reduce(function(s,v){return s+v;},0);
+    // Priorité 1 : totaux mensuels extraits directement du PDF (ligne totaux)
+    // Priorité 2 : reconstruction qté×PV normalisée par moy×12×PV
     var caTTCproduits = prods.reduce(function(s,p){return s+(p.moy||0)*12*(p.pv_ttc||0);},0);
-    if (totalVentes > 0 && caTTCproduits > 0) {
-      var ratio = caTTCproduits / totalVentes;
-      ventesMensuelles = ventesMensuelles.map(function(v){ return Math.round(v * ratio); });
-    } else if (caTTCproduits > 0) {
-      // Pas de données mensuelles : distribuer uniformément
-      var moyMois = Math.round(caTTCproduits / 12);
-      ventesMensuelles = new Array(12).fill(moyMois);
+    var totalTotaux = allTotauxMois.reduce(function(s,v){return s+v;},0);
+
+    var ventesFinales;
+    if (totalTotaux > 0) {
+      // Utiliser les totaux PDF — source la plus fiable
+      // Convertir de l'ordre PDF (jun26=0...juil25=11) vers ordre app (jun25=0...mai26=11)
+      // allTotauxMois est déjà en ordre app (rempli avec appIdx)
+      ventesFinales = allTotauxMois.map(function(v){ return Math.round(v); });
+    } else {
+      // Fallback : reconstruction normalisée
+      var totalVentes = ventesMensuelles.reduce(function(s,v){return s+v;},0);
+      if (totalVentes > 0 && caTTCproduits > 0) {
+        var ratio = caTTCproduits / totalVentes;
+        ventesFinales = ventesMensuelles.map(function(v){ return Math.round(v * ratio); });
+      } else if (caTTCproduits > 0) {
+        var moyMois = Math.round(caTTCproduits / 12);
+        ventesFinales = new Array(12).fill(moyMois);
+      } else {
+        ventesFinales = ventesMensuelles;
+      }
     }
 
-    // Fill CA grid — toujours écraser pour rester cohérent avec l'import
-    ventesMensuelles.forEach(function(v, i) {
+    // Fill CA grid
+    ventesFinales.forEach(function(v, i) {
       var el = document.getElementById('cond-v-' + i);
       if (el) el.value = v > 0 ? v.toFixed(0) : 0;
     });
+    ventesMensuelles = ventesFinales;
 
     // Update identity fields - compute CA TTC from moy*pvTTC*12 (not from PDF extraction)
     var tvaR = parseFloat(document.getElementById('cond-tva').value) / 100;
@@ -4944,51 +4734,6 @@ var pnInited = false;
 var cmdPaliers = [];
 var cmdPalierId = 1;
 var cmdProduitsSource = []; // produits charges depuis condLabos
-var cmdAZData = null; // données importées depuis ANALYSE ZONE
-
-// ── FONCTIONS IMPORT ANALYSE ZONE ──────────────────────────
-function cmdAZToggle() {
-  var zone = document.getElementById('cmd-az-input-zone');
-  var btn  = document.getElementById('cmd-az-toggle-btn');
-  if (!zone) return;
-  var visible = zone.style.display !== 'none';
-  zone.style.display = visible ? 'none' : 'block';
-  btn.textContent = visible ? 'Afficher' : 'Masquer';
-}
-
-function cmdAZImporter() {
-  var txt = (document.getElementById('cmd-az-json').value || '').trim();
-  if (!txt) { document.getElementById('cmd-az-status').textContent = '⚠️ Rien à importer'; return; }
-  try {
-    var data = JSON.parse(txt);
-    if (!data.produits || !Array.isArray(data.produits)) throw new Error('Format invalide');
-    cmdAZData = {};
-    data.produits.forEach(function(p) { if (p.ean && p.qte_min > 0) cmdAZData[p.ean] = p; });
-    var nb = Object.keys(cmdAZData).length;
-    document.getElementById('cmd-az-status').textContent = '✅ ' + nb + ' produits importés';
-    document.getElementById('cmd-az-status').style.color = 'var(--accent-text)';
-    // Résumé
-    var ruptures = data.produits.filter(function(p){ return p.alerte && p.alerte.indexOf('RUPTURE') >= 0; }).length;
-    var dangers  = data.produits.filter(function(p){ return p.alerte && p.alerte.indexOf('DANGER') >= 0; }).length;
-    var summary = document.getElementById('cmd-az-summary');
-    summary.style.display = 'block';
-    summary.innerHTML = '📋 ' + (data.labo||'') + ' · ' + nb + ' produits'
-      + (ruptures > 0 ? ' · <span style="color:var(--danger)">🔴 ' + ruptures + ' ruptures</span>' : '')
-      + (dangers  > 0 ? ' · <span style="color:var(--warn)">🟠 ' + dangers  + ' dangers</span>' : '');
-  } catch(e) {
-    document.getElementById('cmd-az-status').textContent = '❌ JSON invalide : ' + e.message;
-    document.getElementById('cmd-az-status').style.color = 'var(--danger)';
-    cmdAZData = null;
-  }
-}
-
-function cmdAZEffacer() {
-  cmdAZData = null;
-  document.getElementById('cmd-az-json').value = '';
-  document.getElementById('cmd-az-status').textContent = '';
-  document.getElementById('cmd-az-summary').style.display = 'none';
-}
-// ───────────────────────────────────────────────────────────
 
 function cmdInit() {
   // Ensure condLabos is loaded from localStorage
@@ -5135,22 +4880,6 @@ function cmdGenerer() {
   }
 
   var prods = cmdProduitsSource.filter(function(p){ return (p.moy||0) >= rotMin; });
-
-  // ── FUSION ANALYSE ZONE : ajouter produits imposés absent du catalogue actif ──
-  if (cmdAZData) {
-    var eansDejaPresents = prods.map(function(p){ return p.ean||''; });
-    Object.keys(cmdAZData).forEach(function(ean) {
-      if (eansDejaPresents.indexOf(ean) < 0) {
-        // Produit absent du catalogue filtré (rotation 0 ou nouveau référencement)
-        // Chercher dans toute la source pour récupérer PA, PV etc.
-        var found = cmdProduitsSource.find(function(p){ return (p.ean||'') === ean; });
-        if (found) {
-          prods.push(found); // forcer l'inclusion même si rotation < rotMin
-        }
-      }
-    });
-  }
-  // ─────────────────────────────────────────────────────────
   var nRefs = prods.length;
   // Nb de refs marché général pour déterminer remise 30% ou 25%
   var nRefsGeneral = prods.filter(function(p){ var md = getMarcheDef(p); return !md || md.id === 'general'; }).length;
@@ -5164,14 +4893,6 @@ function cmdGenerer() {
     var besoin = moy * moisCible;
     var stock  = stockMode === 'deduct' ? (p.stock || 0) : 0;
     var qte    = Math.max(0, Math.ceil(besoin - stock));
-
-    // ── ANALYSE ZONE : imposer qte_min si supérieure à la qte calculée ──
-    var azProd = cmdAZData ? cmdAZData[p.ean||''] : null;
-    var qteAZ  = azProd ? (azProd.qte_min || 0) : 0;
-    var fromAZ = false;
-    if (qteAZ > qte) { qte = qteAZ; fromAZ = true; }
-    // ────────────────────────────────────────────────────────────────────
-
     if (qte <= 0) return;
 
     // Arrondir qte au multiple de colisage immédiatement supérieur
@@ -5255,9 +4976,7 @@ function cmdGenerer() {
       moy:moy, besoin:besoin, stock:p.stock||0, qte:qte,
       palierLabel:palierLabel, rem:rem,
       ugLabel:ugLabel, ugObtenues:ugObtenues, qteTotal:qteTotal,
-      paCat:paCat, paNet:paNet, pvTTC:pvTTC, mb:mb, caCde:caCde,
-      fromAZ: fromAZ,
-      azAlerte: azProd ? (azProd.alerte||'') : ''
+      paCat:paCat, paNet:paNet, pvTTC:pvTTC, mb:mb, caCde:caCde
     });
   });
 
@@ -5322,29 +5041,19 @@ function cmdGenerer() {
 
   lignes.forEach(function(l,i){
     var bg = i%2===0?'#fff':'var(--surface2)';
-    // Coloration ANALYSE ZONE : rouge = RUPTURE, orange = DANGER
-    if (l.fromAZ) {
-      bg = l.azAlerte.indexOf('RUPTURE') >= 0 ? '#fff0f0' : '#fff8f0';
-    }
     var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;background:'+bg;
     var tdR = td+';text-align:right;font-family:monospace';
     var mbClr = l.mb===null?'':l.mb>=35?';color:var(--accent-text);font-weight:600':l.mb>=28?';color:var(--warn)':';color:var(--danger)';
     var ugBadge = l.ugObtenues>0
       ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+'+l.ugObtenues+'</span><br><span style="font-size:9px;color:var(--text-ter)">'+l.ugLabel+'</span>'
       : '-';
-    // Badge ANALYSE ZONE sur la colonne produit
-    var azBadge = '';
-    if (l.fromAZ) {
-      var azClr = l.azAlerte.indexOf('RUPTURE') >= 0 ? 'var(--danger)' : 'var(--warn)';
-      azBadge = ' <span style="font-size:9px;font-weight:600;color:'+azClr+';background:'+bg+';border:1px solid '+azClr+';border-radius:3px;padding:1px 4px">⚡AZ '+(l.azAlerte||'MIN')+'</span>';
-    }
     html += '<tr>'+
-      '<td style="'+td+';max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+l.nom+'">'+l.nom+azBadge+'</td>'+
+      '<td style="'+td+';max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+l.nom+'">'+l.nom+'</td>'+
       '<td style="'+td+';font-size:10px;color:var(--text-sec)">'+(l.marche||'-')+'</td>'+
       '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
       '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
       '<td style="'+tdR+';color:'+(l.stock>0?'var(--warn)':'var(--text-ter)')+'">'+l.stock+'</td>'+
-      '<td style="'+tdR+';font-weight:600'+(l.fromAZ?';color:'+(l.azAlerte.indexOf('RUPTURE')>=0?'var(--danger)':'var(--warn)'):'')+'">'+l.qte+'</td>'+
+      '<td style="'+tdR+';font-weight:600">'+l.qte+'</td>'+
       '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+(l.colisage>1?'×'+l.colisage:'-')+'</td>'+
       '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+l.tva+'%</td>'+
       '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+
@@ -6514,44 +6223,7 @@ function simLancer() {
 var simInited = false;
 
 window.addEventListener('DOMContentLoaded', function() {
-  // Détecter paramètre ?az= (BASE64 JSON depuis ANALYSE ZONE)
-  var params = new URLSearchParams(window.location.search);
-  var azParam = params.get('az');
-  if (azParam) {
-    try {
-      var jsonStr = decodeURIComponent(escape(atob(decodeURIComponent(azParam))));
-      var data = JSON.parse(jsonStr);
-      if (data.produits && Array.isArray(data.produits)) {
-        cmdAZData = {};
-        data.produits.forEach(function(p) { if (p.ean && p.qte_min > 0) cmdAZData[p.ean] = p; });
-        var nb = Object.keys(cmdAZData).length;
-        var ruptures = data.produits.filter(function(p){ return p.alerte && p.alerte.indexOf('RUPTURE') >= 0; }).length;
-        var dangers  = data.produits.filter(function(p){ return p.alerte && p.alerte.indexOf('DANGER') >= 0; }).length;
-        // Naviguer vers onglet Commande
-        setTimeout(function() {
-          showTab('cmd');
-          // Mettre à jour le résumé AZ si les éléments existent
-          var statusEl  = document.getElementById('cmd-az-status');
-          var summaryEl = document.getElementById('cmd-az-summary');
-          if (statusEl)  { statusEl.textContent = '⚡ ' + nb + ' produits chargés depuis ANALYSE ZONE'; statusEl.style.color = 'var(--accent-text)'; }
-          if (summaryEl) {
-            summaryEl.style.display = 'block';
-            summaryEl.innerHTML = '📋 ' + (data.labo||'') + ' · ' + nb + ' produits'
-              + (ruptures > 0 ? ' · <span style="color:var(--danger)">🔴 ' + ruptures + ' ruptures</span>' : '')
-              + (dangers  > 0 ? ' · <span style="color:var(--warn)">🟠 ' + dangers  + ' dangers</span>' : '');
-          }
-          // Nettoyer l'URL (retirer le paramètre az= de la barre d'adresse)
-          var cleanUrl = window.location.pathname;
-          window.history.replaceState({}, '', cleanUrl);
-        }, 150);
-      }
-    } catch(e) {
-      console.warn('Paramètre ?az= invalide :', e.message);
-      setTimeout(function(){ showTab('workflow'); }, 100);
-    }
-  } else {
-    setTimeout(function(){ showTab('workflow'); }, 100);
-  }
+  setTimeout(function(){ showTab('workflow'); }, 100);
 });
 
 </script>

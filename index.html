@@ -6093,13 +6093,13 @@ function catRenderTable() {
       var p = item.p; var i = item.i;
       var rowBg = isNA ? '#fff8ec' : bg;
       html += '<tr style="background:' + rowBg + '">';
-      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:160px;max-width:220px" title="' + p.nom + '">' + p.nom + '</td>';
+      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:200px;max-width:300px" title="' + p.nom + '">' + p.nom + '</td>';
       html += '<td style="' + td + 'font-family:monospace;font-size:9px;color:var(--text-ter);text-align:center;white-space:nowrap;min-width:80px">' + (p.ean||'-') + '</td>';
       html += '<td style="' + td + 'text-align:center;font-family:monospace;min-width:36px;font-size:9px">' + (p.moy||0).toFixed(1).replace('.',',') + '</td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
       // Marche = dropdown des 5 marchés officiels
-      html += '<td style="' + td + 'background:#e8f8f0;min-width:110px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
+      html += '<td style="' + td + 'background:#e8f8f0;min-width:80px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
         marcheOpts.replace('value="' + (p.marche_id||'') + '"', 'value="' + (p.marche_id||'') + '" selected') + '</select></td>';
       // Palier: conditions auto depuis marche_id
       var palierTxt = '-';

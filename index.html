@@ -3540,7 +3540,8 @@ function condRenderTabs() {
 }
 
 function condNouveauLabo() {
-  var id = condNextId++;
+  var id = Date.now(); // ID unique basé sur timestamp
+  condNextId = id + 1;
   condLabos[id] = { nom: '', caAnnuel: 0, mbActuel: 0, margeActuelle: 0, dateEval: new Date().toISOString().slice(0,10), tva: 5.5, ventes: new Array(12).fill(0), conditions: [] };
   condSelectionnerLabo(id);
   var nomEl = document.getElementById('cond-labo-nom');
@@ -3708,6 +3709,9 @@ async function condChargerGitHub() {
     Object.keys(data.condLabos).forEach(function(id) {
       condLabos[parseInt(id) || id] = data.condLabos[id];
     });
+    // Recalculer condNextId pour éviter les collisions
+    var allIds = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n); });
+    if (allIds.length > 0) condNextId = Math.max.apply(null, allIds) + 1;
     condSauvegarder();
     condInit();
     var nb = Object.keys(data.condLabos).length;
@@ -3756,6 +3760,8 @@ function condImporterTout(input) {
       Object.keys(data.condLabos).forEach(function(id) {
         condLabos[parseInt(id) || id] = data.condLabos[id];
       });
+      var allIds3 = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n); });
+      if (allIds3.length > 0) condNextId = Math.max.apply(null, allIds3) + 1;
       condSauvegarder();
       condInit();
       var nb = Object.keys(data.condLabos).length;

@@ -5529,8 +5529,9 @@ function cmdGenerer() {
   function getMarcheDef(prod) {
     var ean = prod.ean || '';
     var mid = marcheByEan[ean] || prod.marche_id || '';
-    if (mid && typeof MARCHES_NUTRICO !== 'undefined') {
-      return MARCHES_NUTRICO.find(function(m){ return m.id === mid; }) || null;
+    if (mid) {
+      var _mls = getMarchesLabo(laboId);
+      return _mls.find(function(m){ return m.id === mid; }) || null;
     }
     return null;
   }
@@ -5571,7 +5572,8 @@ function cmdGenerer() {
     var marcheDef = getMarcheDef(p);
     // Si pas de marche_id catalogue mais remise générale négociée → traiter comme général
     if (!marcheDef && remisesNegociees['general'] !== undefined) {
-      marcheDef = MARCHES_NUTRICO ? MARCHES_NUTRICO.find(function(m){ return m.id === 'general'; }) : null;
+      var _mls2 = getMarchesLabo(laboId);
+      marcheDef = _mls2.length > 0 ? _mls2[0] : null;
     }
     var rem, ugObtenues, ugLabel, palierLabel;
 
@@ -6244,6 +6246,30 @@ var MARCHES_NUTRICO = [
   { id:'isolat',  label:'Protéines isolat panachés', rem_30:20, rem_25:20, ug_ach:12, ug_off:2, ug_tiers:false, note:'20% + 12+2 UG' },
   { id:'barres',  label:'Barres protéines',             rem_30:20, rem_25:20, ug_ach:6,  ug_off:1,  ug_tiers:false, note:'20% + 6+1 UG' }
 ];
+// Retourne les marchés du labo actif (MARCHES_NUTRICO pour NUTRICO, marches_negocies pour les autres)
+function getMarchesLabo(laboId) {
+  if (!laboId || !condLabos[laboId]) return MARCHES_NUTRICO;
+  var labo = condLabos[laboId];
+  var nom = (labo.nom || '').toUpperCase();
+  // NUTRI&CO → marchés spécifiques hardcodés
+  if (nom.indexOf('NUTRI') >= 0) return MARCHES_NUTRICO;
+  // Autres labos → construire depuis marches_negocies
+  var neg = labo.marches_negocies || [];
+  if (neg.length === 0) return [];
+  return neg.map(function(m, i) {
+    return {
+      id: m.marche_id || ('marche_' + i),
+      label: m.label || m.marche_id || 'Marché ' + (i+1),
+      rem: m.rem || 0,
+      rem_30: m.rem || 0,
+      rem_25: m.rem || 0,
+      ug_ach: 0, ug_off: 0,
+      ug_tiers: false,
+      note: (m.rem || 0) + '%'
+    };
+  });
+}
+
 var NUTRICO_CATALOGUE = {"3770012764593":{"nom":"Articulations","sous_cat":"Articulations","marche":"Articulations","categorie":"Articulations","marche_id":"general"},"3770012764104":{"nom":"Curcuma Bio","sous_cat":"Articulations","marche":"Articulations","categorie":"Articulations","marche_id":"general"},"3760384160833":{"nom":"Vitamine D3 Animale","sous_cat":"Immunité","marche":"Articulations","categorie":"Immunité","marche_id":"general"},"3760384161045":{"nom":"Glucosamine & Chondroïtine","sous_cat":"Articulations","marche":"Articulations","categorie":"Articulations","marche_id":"general"},"3770012764432":{"nom":"Fer et Probiotique","sous_cat":"Minéraux","marche":"Immunité","categorie":"Minéraux","marche_id":"general"},"3760384161007":{"nom":"Propolis","sous_cat":"Immunité","marche":"Immunité"},"3760384160338":{"nom":"Vitamine B12","sous_cat":"Minéraux","marche":"Immunité","categorie":"Minéraux","marche_id":"general"},"3770012764272":{"nom":"Vitamine D3 Végétale","sous_cat":"Minéraux","marche":"Immunité","categorie":"Minéraux","marche_id":"general"},"3770012764456":{"nom":"Acide Hyaluronique","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764142":{"nom":"Antioxydant","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764647":{"nom":"Collagène Chocolat","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160673":{"nom":"Collagène Citron","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160734":{"nom":"Collagène Fruits Rouges","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384161229":{"nom":"Collagène Matcha","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160741":{"nom":"Collagène Neutre","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3770012764449":{"nom":"Collagène Pêche","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160680":{"nom":"Collagène Vanille","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384161304":{"nom":"Collagène Neutre 3 mois","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384161298":{"nom":"Collagène Pêche 3 mois","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3770012764135":{"nom":"Complexe Cheveux","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3760384160611":{"nom":"Coenzyme Q10","sous_cat":"Beauté","marche":"Beauté"},"3770012764524":{"nom":"Probiotique Peau Nette","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764562":{"nom":"Solaire","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764661":{"nom":"Zinc Bisglycinate","sous_cat":"Minéraux","marche":"Beauté","categorie":"Minéraux","marche_id":"general"},"3770012764470":{"nom":"Chardon Marie Bio","sous_cat":"Digestion","marche":"Digestion","categorie":"Digestion","marche_id":"general"},"3760384160840":{"nom":"Enzymes & Pissenlit","sous_cat":"Digestion","marche":"Digestion","categorie":"Digestion","marche_id":"general"},"3770012764364":{"nom":"Fibres Bio","sous_cat":"Digestion","marche":"Digestion","categorie":"Digestion","marche_id":"general"},"3760384160864":{"nom":"Lactoferrine","sous_cat":"Digestion","marche":"Digestion"},"3760384160932":{"nom":"L-Glutamine","sous_cat":"Acides aminés","marche":"Digestion"},"3760384161236":{"nom":"Probiotiques","sous_cat":"Microbiote","marche":"Digestion"},"3760384160154":{"nom":"Probiotiques & Prébiotiques 10","sous_cat":"Microbiote","marche":"Digestion","categorie":"Microbiote","marche_id":"general"},"3770012764043":{"nom":"Probiotiques & Prébiotiques 60","sous_cat":"Microbiote","marche":"Digestion","categorie":"Microbiote","marche_id":"general"},"3760384160345":{"nom":"Brûle Graisse","sous_cat":"Minceur","marche":"Minceur","categorie":"Minceur","marche_id":"general"},"3760384161083":{"nom":"Draineur Fruits Rouges","sous_cat":"Minceur","marche":"Minceur"},"3760384161076":{"nom":"Draineur Pêche","sous_cat":"Minceur","marche":"Minceur","categorie":"Minceur","marche_id":"general"},"3760384160161":{"nom":"Formule Satiété","sous_cat":"Minceur","marche":"Minceur","categorie":"Minceur","marche_id":"general"},"3770012764760":{"nom":"Lactobacillus Gasseri","sous_cat":"Microbiote","marche":"Minceur","categorie":"Microbiote","marche_id":"general"},"3760384161014":{"nom":"Graines de Chia","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"prot"},"3760384161038":{"nom":"Poudre d'Açaï","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"general"},"3760384161021":{"nom":"Poudre de Baobab","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"general"},"3760384160789":{"nom":"Spiruline Française Bio","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"general"},"3760384160970":{"nom":"Glycine","sous_cat":"Acides","marche":"Stress & Sommeil","categorie":"Acides","marche_id":"general"},"3770012764005":{"nom":"Magnésium 60","sous_cat":"Minéraux","marche":"Stress & Sommeil","categorie":"Minéraux","marche_id":"general"},"3770012764166":{"nom":"Magnésium 120","sous_cat":"Minéraux","marche":"Stress & Sommeil","categorie":"Minéraux","marche_id":"general"},"3770012764586":{"nom":"Mélatonine","sous_cat":"Stress","marche":"Stress & Sommeil","categorie":"Stress","marche_id":"general"},"3760384160352":{"nom":"Probiotique Stress","sous_cat":"Microbiote","marche":"Stress & Sommeil","categorie":"Microbiote","marche_id":"general"},"3770012764678":{"nom":"Rhodiola","sous_cat":"Stress & Sommeil","marche":"Stress & Sommeil"},"3760384160376":{"nom":"Sommeil","sous_cat":"Stress","marche":"Stress & Sommeil","categorie":"Stress","marche_id":"general"},"3770012764395":{"nom":"Booster","sous_cat":"Vitalité","marche":"Vitalité & Tonus","categorie":"Vitalité","marche_id":"general"},"3770012764418":{"nom":"Le Multi 60","sous_cat":"Multivitamines","marche":"Vitalité & Tonus","categorie":"Multivitamines","marche_id":"general"},"3770012764067":{"nom":"Le Multi 90","sous_cat":"Multivitamines","marche":"Vitalité & Tonus","categorie":"Multivitamines","marche_id":"general"},"3760384161151":{"nom":"MACA Noir Bio","sous_cat":"Vitalité","marche":"Vitalité & Tonus","categorie":"Vitalité","marche_id":"general"},"3760384160949":{"nom":"Tribulus Terrestris","sous_cat":"Vitalité","marche":"Vitalité & Tonus","categorie":"Vitalité","marche_id":"general"},"3760384160987":{"nom":"Vitamine C Fraise Citron","sous_cat":"Minéraux","marche":"Vitalité & Tonus","categorie":"Minéraux","marche_id":"general"},"3760384161250":{"nom":"Vitamine C Mangue Passion","sous_cat":"Minéraux","marche":"Vitalité & Tonus","categorie":"Minéraux","marche_id":"general"},"3760384161281":{"nom":"Vitamine C Liposomale","sous_cat":"Minéraux","marche":"Vitalité & Tonus","categorie":"Minéraux","marche_id":"general"},"3770012764500":{"nom":"Confort Menstruel","sous_cat":"Santé","marche":"Santé féminine","categorie":"Santé","marche_id":"general"},"3770012764685":{"nom":"Cranberry Mannose","sous_cat":"Santé","marche":"Santé féminine","categorie":"Santé","marche_id":"general"},"3770012764715":{"nom":"Jambes Légères","sous_cat":"Santé","marche":"Santé féminine","categorie":"Santé","marche_id":"general"},"3760384160758":{"nom":"Ménopause","sous_cat":"Santé féminine","marche":"Santé féminine"},"3760384161175":{"nom":"Myo-Inositol","sous_cat":"Santé féminine","marche":"Santé féminine"},"3760384160666":{"nom":"Probiotique Flore Intime","sous_cat":"Microbiote","marche":"Santé féminine","categorie":"Microbiote","marche_id":"general"},"3760384160765":{"nom":"Ginkgo Biloba","sous_cat":"Cerveau","marche":"Cerveau","categorie":"Cerveau","marche_id":"general"},"3760384160628":{"nom":"Iode","sous_cat":"Cerveau","marche":"Cerveau"},"3770012764098":{"nom":"Oméga-3 60","sous_cat":"Acides","marche":"Cerveau","categorie":"Acides","marche_id":"general"},"3770012764111":{"nom":"Oméga-3 120","sous_cat":"Acides","marche":"Cerveau","categorie":"Acides","marche_id":"general"},"3760384161311":{"nom":"Oméga-3 240","sous_cat":"Acides","marche":"Cerveau","categorie":"Acides","marche_id":"general"},"3770012764777":{"nom":"Ashwagandha","sous_cat":"Adaptogènes","marche":"Sport","categorie":"Adaptogènes","marche_id":"general"},"3760384160796":{"nom":"BCAA Citron","sous_cat":"Acides","marche":"Sport","categorie":"Acides","marche_id":"general"},"3760384160147":{"nom":"BCAA Pêche","sous_cat":"Acides","marche":"Sport","categorie":"Acides","marche_id":"general"},"3760384161267":{"nom":"Boisson Énergétique","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384160123":{"nom":"Créatine","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"prot"},"3760384161137":{"nom":"Electrolytes Citron","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384161113":{"nom":"Electrolytes Pêche","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384161120":{"nom":"Electrolytes Fruits Rouges","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384160963":{"nom":"Barres Beurre Cacahuète","sous_cat":"Barres","marche":"barres","categorie":"Barres","marche_id":"barres"},"3760384160925":{"nom":"Barres Chocolat Amande","sous_cat":"Barres","marche":"barres","categorie":"Barres","marche_id":"barres"},"3760384160994":{"nom":"Pré-workout","sous_cat":"Sport","marche":"Sport"},"3770012764357":{"nom":"Protéine Végétale Bio","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"prot"},"3760384161090":{"nom":"Whey Concentrée Chocolat","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384161106":{"nom":"Whey Concentrée Vanille","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160901":{"nom":"Whey Isolat Café","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160178":{"nom":"Whey Isolat Chocolat","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160895":{"nom":"Whey Isolat Fraise","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160185":{"nom":"Whey Isolat Neutre","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160222":{"nom":"Whey Isolat Vanille","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3770012764722":{"nom":"Pour Les Enfants","sous_cat":"Enfants","marche":"Enfants","categorie":"Enfants","marche_id":"general"},"3760384160635":{"nom":"Shaker Nutri&Co","sous_cat":"Accessoires","marche":"Sport","categorie":"Accessoires","marche_id":"general"}};
 
 var CAT_RULES = [
@@ -6456,7 +6482,7 @@ function catUpdateProduit(idx, key, val) {
   catProduits[idx][key] = val;
   // Sync marche label from marche_id
   if (key === 'marche_id') {
-    var mDef = MARCHES_NUTRICO.find(function(m){ return m.id === val; });
+    var mDef = getMarchesLabo(catLaboActif).find(function(m){ return m.id === val; });
     if (mDef) catProduits[idx].marche = mDef.label;
   }
 }
@@ -6487,10 +6513,11 @@ function catRenderTable() {
   var selS = 'font-size:10px;padding:2px 3px;border:1px solid var(--accent);border-radius:3px;background:#e8f8f0;width:100%;box-sizing:border-box;font-weight:500;cursor:pointer;';
   var td   = 'padding:3px 5px;border-bottom:0.5px solid var(--border);font-size:10px;';
 
-  // Build marche options from MARCHES_NUTRICO
+  // Build marche options depuis le labo actif
+  var marchesActifs = getMarchesLabo(catLaboActif);
   var marcheOpts = '<option value="">\u2014 choisir \u2014</option>';
-  MARCHES_NUTRICO.forEach(function(m) {
-    marcheOpts += '<option value="' + m.id + '">' + m.label + ' \u2014 ' + m.rem + '%' +
+  marchesActifs.forEach(function(m) {
+    marcheOpts += '<option value="' + m.id + '">' + m.label + ' \u2014 ' + (m.rem||m.rem_30||0) + '%' +
       (m.ug_ach > 0 ? ' + ' + m.ug_ach + '+' + m.ug_off + ' UG' : '') + '</option>';
   });
 

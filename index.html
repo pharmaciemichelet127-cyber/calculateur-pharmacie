@@ -6352,10 +6352,14 @@ function catInit() {
 
 function catChargeLabo() {
   var sel = document.getElementById('cat-labo-sel');
-  catLaboActif = sel ? sel.value : null;
-  if (!catLaboActif || !condLabos[catLaboActif]) { catProduits = []; catRenderTable(); return; }
-
-  var labo = condLabos[catLaboActif];
+  var rawId = sel ? sel.value : null;
+  // Normaliser l'ID : essayer string puis number
+  catLaboActif = rawId;
+  if (!catLaboActif) { catProduits = []; catRenderTable(); return; }
+  var labo = condLabos[catLaboActif] || condLabos[parseInt(catLaboActif)];
+  if (!labo) { catProduits = []; catRenderTable(); return; }
+  // Forcer catLaboActif au bon type
+  if (!condLabos[catLaboActif] && condLabos[parseInt(catLaboActif)]) catLaboActif = parseInt(catLaboActif);
   var src = labo.produits || [];
   // Merge with existing catalogue if any
   var existing = labo.catalogue || {};
@@ -6364,8 +6368,9 @@ function catChargeLabo() {
     var key = p.ean || p.nom;
     var saved = existing[key] || {};
     var autoClass = catClassifierProduit(p.nom || '');
-    // Fallback : classification depuis NUTRICO_CATALOGUE si saved vide
-    var nutroCat = (p.ean && typeof NUTRICO_CATALOGUE !== 'undefined') ? (NUTRICO_CATALOGUE[p.ean] || {}) : {};
+    // Fallback NUTRICO_CATALOGUE uniquement pour NUTRI&CO
+    var isNutrico = labo && labo.nom && labo.nom.toUpperCase().indexOf('NUTRI') >= 0;
+    var nutroCat = (isNutrico && p.ean && typeof NUTRICO_CATALOGUE !== 'undefined') ? (NUTRICO_CATALOGUE[p.ean] || {}) : {};
     return {
       ean:          p.ean || '',
       nom:          p.nom || p.libelle || '',

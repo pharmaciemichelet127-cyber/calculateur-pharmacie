@@ -3430,19 +3430,20 @@ async function importMCPDF(input) {
 
   var allProds = [];
   var prompts = [
-    'Etat des ventes LGPI. Lis les DEUX PREMIERES PAGES uniquement. Pour chaque ligne produit retourne une ligne : CODE|QTE|PA|PV ou CODE=colonne Code produit (EAN 13 chiffres ou CIP), QTE=somme totale des quantites vendues sur 12 mois, PA=PA Cat Net (decimal), PV=PV TTC (decimal). Si 0 ventes mets 0. Une ligne par produit. Aucun texte ni entete.',
-    'Etat des ventes LGPI. Lis les DEUX DERNIERES PAGES uniquement. Pour chaque ligne produit retourne une ligne : CODE|QTE|PA|PV ou CODE=colonne Code produit (EAN 13 chiffres ou CIP), QTE=somme totale des quantites vendues sur 12 mois, PA=PA Cat Net (decimal), PV=PV TTC (decimal). Si 0 ventes mets 0. Une ligne par produit. Aucun texte ni entete.'
+    'Etat des ventes LGPI pages 1-2. Pour chaque ligne produit : CODE|QTE|PA|PV (CODE=EAN/CIP 10+ chiffres, QTE=col 12dm ou somme 12 mois, PA=PA Cat Net decimal, PV=PV TTC decimal). 0 si pas de ventes. Une ligne par produit. Aucun texte.',
+    'Etat des ventes LGPI pages 3-4. Meme format : CODE|QTE|PA|PV. Une ligne par produit. Aucun texte.',
+    'Etat des ventes LGPI pages 5-6. Meme format : CODE|QTE|PA|PV. Une ligne par produit. Aucun texte.'
   ];
 
-  for (var pi = 0; pi < 2; pi++) {
-    status.textContent = 'Lecture pages ' + (pi*2+1) + '-' + (pi*2+2) + ' (' + (pi+1) + '/2)...';
+  for (var pi = 0; pi < 3; pi++) {
+    status.textContent = 'Lecture pages ' + (pi*2+1) + '-' + (pi*2+2) + ' (' + (pi+1) + '/3)...';
     try {
       var resp = await fetch('/api/claude', {
         method: 'POST',
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 2000,
+          max_tokens: 8000,
           messages: [{
             role: 'user',
             content: [

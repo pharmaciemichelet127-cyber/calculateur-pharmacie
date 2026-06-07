@@ -4410,20 +4410,28 @@ function condImportCatalogueLaboXLSX(input) {
     try {
       var data = new Uint8Array(e.target.result);
       var wb = XLSX.read(data, { type: 'array' });
-      var ws = wb.Sheets[wb.SheetNames[0]];
+      // Chercher l'onglet avec des données (éviter les onglets vides comme BExRepositorySheet)
+      var wsName = wb.SheetNames[0];
+      for (var si = 0; si < wb.SheetNames.length; si++) {
+        var ws2 = wb.Sheets[wb.SheetNames[si]];
+        var r2 = XLSX.utils.sheet_to_json(ws2, { header:1, defval:'', range: 0 });
+        if (r2 && r2.length > 2) { wsName = wb.SheetNames[si]; break; }
+      }
+      var ws = wb.Sheets[wsName];
       var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-      // Trouver la ligne header (contient "CODE 13" ou "LABO")
+      // Trouver la ligne header — chercher dans les 20 premières lignes
       var headerIdx = -1;
       var colMap = {};
-      for (var ri = 0; ri < Math.min(rows.length, 10); ri++) {
+      for (var ri = 0; ri < Math.min(rows.length, 20); ri++) {
         var row = rows[ri];
-        for (var ci = 0; ci < row.length; ci++) {
-          var cell = String(row[ci] || '').trim().toUpperCase();
-          if (cell === 'CODE 13' || cell.indexOf('CODE 13') >= 0) { headerIdx = ri; break; }
-          if (cell === 'LABO') { headerIdx = ri; break; }
-        }
-        if (headerIdx >= 0) break;
+        if (!row) continue;
+        var rowStr = row.map(function(c){ return String(c||'').trim().toUpperCase(); });
+        // Header trouvé si la ligne contient à la fois LABO et CODE 13
+        var hasLabo = rowStr.some(function(c){ return c === 'LABO'; });
+        var hasCode = rowStr.some(function(c){ return c.indexOf('CODE 13') >= 0 || c === 'CODE13'; });
+        var hasGamme = rowStr.some(function(c){ return c.indexOf('GAMME') >= 0 || c.indexOf('D\u00c9SIGNATION') >= 0 || c.indexOf('LIBELLE') >= 0; });
+        if (hasLabo || hasCode || hasGamme) { headerIdx = ri; break; }
       }
       if (headerIdx < 0) throw new Error('Header non trouvé — vérifiez que le fichier a une colonne CODE 13 ou LABO');
 

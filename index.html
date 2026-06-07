@@ -1037,6 +1037,28 @@
           <span id="cond-stock-immo" style="font-family:'DM Mono',monospace;font-size:13px;font-weight:600;color:var(--warn)"></span>
           <span id="cond-stock-immo-hint" style="font-size:11px;color:var(--text-ter)"></span>
         </div>
+        <div style="border-top:1px solid var(--border);margin:12px 0 8px;padding-top:12px">
+          <p style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-ter);margin-bottom:10px">Suivi commandes</p>
+          <div class="row">
+            <label>Dernière commande</label>
+            <input type="date" id="cond-last-order" oninput="condSaveOrderInfo();condUpdateOrderStatus()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+            <span style="font-size:11px;color:var(--text-ter)">montant</span>
+            <input type="number" id="cond-last-order-amount" placeholder="ex: 450" oninput="condSaveOrderInfo()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);width:90px"> €
+          </div>
+          <div class="row">
+            <label>Couverture commandée</label>
+            <input type="number" id="cond-order-coverage" value="2" min="1" max="6" step="0.5" oninput="condSaveOrderInfo();condUpdateOrderStatus()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);width:70px"> mois
+          </div>
+          <div class="row">
+            <label>Délai livraison</label>
+            <input type="number" id="cond-delivery-days" value="3" min="1" max="30" oninput="condSaveOrderInfo();condUpdateOrderStatus()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);width:70px"> jours
+          </div>
+          <div class="row">
+            <label>Prochain RDV prévu</label>
+            <input type="date" id="cond-next-rdv" oninput="condSaveOrderInfo();condUpdateOrderStatus()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+          </div>
+          <div id="cond-order-status" style="display:none;margin-top:8px;padding:10px 14px;border-radius:var(--radius-sm);font-size:12px;line-height:1.6"></div>
+        </div>
         <div class="row">
           <label>Tarifs valables jusqu'au</label>
           <input type="date" id="cond-tarif-validite" oninput="condAutoSave();condSyncGitHubAuto();condCheckValidite()" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
@@ -1165,6 +1187,7 @@
       </p>
       <p style="font-size:11px;color:var(--text-ter);margin-bottom:16px">Suivez ces étapes dans l'ordre pour préparer une commande optimale avec remises et UG corrects.</p>
       <div id="wf-steps"></div>
+    <div id="wf-calendrier" style="margin-top:16px"></div>
     </div>
     <div id="wf-launch" style="display:none">
       <div class="card" style="background:var(--accent-bg);border-color:var(--accent)">
@@ -3595,6 +3618,18 @@ function condSelectionnerLabo(id) {
   condCheckValidite();
   var majEl = document.getElementById('cond-catalogue-maj');
   if (majEl) majEl.textContent = labo.catalogueMaj ? new Date(labo.catalogueMaj).toLocaleDateString('fr-FR') : '—';
+  // Suivi commandes
+  var loEl = document.getElementById('cond-last-order');
+  if (loEl) loEl.value = labo.lastOrder || '';
+  var laEl = document.getElementById('cond-last-order-amount');
+  if (laEl) laEl.value = labo.lastOrderAmount || '';
+  var ocEl = document.getElementById('cond-order-coverage');
+  if (ocEl) ocEl.value = labo.orderCoverage || 2;
+  var ddEl = document.getElementById('cond-delivery-days');
+  if (ddEl) ddEl.value = labo.deliveryDays || 3;
+  var nrEl = document.getElementById('cond-next-rdv');
+  if (nrEl) nrEl.value = labo.nextRdv || '';
+  condUpdateOrderStatus();
   condBuildGrid();
   condUpdateDiag();
   condRenderConditions();
@@ -3795,6 +3830,91 @@ function condImporterTout(input) {
   };
   reader.readAsText(file);
   input.value = '';
+}
+
+// ===== SUIVI COMMANDES =====
+function condSaveOrderInfo() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var l = condLabos[condLaboActif];
+  var lo = document.getElementById('cond-last-order');
+  var la = document.getElementById('cond-last-order-amount');
+  var oc = document.getElementById('cond-order-coverage');
+  var dd = document.getElementById('cond-delivery-days');
+  var nr = document.getElementById('cond-next-rdv');
+  if (lo) l.lastOrder = lo.value;
+  if (la) l.lastOrderAmount = parseFloat(la.value) || 0;
+  if (oc) l.orderCoverage = parseFloat(oc.value) || 2;
+  if (dd) l.deliveryDays = parseInt(dd.value) || 3;
+  if (nr) l.nextRdv = nr.value;
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+}
+
+function condUpdateOrderStatus() {
+  var el = document.getElementById('cond-order-status');
+  if (!el || !condLaboActif || !condLabos[condLaboActif]) return;
+  var l = condLabos[condLaboActif];
+  if (!l.lastOrder) { el.style.display = 'none'; return; }
+
+  var today = new Date();
+  var lastOrder = new Date(l.lastOrder);
+  // Couverture réelle depuis LGPI prioritaire sur couverture saisie
+  var coverage = parseFloat(l.couvertureReelle) || parseFloat(l.orderCoverage) || 2;
+  var deliveryDays = parseInt(l.deliveryDays) || 3;
+
+  // Date de rupture = date état des ventes + couverture réelle en jours
+  var rupture = new Date(lastOrder);
+  rupture.setDate(rupture.getDate() + Math.round(coverage * 30));
+
+  // Date limite pour commander = rupture - délai livraison
+  var commandeAvant = new Date(rupture);
+  commandeAvant.setDate(commandeAvant.getDate() - deliveryDays);
+
+  // Jours restants avant rupture
+  var joursRupture = Math.round((rupture - today) / (1000 * 60 * 60 * 24));
+  var joursCommande = Math.round((commandeAvant - today) / (1000 * 60 * 60 * 24));
+
+  // Afficher la couverture utilisée
+  var couv = l.couvertureReelle ? l.couvertureReelle.toFixed(1) + ' mois (stock réel LGPI)' : (coverage.toFixed(1) + ' mois (couverture saisie)');
+
+  var html = '<span style="font-size:10px;color:var(--text-ter)">Couverture : ' + couv + ' · Livraison : ' + deliveryDays + 'j</span><br>';
+  var bg = '', border = '';
+
+  if (joursRupture <= 0) {
+    // Rupture probable
+    bg = '#fdeaea'; border = 'var(--danger)';
+    html = '<b style="color:var(--danger)">⚠ Rupture probable</b> — stock théoriquement épuisé depuis ' + Math.abs(joursRupture) + ' jours.<br>';
+    html += 'Commander immédiatement.';
+  } else if (joursCommande <= 0) {
+    // Doit commander maintenant
+    bg = '#fff3e0'; border = 'var(--warn)';
+    html = '<b style="color:var(--warn)">⏰ Commander maintenant</b> — rupture estimée le <b>' + rupture.toLocaleDateString('fr-FR') + '</b> (dans ' + joursRupture + ' jours).<br>';
+    html += 'Délai livraison ' + deliveryDays + ' jours → commande urgente.';
+  } else if (joursCommande <= 14) {
+    // Bientôt
+    bg = '#fff8ee'; border = '#f0b429';
+    html = '<b style="color:#b36000">📦 Commande à préparer</b> — à passer avant le <b>' + commandeAvant.toLocaleDateString('fr-FR') + '</b> (dans ' + joursCommande + ' jours).<br>';
+    html += 'Rupture estimée : ' + rupture.toLocaleDateString('fr-FR') + '.';
+  } else {
+    // OK
+    bg = '#e8f5ee'; border = 'var(--accent)';
+    html = '<b style="color:var(--accent-text)">✓ Stock OK</b> — prochaine commande vers le <b>' + commandeAvant.toLocaleDateString('fr-FR') + '</b> (dans ' + joursCommande + ' jours).<br>';
+    html += 'Rupture estimée : ' + rupture.toLocaleDateString('fr-FR') + '.';
+  }
+
+  // Prochain RDV
+  if (l.nextRdv) {
+    var rdv = new Date(l.nextRdv);
+    var joursRdv = Math.round((rdv - today) / (1000 * 60 * 60 * 24));
+    html += '<br>📅 Prochain RDV : <b>' + rdv.toLocaleDateString('fr-FR') + '</b>';
+    if (joursRdv > 0) html += ' (dans ' + joursRdv + ' jours)';
+    else html += ' <span style="color:var(--danger)">(passé)</span>';
+  }
+
+  el.style.display = 'block';
+  el.style.background = bg;
+  el.style.border = '1px solid ' + border;
+  el.innerHTML = html;
 }
 
 // ===== VALIDITÉ CATALOGUE =====
@@ -5019,10 +5139,22 @@ async function condImportPDFDiag(input) {
     var caTTC2 = caTTCfinal > 0 ? caTTCfinal : caTTC;
     condLabos[condLaboActif].caAnnuel = Math.round(caTTC2);
     // Calcul valeur stock immobilisé (stock × PA net)
-    var stockImmoVal = 0, stockImmoQte = 0;
-    prods.forEach(function(p){ var s = p.stock||0; stockImmoQte += s; stockImmoVal += s * (p.pa_net||0); });
+    var stockImmoVal = 0, stockImmoQte = 0, totRotation = 0;
+    prods.forEach(function(p){
+      var s = p.stock||0;
+      stockImmoQte += s;
+      stockImmoVal += s * (p.pa_net||0);
+      totRotation += p.moy || 0;
+    });
     condLabos[condLaboActif].stockImmoQte = stockImmoQte;
     condLabos[condLaboActif].stockImmoVal = Math.round(stockImmoVal * 100) / 100;
+    // Couverture réelle = stock total / rotation mensuelle totale
+    var couvertureReelle = (totRotation > 0) ? stockImmoQte / totRotation : 0;
+    condLabos[condLaboActif].couvertureReelle = Math.round(couvertureReelle * 10) / 10;
+    condLabos[condLaboActif].totRotation = Math.round(totRotation * 10) / 10;
+    // Date de l'état des ventes = date de référence pour la rupture
+    condLabos[condLaboActif].lastOrder = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
+    condLabos[condLaboActif].orderCoverage = couvertureReelle;
 
     // Save to historique
     var dateImport = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
@@ -5056,6 +5188,8 @@ async function condImportPDFDiag(input) {
     condCalc();
     condAfficherHistorique();
     condSauvegarder();
+    // Rafraîchir le calendrier Workflow
+    wfRenderCalendrier();
 
     if (status) {
       status.textContent = prods.length + ' produits analys\u00e9s — MB% global : ' + mbGlobal.toFixed(1) + '%';
@@ -5746,6 +5880,9 @@ function wfRender() {
   });
 
   stepsEl.innerHTML = html;
+
+  // Calendrier tous labos
+  wfRenderCalendrier();
 }
 
 function cmdImprimer() {
@@ -5798,6 +5935,104 @@ function cmdImprimer() {
     '</body></html>');
   w.document.close();
   setTimeout(function(){ w.print(); }, 400);
+}
+
+// ===== CALENDRIER COMMANDES =====
+function wfRenderCalendrier() {
+  var el = document.getElementById('wf-calendrier');
+  if (!el) return;
+
+  var today = new Date();
+  var labos = Object.keys(condLabos).map(function(id) {
+    var l = condLabos[id];
+    if (!l || !l.nom) return null;
+
+    var status = 'unknown';
+    var joursRupture = null, joursCommande = null;
+    var ruptureDate = null, commandeDate = null;
+
+    if (l.lastOrder) {
+      var lastOrder = new Date(l.lastOrder);
+      var coverage = parseFloat(l.couvertureReelle) || parseFloat(l.orderCoverage) || 2;
+      var deliveryDays = parseInt(l.deliveryDays) || 3;
+      ruptureDate = new Date(lastOrder);
+      ruptureDate.setDate(ruptureDate.getDate() + Math.round(coverage * 30));
+      commandeDate = new Date(ruptureDate);
+      commandeDate.setDate(commandeDate.getDate() - deliveryDays);
+      joursRupture = Math.round((ruptureDate - today) / (1000*60*60*24));
+      joursCommande = Math.round((commandeDate - today) / (1000*60*60*24));
+
+      if (joursRupture <= 0) status = 'rupture';
+      else if (joursCommande <= 0) status = 'urgent';
+      else if (joursCommande <= 14) status = 'bientot';
+      else status = 'ok';
+    }
+
+    return { id:id, nom:l.nom, status:status, joursRupture:joursRupture, joursCommande:joursCommande,
+      ruptureDate:ruptureDate, commandeDate:commandeDate, nextRdv:l.nextRdv ? new Date(l.nextRdv) : null,
+      lastOrder:l.lastOrder ? new Date(l.lastOrder) : null };
+  }).filter(Boolean);
+
+  if (labos.length === 0) { el.innerHTML = ''; return; }
+
+  // Trier par urgence
+  var order = { rupture:0, urgent:1, bientot:2, ok:3, unknown:4 };
+  labos.sort(function(a,b){ return order[a.status] - order[b.status]; });
+
+  var statusConfig = {
+    rupture: { bg:'#fdeaea', border:'#e53e3e', icon:'🚨', label:'Rupture probable' },
+    urgent:  { bg:'#fff3e0', border:'#d97706', icon:'⏰', label:'Commander maintenant' },
+    bientot: { bg:'#fff8ee', border:'#f0b429', icon:'📦', label:'À préparer sous 14j' },
+    ok:      { bg:'#e8f5ee', border:'#38a169', icon:'✓',  label:'Stock OK' },
+    unknown: { bg:'#f5f4f0', border:'#e0e0d8', icon:'?',  label:'Non configuré' }
+  };
+
+  var html = '<div class="card"><p class="card-title">Tableau de bord commandes</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+
+  labos.forEach(function(l) {
+    var cfg = statusConfig[l.status];
+    html += '<div style="background:' + cfg.bg + ';border:1px solid ' + cfg.border + ';border-radius:8px;padding:12px 14px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+    html += '<b style="font-size:13px">' + l.nom + '</b>';
+    html += '<span style="font-size:11px;font-weight:600;color:' + cfg.border + '">' + cfg.icon + ' ' + cfg.label + '</span>';
+    html += '</div>';
+
+    if (l.lastOrder) {
+      html += '<div style="font-size:11px;color:var(--text-sec);line-height:1.8">';
+      html += '📦 Dernière commande : <b>' + l.lastOrder.toLocaleDateString('fr-FR') + '</b><br>';
+      if (l.commandeDate) {
+        var jc = l.joursCommande;
+        var clr = jc <= 0 ? '#e53e3e' : jc <= 14 ? '#d97706' : '#38a169';
+        html += '🛒 Commander avant : <b style="color:' + clr + '">' + l.commandeDate.toLocaleDateString('fr-FR') + '</b>';
+        if (jc > 0) html += ' <span style="color:' + clr + '">(' + jc + 'j)</span>';
+        else html += ' <span style="color:#e53e3e">(dépassé)</span>';
+        html += '<br>';
+      }
+      if (l.ruptureDate) {
+        html += '⚠ Rupture estimée : ' + l.ruptureDate.toLocaleDateString('fr-FR') + ' (' + l.joursRupture + 'j)<br>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--text-ter)">Saisir la date de dernière commande dans Cond. commerciales</div>';
+    }
+
+    if (l.nextRdv) {
+      var jr = Math.round((l.nextRdv - today) / (1000*60*60*24));
+      html += '<div style="margin-top:6px;font-size:11px;font-weight:500;color:#6b46c1">📅 RDV : ' + l.nextRdv.toLocaleDateString('fr-FR') + ' (' + (jr > 0 ? 'dans ' + jr + 'j' : 'passé') + ')</div>';
+    }
+
+    html += '<button type="button" onclick="wfGoToCond(' + l.id + ')" style="margin-top:8px;font-size:10px;padding:3px 8px;background:transparent;border:1px solid ' + cfg.border + ';border-radius:4px;cursor:pointer;color:' + cfg.border + '">→ Configurer</button>';
+    html += '</div>';
+  });
+
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function wfGoToCond(id) {
+  showTab('cond');
+  setTimeout(function(){ condSelectionnerLabo(id); }, 150);
 }
 
 var cmdInited = false;

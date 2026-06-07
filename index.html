@@ -5696,20 +5696,22 @@ function catChargeLabo() {
     var key = p.ean || p.nom;
     var saved = existing[key] || {};
     var autoClass = catClassifierProduit(p.nom || '');
+    // Fallback : classification depuis NUTRICO_CATALOGUE si saved vide
+    var nutroCat = (p.ean && typeof NUTRICO_CATALOGUE !== 'undefined') ? (NUTRICO_CATALOGUE[p.ean] || {}) : {};
     return {
       ean:          p.ean || '',
       nom:          p.nom || p.libelle || '',
       moy:          p.moy || 0,
       pa_net:       p.pa_net || 0,
       pv_ttc:       p.pv_ttc || 0,
-      categorie:    saved.categorie    || autoClass.cat,
-      sous_cat:     saved.sous_cat     || autoClass.scat,
-      marche:       saved.marche       || autoClass.marche,
-      marche_id:    saved.marche_id    || '',
+      categorie:    saved.categorie    || nutroCat.categorie || autoClass.cat,
+      sous_cat:     saved.sous_cat     || nutroCat.sous_cat  || autoClass.scat,
+      marche:       saved.marche       || nutroCat.marche    || autoClass.marche,
+      marche_id:    saved.marche_id    || nutroCat.marche_id || '',
       palier_id:    saved.palier_id    || '',
-      colisage:     saved.colisage      || p.colisage || 1,
+      colisage:     saved.colisage     || nutroCat.colisage  || p.colisage || 1,
       tva:          saved.tva !== undefined ? saved.tva : (p.tva !== undefined ? p.tva : undefined),
-      classified:   !!saved.categorie
+      classified:   !!(saved.categorie || nutroCat.categorie)
     };
   });
 

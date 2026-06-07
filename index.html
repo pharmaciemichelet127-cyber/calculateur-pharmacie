@@ -3432,7 +3432,7 @@ async function importMCPDF(input) {
   var prompts = [
     'Etat des ventes LGPI pages 1-2. Pour chaque ligne produit : CODE|QTE|PA|PV (CODE=EAN/CIP 10+ chiffres, QTE=col 12dm ou somme 12 mois, PA=PA Cat Net decimal, PV=PV TTC decimal). 0 si pas de ventes. Une ligne par produit. Aucun texte.',
     'Etat des ventes LGPI pages 3-4. Meme format : CODE|QTE|PA|PV. Une ligne par produit. Aucun texte.',
-    'Etat des ventes LGPI pages 5-6. Meme format : CODE|QTE|PA|PV. Une ligne par produit. Aucun texte.'
+    'Etat des ventes LGPI pages 5-6. Meme format : CODE|QTE|PA|PV. En plus si tu vois une ligne de TOTAUX (Total stock immobilise, Vente sur les 12 derniers mois), ajoute une ligne TOTAL|QTE_VENTES|VAL_PA_NET|0 avec les valeurs globales. Une ligne par produit. Aucun texte.'
   ];
 
   for (var pi = 0; pi < 3; pi++) {
@@ -3460,7 +3460,15 @@ async function importMCPDF(input) {
         if (!line || line.indexOf('|') < 0) return;
         var p = line.split('|');
         if (p.length < 3) return;
-        var code = p[0].trim().replace(/[^0-9]/g,'');
+        var rawCode = p[0].trim();
+        // Détecter ligne de totaux
+        if (rawCode.toUpperCase() === 'TOTAL') {
+          var totalQteVentes = parseFloat(p[1]) || 0;
+          var totalValPA = parseFloat(p[2]) || 0;
+          if (totalQteVentes > 0) lgpiTotaux = { qte: totalQteVentes, valPA: totalValPA };
+          return;
+        }
+        var code = rawCode.replace(/[^0-9]/g,'');
         if (code.length < 10) return;
         var qte12 = parseFloat(p[1]) || 0;
         var r  = parseFloat((qte12 / 12).toFixed(2));
@@ -5135,10 +5143,20 @@ async function condImportPDFDiag(input) {
     condLabos[condLaboActif].margeActuelle = Math.round(margeExercice);
     condLabos[condLaboActif].mbGlobal12m = parseFloat(mbGlobal.toFixed(1)); // garder 12 mois glissants
 
-    // CA 12 mois glissants (pour référence)
+    // CA 12 mois glissants
+    // Priorité : totaux extraits de la dernière page LGPI (valeur PA Cat Net × coefficient marge → CA TTC)
     var caTTCfinal = 0;
     prods.forEach(function(p){ caTTCfinal += (p.moy||0) * 12 * (p.pv_ttc||0); });
-    var caTTC2 = caTTCfinal > 0 ? caTTCfinal : caTTC;
+    var caTTC2 = caTTCfinal;
+    if (lgpiTotaux && lgpiTotaux.valPA > 0) {
+      // Reconstituer CA TTC depuis valeur PA Cat Net totale des ventes
+      // CA TTC = ValPA / (1 - MB%) × (1 + TVA%)
+      var tvaFacteur = 1 + (parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055);
+      var mbDecimal = (mbGlobal || 30) / 100;
+      caTTC2 = lgpiTotaux.valPA / (1 - mbDecimal) * tvaFacteur;
+    } else if (caTTCfinal <= 0) {
+      caTTC2 = caTTC;
+    }
     condLabos[condLaboActif].caAnnuel = Math.round(caTTC2);
     // Calcul valeur stock immobilisé (stock × PA net)
     var stockImmoVal = 0, stockImmoQte = 0, totRotation = 0;

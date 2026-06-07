@@ -1390,6 +1390,7 @@
       </div>
     </div>
 
+    <div id="cmd-confirm-btn" style="display:none;margin-bottom:12px"></div>
     <div class="card" id="cmd-result-card" style="display:none">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between"><span>Résultat — Commande recommandée</span><button type="button" onclick="cmdImprimer()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer">&#128438; Imprimer</button></p>
       <div class="rgrid" id="cmd-kpis" style="margin-bottom:14px"></div>
@@ -5466,6 +5467,8 @@ function cmdChargeLabo() {
   }
   cmdProduitsSource = condLabos[id].produits || [];
   document.getElementById('cmd-result-card').style.display = 'none';
+  var _cb = document.getElementById('cmd-confirm-btn'); if (_cb) _cb.style.display = 'none';
+  cmdDerniereSimulation = null;
 
   // Charger les paliers spécifiques au labo
   var laboData = condLabos[id];
@@ -5734,12 +5737,71 @@ function cmdGenerer() {
   document.getElementById('cmd-table').innerHTML = html;
 
   var conEl = document.getElementById('cmd-conclusion');
+  // Calcul couverture réelle de la commande
+  var totRotation = lignes.reduce(function(s,l){ return s + (l.moy||0); }, 0);
+  var totQteCmd = lignes.reduce(function(s,l){ return s + (l.qte||0); }, 0);
+  var couvertureCommande = totRotation > 0 ? totQteCmd / totRotation : moisCible;
+
   conEl.innerHTML = '<p class="nego-title">Synthèse commande</p><div class="nego-body">'+
-    'Couverture <b>'+moisCible+' mois</b> sur <b>'+lignes.length+' références</b> | '+
+    'Couverture <b>'+couvertureCommande.toFixed(1).replace('.',',')+' mois</b> sur <b>'+lignes.length+' références</b> | '+
     'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b><br><br>'+
     summaryHtml+'</div>';
   conEl.style.display = 'block';
   document.getElementById('cmd-result-card').style.display = 'block';
+
+  // Stocker la simulation en mémoire pour confirmation ultérieure
+  var selCmd = document.getElementById('cmd-labo-sel');
+  var laboId = selCmd ? (parseInt(selCmd.value) || selCmd.value) : null;
+  cmdDerniereSimulation = {
+    laboId: laboId,
+    montant: Math.round(totCA),
+    couverture: Math.round(couvertureCommande * 10) / 10,
+    lignes: lignes.length,
+    ugTotal: totUG
+  };
+
+  // Afficher bouton de confirmation
+  var confirmEl = document.getElementById('cmd-confirm-btn');
+  if (confirmEl) {
+    confirmEl.style.display = 'block';
+    confirmEl.innerHTML = '<button type="button" onclick="cmdConfirmerCommande()" style="margin-top:12px;font-size:13px;padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">✓ Confirmer et enregistrer cette commande</button>' +
+      '<p style="font-size:11px;color:var(--text-ter);margin-top:6px">Cela enregistrera la date de commande et mettra à jour le calendrier dans Workflow.</p>';
+  }
+}
+
+var cmdDerniereSimulation = null;
+
+function cmdConfirmerCommande() {
+  if (!cmdDerniereSimulation) return;
+  var s = cmdDerniereSimulation;
+  if (!s.laboId || !condLabos[s.laboId]) return;
+
+  var today = new Date().toISOString().slice(0,10);
+  condLabos[s.laboId].lastOrder = today;
+  condLabos[s.laboId].lastOrderAmount = s.montant;
+  condLabos[s.laboId].orderCoverage = s.couverture;
+
+  // Mettre à jour les champs dans Cond. commerciales si ce labo est actif
+  if (condLaboActif == s.laboId) {
+    var loEl = document.getElementById('cond-last-order');
+    var laEl = document.getElementById('cond-last-order-amount');
+    var ocEl = document.getElementById('cond-order-coverage');
+    if (loEl) loEl.value = today;
+    if (laEl) laEl.value = s.montant;
+    if (ocEl) ocEl.value = s.couverture;
+    condUpdateOrderStatus();
+  }
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+  wfRenderCalendrier();
+
+  // Feedback visuel
+  var confirmEl = document.getElementById('cmd-confirm-btn');
+  if (confirmEl) {
+    var laboNom = condLabos[s.laboId].nom || 'ce labo';
+    confirmEl.innerHTML = '<div style="padding:10px 16px;background:#e8f5ee;border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-text)">✓ Commande <b>' + laboNom + '</b> enregistrée — ' + s.montant + '€ · ' + s.couverture + ' mois · ' + new Date(today).toLocaleDateString("fr-FR") + '</div>';
+  }
+  cmdDerniereSimulation = null;
 }
 
 // ===== WORKFLOW =====

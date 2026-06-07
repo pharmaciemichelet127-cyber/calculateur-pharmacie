@@ -4293,12 +4293,12 @@ async function condImportCatalogueLabo(input) {
 
   var allRefs = {};
   var allDateValidite = '';
-  var promptCatalogue = 'Tarif labo pharmacie. Extrais TOUS les produits de cette page avec : nom (désignation complète max 40 cars), ean (EAN/GTIN 13 chiffres, vide si absent — les codes 8 chiffres ne sont pas des EAN13), format (contenance ex: 40ml, 200ml), pu_catalogue (PRIX CAT / prix unitaire catalogue, nombre décimal), colisage (colonne UNITE DE COMMANDE si présente, sinon colonne COLISAGE CARTON, sinon 1). Si tu vois une date de validité des tarifs (ex: "Tarifs valables jusqu\'au 31 Octobre 2025" ou "au 1er Mars 2026"), inclus-la dans le champ "date_validite" au format YYYY-MM-DD. Réponds UNIQUEMENT en JSON valide sans texte ni backticks. Format: {"date_validite":"2026-03-01","produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}';
+  var promptCatalogue = 'Tarif labo pharmacie. Extrais TOUS les produits du document avec : nom (désignation complète max 40 cars), ean (EAN/GTIN 13 chiffres uniquement — ignore les codes 7-8 chiffres), format (contenance ex: 40ml, 200ml), pu_catalogue (colonne PRIX CAT ou prix unitaire catalogue, nombre décimal), colisage (colonne UNITE DE COMMANDE si présente, sinon 1). Si tu vois une date de validité (ex: "au 1er Mars 2026"), inclus-la dans "date_validite" au format YYYY-MM-DD. Réponds UNIQUEMENT en JSON valide sans texte ni backticks. Format: {"date_validite":"2026-03-01","produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"colisage":1}]}';
   var prompts = [
-    promptCatalogue + ' PAGES 1-2.',
-    promptCatalogue + ' PAGES 3-4.',
-    promptCatalogue + ' PAGES 5-6 si elles existent.',
-    promptCatalogue + ' PAGES 7+ si elles existent.'
+    promptCatalogue + ' PAGES 1 ET 2.',
+    promptCatalogue + ' PAGES 3 ET 4.',
+    promptCatalogue + ' PAGES 5 ET 6 si présentes.',
+    promptCatalogue + ' PAGES 7 ET 8 si présentes.'
   ];
 
   try {
@@ -4309,7 +4309,7 @@ async function condImportCatalogueLabo(input) {
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 8000,
+          max_tokens: 16000,
           messages: [{ role: 'user', content: [
             { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
             { type:'text', text: prompts[pi] }

@@ -3733,22 +3733,23 @@ async function condSyncGitHub() {
     if (!putResp.ok) {
       var errData2 = await putResp.json();
       if (errData2.message && errData2.message.indexOf('does not match') >= 0) {
+        // SHA obsolète — récupérer le SHA actuel et réessayer
         var gr2 = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?t=' + Date.now(), {
           headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
         });
         if (gr2.ok) { var ex3 = await gr2.json(); sha = ex3.sha; }
         putResp = await condGitHubPut(token, b64, sha);
+        if (!putResp.ok) {
+          var errRetry = await putResp.json();
+          throw new Error(errRetry.message || putResp.status);
+        }
+      } else {
+        throw new Error(errData2.message || putResp.status);
       }
     }
-    var _ignore = putResp;
 
-    if (putResp.ok) {
-      if (status) { status.textContent = '✓ Sauvegardé sur GitHub (' + Object.keys(condLabos).length + ' labos)'; status.style.color = 'var(--accent-text)'; }
-      setTimeout(function(){ if (status) status.textContent = ''; }, 5000);
-    } else {
-      var err = await putResp.json();
-      throw new Error(err.message || putResp.status);
-    }
+    if (status) { status.textContent = '✓ Sauvegardé sur GitHub (' + Object.keys(condLabos).length + ' labos)'; status.style.color = 'var(--accent-text)'; }
+    setTimeout(function(){ if (status) status.textContent = ''; }, 5000);
   } catch(err) {
     if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
   }

@@ -6317,24 +6317,36 @@ function boironInitCatalogue(laboId) {
 
 // ===== GIBAUD — Catalogue pré-chargé (Tarif ORTHO PODO CONSEIL 2026, 1er juin) =====
 // Source : Tarif ORTHO PODO CONSEIL uniquement (1543 produits)
-var GIBAUD_CATALOGUE_DEFAUT = []; // import PDF/XLSX;
+var GIBAUD_CATALOGUE_DEFAUT = null;
+var _gibaudCache = null;
+var _gibaudLoading = false;
+
+function gibaudLoadCatalogue(cb) {
+  if (_gibaudCache) { cb(_gibaudCache); return; }
+  if (_gibaudLoading) { setTimeout(function(){ gibaudLoadCatalogue(cb); }, 300); return; }
+  _gibaudLoading = true;
+  fetch('/gibaud.json')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ _gibaudCache = d; _gibaudLoading = false; cb(d); })
+    .catch(function(){ _gibaudLoading = false; cb([]); });
+};
 
 function gibaudInitCatalogue(laboId) {
   if (!condLabos[laboId]) return;
   if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
-  condLabos[laboId].produits = GIBAUD_CATALOGUE_DEFAUT.map(function(p) {
-    return {
-      nom: p.nom || '', ean: p.ean || '', format: p.taille || '',
-      pu_catalogue: p.pu_catalogue || 0, lppr: p.lppr || 0,
-      tva: p.tva || 20, colisage: p.colisage || 1,
-      source: p.source || '', famille: p.famille || '', gamme: p.gamme || '',
-      designation: p.designation || '', taille: p.taille || '',
-      acl: p.acl || '', code_lppr: p.code_lppr || '', arret: p.arret || '',
-      moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0, rem_cat: 0, mois: new Array(12).fill(0)
-    };
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = '⏳ Chargement GIBAUD...';
+  gibaudLoadCatalogue(function(data) {
+    if (!condLabos[laboId]) return;
+    condLabos[laboId].produits = data.map(function(p) {
+      return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+    });
+    condLabos[laboId].catalogueMaj = new Date().toISOString();
+    condLabos[laboId].tarifValidite = '2026-12-31';
+    if (majEl) majEl.textContent = data.length + ' produits chargés';
+    if (condLaboActif == laboId) { var cs = document.getElementById('cat-labo-sel'); if (cs && cs.value == laboId) catChargeLabo(); }
+    condSauvegarder();
   });
-  condLabos[laboId].catalogueMaj = new Date().toISOString();
-  condLabos[laboId].tarifValidite = '2026-12-31';
 }
 
 // ===== THUASNE — Catalogue pré-chargé (Tarif Médical Détaillants Janvier 2026) =====

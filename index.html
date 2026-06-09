@@ -3686,13 +3686,10 @@ async function condSyncGitHubAuto() {
   if (!token) return;
   try {
     // Vider les produits des labos pré-chargés avant sauvegarde (évite dépassement 1MB GitHub)
-    var LABOS_PRECHARGES = ['THUASNE', 'GIBAUD', 'INNOTHERA', 'BOIRON', 'HORUS', 'DULCIS'];
     var condLabosSave = JSON.parse(JSON.stringify(condLabos));
+    // Vider TOUS les produits avant sauvegarde GitHub (trop lourd sinon)
     Object.keys(condLabosSave).forEach(function(k) {
-      var nom = (condLabosSave[k].nom || '').toUpperCase();
-      if (LABOS_PRECHARGES.some(function(n){ return nom.indexOf(n) >= 0; })) {
-        condLabosSave[k].produits = [];
-      }
+      condLabosSave[k].produits = [];
     });
     var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabosSave }, null, 2);
     var b64 = btoa(unescape(encodeURIComponent(data)));

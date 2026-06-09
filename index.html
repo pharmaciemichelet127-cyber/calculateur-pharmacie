@@ -1194,6 +1194,7 @@
           style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:300px;box-sizing:border-box">
         <div id="dec-labo-list" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;background:#fff;width:300px;margin-top:4px"></div>
         <p id="dec-labo-choisi" style="font-size:12px;font-weight:600;color:var(--accent-text);margin:6px 0 0"></p>
+        <div style="margin-top:10px"><label style="font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px">P\u00e9riode de l'export Ospharm</label><select id="dec-periode" onchange="decChangerPeriode()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff"><option value="lissee">Ann\u00e9e liss\u00e9e (12 derniers mois)</option><option value="encours">Ann\u00e9e en cours (1er janv \u2192 dernier mois \u00e9chu)</option></select></div>
         <div id="dec-conditions" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-verdict" style="display:none;margin-top:10px"></div>
         <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
@@ -6080,6 +6081,8 @@ function cmdImprimer() {
 function decAfficherResume(labo) {
   var el = document.getElementById('dec-resume');
   if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
+  var selP = document.getElementById('dec-periode');
+  if (selP) selP.value = decGetPeriode();
   var prods = decOspharmProds[labo];
   var sorted = prods.slice().sort(function(a,b){ return b.caht - a.caht; });
   var totCaht = 0, totMarge = 0, totStock = 0, totQte = 0;
@@ -6091,10 +6094,17 @@ function decAfficherResume(labo) {
   }
   var tauxMarge = totCaht > 0 ? (totMarge / totCaht) * 100 : 0;
   var nbRefs = prods.filter(function(p){ return p.caht > 0; }).length;
+  var periode = decGetPeriode();
+  var mois = periode === 'encours' ? decMoisEchus() : 12;
+  var caAnnu = mois > 0 ? totCaht * 12 / mois : totCaht;
+  var margeAnnu = mois > 0 ? totMarge * 12 / mois : totMarge;
   var html = '<strong style="font-size:13px">' + labo + '</strong>';
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 12px">';
-  html += '<div><span style="font-size:10px;color:var(--text-ter)">CA annuel HT</span><br><strong>' + Math.round(totCaht).toLocaleString('fr') + ' €</strong></div>';
-  html += '<div><span style="font-size:10px;color:var(--text-ter)">Marge actuelle</span><br><strong>' + tauxMarge.toFixed(1) + '%</strong></div>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">' + (periode === 'encours' ? 'ann\u00e9e en cours \u00b7 ' + mois + ' mois \u00e9chus' : 'ann\u00e9e liss\u00e9e \u00b7 12 mois') + '</span>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:8px 0 12px">';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">CA p\u00e9riode HT</span><br><strong>' + Math.round(totCaht).toLocaleString('fr') + ' \u20ac</strong></div>';
+  if (periode === 'encours') html += '<div><span style="font-size:10px;color:var(--text-ter)">CA annualis\u00e9</span><br><strong>' + Math.round(caAnnu).toLocaleString('fr') + ' \u20ac</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Marge totale</span><br><strong>' + Math.round(totMarge).toLocaleString('fr') + ' \u20ac</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Taux de marge</span><br><strong>' + tauxMarge.toFixed(1) + '%</strong></div>';
   html += '<div><span style="font-size:10px;color:var(--text-ter)">Références</span><br><strong>' + nbRefs + '</strong></div>';
   html += '<div><span style="font-size:10px;color:var(--text-ter)">Stock (unités)</span><br><strong>' + Math.round(totStock).toLocaleString('fr') + '</strong></div>';
   html += '</div>';
@@ -6133,7 +6143,7 @@ function decAfficherResume(labo) {
   html += '</tr></tbody></table></div>';
   el.innerHTML = html;
   el.style.display = 'block';
-  decCurrentStats = { labo: labo, caht: totCaht, taux: tauxMarge };
+  decCurrentStats = { labo: labo, caht: caAnnu, caPeriode: totCaht, margeEur: margeAnnu, taux: tauxMarge, mois: mois, periode: periode };
   decAfficherConditions(labo);
 }
 
@@ -6141,6 +6151,21 @@ function decAfficherResume(labo) {
 // ===== DECISION RDV : CONDITIONS LABO + VERDICT =====
 var decCurrentStats = null;
 var decCondCurrent = null;
+
+function decGetPeriode() {
+  try { var p = localStorage.getItem('decPeriode'); return p === 'encours' ? 'encours' : 'lissee'; } catch(e) { return 'lissee'; }
+}
+function decMoisEchus(d) {
+  // Mois échus depuis le 1er janvier (en juin -> 5 : janv a mai). En janvier, repli sur 12.
+  d = d || new Date();
+  var m = d.getMonth();
+  return m === 0 ? 12 : m;
+}
+function decChangerPeriode() {
+  var sel = document.getElementById('dec-periode');
+  if (sel) { try { localStorage.setItem('decPeriode', sel.value); } catch(e) {} }
+  if (decCurrentStats) decAfficherResume(decCurrentStats.labo);
+}
 
 function decGetCondData() {
   try { return JSON.parse(localStorage.getItem('decCondLabos') || '{}'); } catch(e) { return {}; }
@@ -6280,7 +6305,7 @@ function decRenderConditions(labo) {
   html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
   html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + ';width:100px" oninput="decUpdCond(\'ug\',this.value)"></div>';
   html += '<div><label style="' + lbl + '">RFA (%)</label><input type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'rfa\',this.value)"></div>';
-  html += '<div><label style="' + lbl + '">Franco / min cde (\u20ac)</label><input type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'franco\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">Palier impos\u00e9 / franco (\u20ac)</label><input type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'franco\',this.value)"></div>';
   html += '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
   html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac)</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + seuils.caOui + '" style="' + inp + ';width:100px" oninput="decCalculerVerdict()"></div>';
@@ -6306,23 +6331,47 @@ function decCalculerVerdict() {
   var remTot = remPond + ugPct + rfa;
   var caOk = ca >= caOui;
   var remOk = remTot >= remOui;
+  // 1) Faisabilité du palier impose : achats annuels = CA annualise x (1 - taux de marge)
+  var achatsAn = ca * (1 - (decCurrentStats.taux || 0) / 100);
+  var achatsMois = achatsAn / 12;
+  var palierHtml = '';
+  if (franco > 0 && achatsMois > 0) {
+    var nbMois = franco / achatsMois;
+    var pOk = nbMois <= 3;
+    var pCol = pOk ? 'var(--accent-text)' : 'var(--danger)';
+    var pTxt;
+    if (nbMois <= 1) pTxt = 'Palier ' + Math.round(franco).toLocaleString('fr') + ' \u20ac franchissable \u00e0 chaque commande mensuelle (achats \u2248 ' + Math.round(achatsMois).toLocaleString('fr') + ' \u20ac/mois).';
+    else if (pOk) pTxt = 'Palier ' + Math.round(franco).toLocaleString('fr') + ' \u20ac franchissable en groupant \u2248 ' + nbMois.toFixed(1) + ' mois d\u2019achats (' + Math.round(achatsMois).toLocaleString('fr') + ' \u20ac/mois).';
+    else pTxt = 'Palier ' + Math.round(franco).toLocaleString('fr') + ' \u20ac \u00e9lev\u00e9 : il faudrait grouper \u2248 ' + nbMois.toFixed(1) + ' mois d\u2019achats (' + Math.round(achatsMois).toLocaleString('fr') + ' \u20ac/mois) \u2192 risque de surstock, n\u00e9gocier le palier ou le franco.';
+    palierHtml = '<div style="font-size:12px;font-weight:600;color:' + pCol + ';margin-bottom:6px">' + (pOk ? '\u2713 ' : '\u26a0 ') + pTxt + '</div>';
+  }
+  // 2) Marge projetee : gain UG + RFA applique a la marge actuelle (cout d'achat reduit)
+  var tAct = decCurrentStats.taux || 0;
+  var tProj = (1 - (1 - tAct / 100) * (1 - ugPct / 100) * (1 - rfa / 100)) * 100;
+  var margeProjHtml = '';
+  if (ugPct > 0 || rfa > 0) {
+    var margeEurProj = ca * tProj / 100;
+    margeProjHtml = '<div style="font-size:11px;margin-top:4px;color:var(--text-sec)">Marge projet\u00e9e avec conditions : <strong>' + tProj.toFixed(1) + '%</strong> (vs ' + tAct.toFixed(1) + '% actuels) soit \u2248 ' + Math.round(margeEurProj).toLocaleString('fr') + ' \u20ac/an (+' + Math.round(margeEurProj - decCurrentStats.margeEur).toLocaleString('fr') + ' \u20ac).</div>';
+  }
   var verdict, bg, fg, expl = [];
   if (caOk && remOk) {
     verdict = 'OUI'; bg = 'var(--accent-bg)'; fg = 'var(--accent-text)';
-    expl.push('CA ' + Math.round(ca).toLocaleString('fr') + ' \u20ac \u2265 ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac et remise totale ' + remTot.toFixed(1) + '% \u2265 ' + remOui + '%.');
+    expl.push('CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac \u2265 ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac et remise totale ' + remTot.toFixed(1) + '% \u2265 ' + remOui + '%.');
   } else if (ca < caOui / 2 && remTot < remOui - 10) {
     verdict = 'NON'; bg = 'var(--danger-bg)'; fg = 'var(--danger)';
     expl.push('CA faible (' + Math.round(ca).toLocaleString('fr') + ' \u20ac < ' + Math.round(caOui / 2).toLocaleString('fr') + ' \u20ac) et conditions insuffisantes (' + remTot.toFixed(1) + '% < ' + (remOui - 10) + '%).');
   } else {
     verdict = 'PEUT-\u00caTRE'; bg = 'var(--warn-bg)'; fg = 'var(--warn)';
-    if (!caOk) expl.push('CA ' + Math.round(ca).toLocaleString('fr') + ' \u20ac sous le seuil de ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac \u2192 n\u00e9gocier UG/RFA pour compenser.');
+    if (!caOk) expl.push('CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac sous le seuil de ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac \u2192 n\u00e9gocier UG/RFA pour compenser.');
     if (!remOk) expl.push('Remise totale ' + remTot.toFixed(1) + '% : il manque ' + (remOui - remTot).toFixed(1) + ' pt(s) pour un OUI.');
   }
-  var det = 'Remise pond\u00e9r\u00e9e ' + remPond.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>' + (franco > 0 ? ' \u00b7 Franco ' + Math.round(franco).toLocaleString('fr') + ' \u20ac' : '');
+  var det = 'Remise pond\u00e9r\u00e9e ' + remPond.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>';
   var html = '<div style="padding:12px;border-radius:var(--radius-sm);background:' + bg + '">';
+  html += palierHtml;
   html += '<span style="font-size:18px;font-weight:700;color:' + fg + '">' + verdict + '</span>';
   html += '<span style="font-size:11px;color:var(--text-sec);margin-left:10px">' + det + '</span>';
   for (var i = 0; i < expl.length; i++) html += '<div style="font-size:11px;margin-top:4px;color:var(--text-sec)">' + expl[i] + '</div>';
+  html += margeProjHtml;
   html += '</div>';
   el.innerHTML = html;
   el.style.display = 'block';

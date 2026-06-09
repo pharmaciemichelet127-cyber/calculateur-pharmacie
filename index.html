@@ -1194,6 +1194,7 @@
           style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:300px;box-sizing:border-box">
         <div id="dec-labo-list" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;background:#fff;width:300px;margin-top:4px"></div>
         <p id="dec-labo-choisi" style="font-size:12px;font-weight:600;color:var(--accent-text);margin:6px 0 0"></p>
+        <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
       </div>
     </div>
   </div>
@@ -6074,6 +6075,30 @@ function cmdImprimer() {
   setTimeout(function(){ w.print(); }, 400);
 }
 
+function decAfficherResume(labo) {
+  var el = document.getElementById('dec-resume');
+  if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
+  var prods = decOspharmProds[labo];
+  var caht = 0, marge = 0, stockVal = 0, nbRefs = 0;
+  for (var i = 0; i < prods.length; i++) {
+    caht += prods[i].caht;
+    marge += prods[i].marge;
+    stockVal += prods[i].stock * prods[i].paht;
+    if (prods[i].caht > 0) nbRefs++;
+  }
+  var tauxMarge = caht > 0 ? (marge / caht) * 100 : 0;
+  el.innerHTML =
+    '<strong style="font-size:13px">' + labo + '</strong>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">' +
+    '<div><span style="font-size:10px;color:var(--text-ter)">CA annuel HT</span><br><strong>' + Math.round(caht).toLocaleString('fr') + ' €</strong></div>' +
+    '<div><span style="font-size:10px;color:var(--text-ter)">Marge actuelle</span><br><strong>' + tauxMarge.toFixed(1) + '%</strong></div>' +
+    '<div><span style="font-size:10px;color:var(--text-ter)">Références</span><br><strong>' + nbRefs + '</strong></div>' +
+    '<div><span style="font-size:10px;color:var(--text-ter)">Stock estimé</span><br><strong>' + Math.round(stockVal).toLocaleString('fr') + ' €</strong></div>' +
+    '</div>';
+  el.style.display = 'block';
+}
+
+
 // ===== CALENDRIER COMMANDES =====
 function wfRenderCalendrier() {
   var el = document.getElementById('wf-calendrier');
@@ -7309,6 +7334,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
 // ===== DECISION RDV =====
 var decOspharmData = null;
+var decOspharmProds = null;
 
 function decFiltrerLabos(q) {
   var list = document.getElementById('dec-labo-list');
@@ -7343,6 +7369,7 @@ function decFiltrerLabos(q) {
       document.getElementById('dec-labo-input').value = labo;
       document.getElementById('dec-labo-list').style.display = 'none';
       document.getElementById('dec-labo-choisi').textContent = '✓ ' + labo;
+      decAfficherResume(labo);
     });
   }
 }
@@ -7368,15 +7395,24 @@ function decImportOspharm(input) {
       }
       // Lire les données
       var labos = {};
+      var prods = {};
       for (var r = 1; r < rows.length; r++) {
         var row = rows[r];
         var labo = String(row[cols['Libellé laboratoire']] || '').trim();
         if (!labo) continue;
-        var caht = parseFloat(String(row[cols['CA HT']] || '0').replace(/[^\d.-]/g, '')) || 0;
+        var caht  = parseFloat(String(row[cols['CA HT']]           || '0').replace(/[^\d.-]/g,'')) || 0;
+        var marge = parseFloat(String(row[cols['Marge']]            || '0').replace(/[^\d.-]/g,'')) || 0;
+        var qte   = parseFloat(String(row[cols['Quantité']]         || '0').replace(/[^\d.-]/g,'')) || 0;
+        var paht  = parseFloat(String(row[cols['Prix achat HT']]    || '0').replace(/[^\d.-]/g,'')) || 0;
+        var stock = parseFloat(String(row[cols['Stocks quantité']]  || '0').replace(/[^\d.-]/g,'')) || 0;
+        var lib   = String(row[cols['Libellé produit']] || '').trim();
         if (!labos[labo]) labos[labo] = 0;
         labos[labo] += caht;
+        if (!prods[labo]) prods[labo] = [];
+        prods[labo].push({lib:lib, caht:caht, marge:marge, qte:qte, paht:paht, stock:stock});
       }
       decOspharmData = labos;
+      decOspharmProds = prods;
       var nb = Object.keys(labos).length;
       status.textContent = '✅ ' + nb + ' labos chargés';
       status.style.color = 'var(--accent-text)';

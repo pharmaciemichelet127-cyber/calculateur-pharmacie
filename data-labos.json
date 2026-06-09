@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "date": "2026-06-09T15:59:52.104Z",
+  "date": "2026-06-09T16:08:32.146Z",
   "condLabos": {
     "1": {
       "nom": "AVENE",
@@ -91014,6 +91014,30 @@
         }
       ],
       "catalogueMaj": "2026-06-09T15:56:01.114Z"
+    },
+    "1781021300891": {
+      "nom": "GIBAUD",
+      "caAnnuel": 0,
+      "mbActuel": 0,
+      "margeActuelle": 0,
+      "dateEval": "2026-06-09",
+      "tva": 5.5,
+      "ventes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "conditions": [],
+      "tarifValidite": ""
     }
   }
 }

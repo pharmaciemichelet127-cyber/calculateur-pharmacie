@@ -1192,10 +1192,13 @@
           <span id="dec-import-status" style="font-size:12px;color:var(--text-sec)"></span>
         </div>
         <div id="dec-labo-sel-wrap" style="display:none;margin-top:10px">
-          <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:4px">Choisir le labo à analyser</label>
-          <select id="dec-labo-sel" onchange="decChoisirLabo()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);min-width:300px">
-            <option value="">-- Choisir --</option>
-          </select>
+          <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:4px">Rechercher le labo (3 lettres min)</label>
+          <div style="position:relative">
+            <input id="dec-labo-search" type="text" placeholder="Ex: HOR, AVE, LAR..." oninput="decFiltrerLabos()" autocomplete="off"
+              style="width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+            <div id="dec-labo-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:220px;overflow-y:auto;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+          </div>
+          <div id="dec-labo-selected" style="margin-top:6px;font-size:12px;color:var(--accent-text);font-weight:600"></div>
         </div>
       </div>
 
@@ -7430,9 +7433,33 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 
-function decChoisirLabo() {
-  var sel = document.getElementById('dec-labo-sel');
-  var labo = sel.value;
+function decFiltrerLabos() {
+  var q = (document.getElementById('dec-labo-search').value || '').toUpperCase().trim();
+  var dd = document.getElementById('dec-labo-dropdown');
+  if (!decData || q.length < 2) { dd.style.display='none'; return; }
+  var matches = Object.keys(decData).filter(function(l){ return l.toUpperCase().indexOf(q) >= 0; })
+    .sort(function(a,b){
+      var caA = decData[a].reduce(function(s,p){return s+p.caht;},0);
+      var caB = decData[b].reduce(function(s,p){return s+p.caht;},0);
+      return caB-caA;
+    }).slice(0,10);
+  if (matches.length === 0) { dd.innerHTML='<div style="padding:8px 12px;font-size:12px;color:var(--text-ter)">Aucun résultat</div>'; dd.style.display='block'; return; }
+  dd.innerHTML = matches.map(function(l){
+    var ca = decData[l].reduce(function(s,p){return s+p.caht;},0);
+    return '<div onclick="decSelectLabo(''+l.replace(/'/g,"\'")+'')" style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:0.5px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='#fff'">'
+      +'<strong>'+l+'</strong> <span style="color:var(--text-ter)">— '+Math.round(ca).toLocaleString('fr')+' € HT</span></div>';
+  }).join('');
+  dd.style.display = 'block';
+}
+
+function decSelectLabo(labo) {
+  document.getElementById('dec-labo-search').value = labo;
+  document.getElementById('dec-labo-dropdown').style.display = 'none';
+  document.getElementById('dec-labo-selected').textContent = '✓ ' + labo;
+  decChoisirLaboNom(labo);
+}
+
+function decChoisirLaboNom(labo) {
   if (!labo || !decData || !decData[labo]) return;
   
   var prods = decData[labo];
@@ -7556,6 +7583,14 @@ function decCalculer() {
 
   result.innerHTML = html;
 }
+
+document.addEventListener('click', function(e) {
+  var dd = document.getElementById('dec-labo-dropdown');
+  var input = document.getElementById('dec-labo-search');
+  if (dd && input && !input.contains(e.target) && !dd.contains(e.target)) {
+    dd.style.display = 'none';
+  }
+});
 </script>
 </body>
 </html>

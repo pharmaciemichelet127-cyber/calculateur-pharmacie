@@ -1194,6 +1194,8 @@
           style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:300px;box-sizing:border-box">
         <div id="dec-labo-list" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;background:#fff;width:300px;margin-top:4px"></div>
         <p id="dec-labo-choisi" style="font-size:12px;font-weight:600;color:var(--accent-text);margin:6px 0 0"></p>
+        <div id="dec-conditions" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
+        <div id="dec-verdict" style="display:none;margin-top:10px"></div>
         <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
       </div>
     </div>
@@ -6131,8 +6133,106 @@ function decAfficherResume(labo) {
   html += '</tr></tbody></table></div>';
   el.innerHTML = html;
   el.style.display = 'block';
+  decCurrentStats = { labo: labo, caht: totCaht, taux: tauxMarge };
+  decAfficherConditions(labo);
 }
 
+
+// ===== DECISION RDV : CONDITIONS LABO + VERDICT =====
+var decCurrentStats = null;
+
+function decGetCondData() {
+  try { return JSON.parse(localStorage.getItem('decCondLabos') || '{}'); } catch(e) { return {}; }
+}
+function decSaveCondData(d) {
+  try { localStorage.setItem('decCondLabos', JSON.stringify(d)); } catch(e) {}
+}
+function decGetSeuils() {
+  var s = { caOui: 5000, remOui: 35 };
+  try {
+    var saved = JSON.parse(localStorage.getItem('decSeuils') || '{}');
+    if (saved.caOui > 0) s.caOui = saved.caOui;
+    if (saved.remOui > 0) s.remOui = saved.remOui;
+  } catch(e) {}
+  return s;
+}
+function decParseUG(str) {
+  // "12+2" -> 2/(12+2) = 14.3% ; "10" -> 10%
+  if (!str) return 0;
+  str = String(str).trim();
+  var m = str.match(/^(\d+)\s*\+\s*(\d+)$/);
+  if (m) {
+    var a = parseFloat(m[1]), o = parseFloat(m[2]);
+    return (a + o) > 0 ? (o / (a + o)) * 100 : 0;
+  }
+  var n = parseFloat(str.replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function decAfficherConditions(labo) {
+  var el = document.getElementById('dec-conditions');
+  if (!el) return;
+  var all = decGetCondData();
+  var c = all[labo] || { remise: '', ug: '', rfa: '', franco: '' };
+  var seuils = decGetSeuils();
+  var esc = function(v){ return String(v == null ? '' : v).replace(/"/g, '&quot;'); };
+  var inp = 'font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:100px';
+  var lbl = 'font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px';
+  var html = '<strong style="font-size:12px">Conditions — ' + labo + '</strong>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px">';
+  html += '<div><label style="' + lbl + '">Remise ligne (%)</label><input id="dec-c-remise" type="number" min="0" max="80" step="0.5" value="' + esc(c.remise) + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input id="dec-c-ug" type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">RFA (%)</label><input id="dec-c-rfa" type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">Franco / min cde (\u20ac)</label><input id="dec-c-franco" type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
+  html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac)</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + seuils.caOui + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">Remise totale mini OUI (%)</label><input id="dec-s-rem" type="number" min="0" max="80" step="1" value="' + seuils.remOui + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+  decCalculerVerdict();
+}
+function decCalculerVerdict() {
+  var el = document.getElementById('dec-verdict');
+  if (!el || !decCurrentStats) return;
+  var labo = decCurrentStats.labo;
+  var ca = decCurrentStats.caht;
+  function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+  var remise = parseFloat(val('dec-c-remise')) || 0;
+  var ugStr = val('dec-c-ug');
+  var ugPct = decParseUG(ugStr);
+  var rfa = parseFloat(val('dec-c-rfa')) || 0;
+  var franco = parseFloat(val('dec-c-franco')) || 0;
+  var caOui = parseFloat(val('dec-s-ca')) || 5000;
+  var remOui = parseFloat(val('dec-s-rem')) || 35;
+  var all = decGetCondData();
+  all[labo] = { remise: val('dec-c-remise'), ug: ugStr, rfa: val('dec-c-rfa'), franco: val('dec-c-franco') };
+  decSaveCondData(all);
+  try { localStorage.setItem('decSeuils', JSON.stringify({ caOui: caOui, remOui: remOui })); } catch(e) {}
+  var remTot = remise + ugPct + rfa;
+  var caOk = ca >= caOui;
+  var remOk = remTot >= remOui;
+  var verdict, bg, fg, expl = [];
+  if (caOk && remOk) {
+    verdict = 'OUI'; bg = 'var(--accent-bg)'; fg = 'var(--accent-text)';
+    expl.push('CA ' + Math.round(ca).toLocaleString('fr') + ' \u20ac \u2265 ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac et remise totale ' + remTot.toFixed(1) + '% \u2265 ' + remOui + '%.');
+  } else if (ca < caOui / 2 && remTot < remOui - 10) {
+    verdict = 'NON'; bg = 'var(--danger-bg)'; fg = 'var(--danger)';
+    expl.push('CA faible (' + Math.round(ca).toLocaleString('fr') + ' \u20ac < ' + Math.round(caOui / 2).toLocaleString('fr') + ' \u20ac) et conditions insuffisantes (' + remTot.toFixed(1) + '% < ' + (remOui - 10) + '%).');
+  } else {
+    verdict = 'PEUT-\u00caTRE'; bg = 'var(--warn-bg)'; fg = 'var(--warn)';
+    if (!caOk) expl.push('CA ' + Math.round(ca).toLocaleString('fr') + ' \u20ac sous le seuil de ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac \u2192 n\u00e9gocier UG/RFA pour compenser.');
+    if (!remOk) expl.push('Remise totale ' + remTot.toFixed(1) + '% : il manque ' + (remOui - remTot).toFixed(1) + ' pt(s) pour un OUI.');
+  }
+  var det = 'Remise ' + remise.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>' + (franco > 0 ? ' \u00b7 Franco ' + Math.round(franco).toLocaleString('fr') + ' \u20ac' : '');
+  var html = '<div style="padding:12px;border-radius:var(--radius-sm);background:' + bg + '">';
+  html += '<span style="font-size:18px;font-weight:700;color:' + fg + '">' + verdict + '</span>';
+  html += '<span style="font-size:11px;color:var(--text-sec);margin-left:10px">' + det + '</span>';
+  for (var i = 0; i < expl.length; i++) html += '<div style="font-size:11px;margin-top:4px;color:var(--text-sec)">' + expl[i] + '</div>';
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
 
 // ===== CALENDRIER COMMANDES =====
 function wfRenderCalendrier() {

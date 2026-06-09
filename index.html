@@ -1180,64 +1180,80 @@
 
   <!-- ===== DECISION RDV ===== -->
   <div id="panel-decision" style="display:none">
-    <div class="card" style="max-width:750px;margin:0 auto">
+    <div class="card" style="max-width:700px;margin:0 auto">
       <p class="card-title">⚡ Décision RDV — Ouvrir ce marché ?</p>
-      <p style="font-size:12px;color:var(--text-ter);margin-bottom:16px">Importez votre export Ospharm, filtrez le labo, saisissez les conditions — verdict immédiat.</p>
 
-      <!-- Étape 1 : Import Ospharm -->
-      <div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm);margin-bottom:14px">
-        <p style="font-size:12px;font-weight:700;margin:0 0 10px;text-transform:uppercase;letter-spacing:.05em">1. Importer ventes Ospharm (Excel)</p>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <input type="file" id="dec-file" accept=".xlsx,.xls" onchange="decImportOspharm(this)" style="font-size:12px">
-          <span id="dec-import-status" style="font-size:12px;color:var(--text-sec)"></span>
-        </div>
-        <div id="dec-search-wrap" style="display:none;margin-top:12px">
-          <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:4px">Rechercher le labo (tapez 2 lettres min)</label>
-          <input id="dec-labo-input" type="text" placeholder="Ex: HOR, AVE, LA RO..." autocomplete="off" oninput="decFiltrerLabos(this.value)"
-            style="width:300px;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-          <div id="dec-labo-list" style="margin-top:6px;display:none;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;background:#fff;width:300px"></div>
-          <div id="dec-labo-choisi" style="margin-top:6px;font-size:12px;font-weight:600;color:var(--accent-text)"></div>
-        </div>
+      <!-- Labo -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:4px">Nom du labo / marché</label>
+        <input id="dec-labo" type="text" placeholder="Ex: HORUS PHARMA — Sécheresse oculaire" style="width:100%;font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);box-sizing:border-box">
       </div>
 
-      <!-- Étape 2 : Résumé + conditions -->
-      <div id="dec-step2" style="display:none">
-        <div id="dec-ventes-resume" style="background:var(--accent-bg);padding:12px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:12px"></div>
-        <div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm);margin-bottom:14px">
-          <p style="font-size:12px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-text)">2. Conditions proposées</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-            <div>
-              <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Remise catalogue %</label>
-              <input id="dec-remise" type="number" value="0" min="0" max="60" step="0.5" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">UG : achetées</label>
-              <input id="dec-ug-ach" type="number" value="0" min="0" step="1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">UG : offertes</label>
-              <input id="dec-ug-off" type="number" value="0" min="0" step="1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">RFA %</label>
-              <input id="dec-rfa" type="number" value="0" min="0" max="20" step="0.5" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Min commande €HT</label>
-              <input id="dec-min-cmd" type="number" value="0" min="0" step="10" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Remise actuelle %</label>
-              <input id="dec-remise-act" type="number" value="0" min="0" max="60" step="0.5" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
-            </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+        <!-- COL 1 : Conditions labo -->
+        <div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)">
+          <p style="font-size:12px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-text)">1. Conditions labo</p>
+
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Remise catalogue %</label>
+            <input id="dec-remise" type="number" value="0" min="0" max="60" step="0.5" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">UG — achat (ex: 12)</label>
+            <input id="dec-ug-ach" type="number" value="0" min="0" step="1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">UG — offert (ex: 2)</label>
+            <input id="dec-ug-off" type="number" value="0" min="0" step="1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">RFA fin d'année %</label>
+            <input id="dec-rfa" type="number" value="0" min="0" max="20" step="0.5" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Minimum commande €HT</label>
+            <input id="dec-min-cmd" type="number" value="0" min="0" step="10" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Engagement (mois)</label>
+            <input id="dec-engagement" type="number" value="12" min="1" max="36" step="1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
           </div>
         </div>
-        <div id="dec-result"></div>
+
+        <!-- COL 2 : Mes ventes -->
+        <div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)">
+          <p style="font-size:12px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-sec)">2. Mes ventes actuelles</p>
+
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">CA annuel labo €TTC</label>
+            <input id="dec-ca" type="number" value="0" min="0" step="100" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Marge actuelle %</label>
+            <input id="dec-marge-act" type="number" value="28" min="0" max="60" step="0.5" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Nombre de références vendues</label>
+            <input id="dec-nb-refs" type="number" value="0" min="0" step="1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">Stock actuel €HT</label>
+            <input id="dec-stock" type="number" value="0" min="0" step="50" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-ter);display:block;margin-bottom:3px">TVA moyenne %</label>
+            <input id="dec-tva" type="number" value="10" min="2.1" max="20" step="0.1" oninput="decCalculer()" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;box-sizing:border-box">
+          </div>
+        </div>
       </div>
+
+      <!-- Résultat -->
+      <div id="dec-result" style="display:none;margin-top:8px"></div>
+
     </div>
   </div>
-
-    <!-- ===== WORKFLOW ===== -->
+  <!-- ===== WORKFLOW ===== -->
   <div id="panel-workflow">
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between">
@@ -7347,162 +7363,134 @@ window.addEventListener('DOMContentLoaded', function() {
 
 
 // ===== DECISION RDV =====
-var decData = null;
-var decLaboActuel = null;
-
-function decImportOspharm(input) {
-  var file = input.files[0];
-  if (!file) return;
-  var status = document.getElementById('dec-import-status');
-  status.textContent = 'Chargement...';
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      var wb = XLSX.read(e.target.result, {type:'array'});
-      var ws = wb.Sheets[wb.SheetNames[0]];
-      var rows = XLSX.utils.sheet_to_json(ws, {header:1});
-      var header = rows[0];
-      var cols = {};
-      header.forEach(function(h,i){ if(h) cols[h.toString().trim()] = i; });
-      function toF(v) {
-        if (v === null || v === undefined) return 0;
-        if (typeof v === 'number') return v;
-        return parseFloat(v.toString().replace(/[^\d.-]/g,'')) || 0;
-      }
-      var labos = {};
-      for (var r = 1; r < rows.length; r++) {
-        var row = rows[r];
-        var labo = (row[cols['Libellé laboratoire']] || '').toString().trim();
-        if (!labo) continue;
-        if (!labos[labo]) labos[labo] = [];
-        labos[labo].push({
-          lib: (row[cols['Libellé produit']] || '').toString().trim(),
-          ean: (row[cols['Code EAN']] || '').toString().trim(),
-          caht:     toF(row[cols['CA HT']]),
-          marge:    toF(row[cols['Marge']]),
-          tauxMarge:toF(row[cols['Taux de marge']]),
-          qte:      toF(row[cols['Quantité']]),
-          paht:     toF(row[cols['Prix achat HT']]),
-          stock:    toF(row[cols['Stocks quantité']])
-        });
-      }
-      decData = labos;
-      var nb = Object.keys(labos).length;
-      status.textContent = '✅ ' + nb + ' labos chargés';
-      document.getElementById('dec-search-wrap').style.display = 'block';
-    } catch(err) {
-      status.textContent = 'Erreur: ' + err.message;
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function decFiltrerLabos(q) {
-  var list = document.getElementById('dec-labo-list');
-  q = (q || '').toUpperCase().trim();
-  if (!decData || q.length < 2) { list.style.display='none'; return; }
-  var matches = Object.keys(decData)
-    .filter(function(l){ return l.toUpperCase().indexOf(q) >= 0; })
-    .sort(function(a,b){
-      var caA = decData[a].reduce(function(s,p){return s+p.caht;},0);
-      var caB = decData[b].reduce(function(s,p){return s+p.caht;},0);
-      return caB - caA;
-    }).slice(0,10);
-  if (matches.length === 0) {
-    list.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--text-ter)">Aucun résultat</div>';
-  } else {
-    list.innerHTML = matches.map(function(l) {
-      var ca = decData[l].reduce(function(s,p){return s+p.caht;},0);
-      return '<div onclick="decChoisirLabo('' + l.replace(/'/g,"\'") + '')" style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:0.5px solid var(--border)">'
-        + '<strong>' + l + '</strong> <span style="color:var(--text-ter)">— ' + Math.round(ca).toLocaleString('fr') + ' € HT</span></div>';
-    }).join('');
-  }
-  list.style.display = 'block';
-}
-
-function decChoisirLabo(labo) {
-  document.getElementById('dec-labo-input').value = labo;
-  document.getElementById('dec-labo-list').style.display = 'none';
-  document.getElementById('dec-labo-choisi').textContent = '✓ ' + labo + ' sélectionné';
-  decLaboActuel = labo;
-  var prods = decData[labo];
-  var caht = prods.reduce(function(s,p){return s+p.caht;},0);
-  var marge = prods.reduce(function(s,p){return s+p.marge;},0);
-  var tauxMargeMoy = caht>0 ? (marge/caht)*100 : 0;
-  var stockVal = prods.reduce(function(s,p){return s+(p.stock*p.paht);},0);
-  var nbRefs = prods.filter(function(p){return p.caht>0;}).length;
-  document.getElementById('dec-ventes-resume').innerHTML =
-    '<strong style="font-size:13px">' + labo + '</strong><br>' +
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">CA annuel HT</span><br><strong>' + Math.round(caht).toLocaleString('fr') + ' €</strong></div>' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">Marge actuelle</span><br><strong>' + tauxMargeMoy.toFixed(1) + '%</strong></div>' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">Références</span><br><strong>' + nbRefs + '</strong></div>' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">Stock estimé</span><br><strong>' + Math.round(stockVal).toLocaleString('fr') + ' €</strong></div>' +
-    '</div>';
-  document.getElementById('dec-step2').style.display = 'block';
-  decCalculer();
-}
-
 function decCalculer() {
-  if (!decLaboActuel || !decData || !decData[decLaboActuel]) return;
-  var prods = decData[decLaboActuel];
-  var caht = prods.reduce(function(s,p){return s+p.caht;},0);
-  var marge = prods.reduce(function(s,p){return s+p.marge;},0);
-  var tauxMargeAct = caht>0 ? (marge/caht)*100 : 0;
-  var stockVal = prods.reduce(function(s,p){return s+(p.stock*p.paht);},0);
-  var remise    = parseFloat(document.getElementById('dec-remise').value) || 0;
-  var ugAch     = parseFloat(document.getElementById('dec-ug-ach').value) || 0;
-  var ugOff     = parseFloat(document.getElementById('dec-ug-off').value) || 0;
-  var rfa       = parseFloat(document.getElementById('dec-rfa').value) || 0;
-  var minCmd    = parseFloat(document.getElementById('dec-min-cmd').value) || 0;
-  var remiseAct = parseFloat(document.getElementById('dec-remise-act').value) || 0;
-  var remiseUG  = ugAch>0 ? (ugOff/(ugAch+ugOff))*100 : 0;
-  var remiseTotale = remise + remiseUG*(1-remise/100) + rfa*(1-(remise+remiseUG)/100);
-  var gainRemise = remiseTotale - remiseAct;
-  var paAct = caht*(1-tauxMargeAct/100);
-  var paNew = paAct*(1-gainRemise/100);
-  var nouvelleMargeEur = caht-paNew;
-  var nouvelleMargeP = caht>0 ? (nouvelleMargeEur/caht)*100 : 0;
-  var gainAnnuel = nouvelleMargeEur - marge;
-  var gainMois = gainAnnuel/12;
-  var cahtMois = caht/12;
-  var couvertureCmd = minCmd>0 && cahtMois>0 ? minCmd/cahtMois : 0;
-  var score = 0; var points = []; var alertes = [];
-  if (gainAnnuel>1000)      { score+=3; points.push('✅ Gain marge +'+Math.round(gainAnnuel).toLocaleString('fr')+' €/an'); }
-  else if (gainAnnuel>200)  { score+=1; points.push('⚠ Gain modeste +'+Math.round(gainAnnuel).toLocaleString('fr')+' €/an'); }
-  else                      { score-=2; alertes.push('❌ Gain insuffisant ('+Math.round(gainAnnuel)+' €/an)'); }
-  if (nouvelleMargeP>=32)      { score+=2; points.push('✅ Nouvelle marge '+nouvelleMargeP.toFixed(1)+'% — excellente'); }
-  else if (nouvelleMargeP>=28) { score+=1; points.push('✅ Nouvelle marge '+nouvelleMargeP.toFixed(1)+'% — correcte'); }
-  else                         { score-=1; alertes.push('⚠ Marge '+nouvelleMargeP.toFixed(1)+'% — sous 28%'); }
-  if (minCmd===0)            { score+=1; points.push('✅ Pas de minimum de commande'); }
-  else if (couvertureCmd<=1) { score+=1; points.push('✅ Min commande = '+couvertureCmd.toFixed(1)+' mois de ventes'); }
-  else if (couvertureCmd<=2) { alertes.push('⚠ Min commande = '+couvertureCmd.toFixed(1)+' mois de ventes'); }
-  else                       { score-=2; alertes.push('❌ Min commande trop élevé ('+couvertureCmd.toFixed(1)+' mois)'); }
-  if (remiseTotale>=30) { score+=1; points.push('✅ Remise totale '+remiseTotale.toFixed(1)+'% — attractive'); }
-  else if (remiseTotale<15) { alertes.push('⚠ Remise totale '+remiseTotale.toFixed(1)+'% — faible'); }
-  var verdict, vc, vb;
-  if (score>=5)      { verdict='✅ OUI — Ouvrez ce marché';              vc='#1a7340'; vb='#e6f9e6'; }
-  else if (score>=2) { verdict='⚠ PEUT-ÊTRE — Négociez avant de signer'; vc='#7a4f00'; vb='#fff8e1'; }
-  else               { verdict='❌ NON — Conditions insuffisantes';       vc='#c01c28'; vb='#fde8e8'; }
-  var html = '<div style="padding:16px;border-radius:var(--radius-sm);background:'+vb+';border:2px solid '+vc+';margin-bottom:12px">';
-  html += '<p style="font-size:20px;font-weight:700;color:'+vc+';margin:0 0 4px">'+verdict+'</p>';
-  html += '<p style="font-size:12px;color:var(--text-sec);margin:0">Score : '+score+'/7</p></div>';
+  var laboNom    = (document.getElementById('dec-labo')?.value || '').trim();
+  var remise     = parseFloat(document.getElementById('dec-remise')?.value) || 0;
+  var ugAch      = parseFloat(document.getElementById('dec-ug-ach')?.value) || 0;
+  var ugOff      = parseFloat(document.getElementById('dec-ug-off')?.value) || 0;
+  var rfa        = parseFloat(document.getElementById('dec-rfa')?.value) || 0;
+  var minCmd     = parseFloat(document.getElementById('dec-min-cmd')?.value) || 0;
+  var engagement = parseFloat(document.getElementById('dec-engagement')?.value) || 12;
+  var caTTC      = parseFloat(document.getElementById('dec-ca')?.value) || 0;
+  var margeAct   = parseFloat(document.getElementById('dec-marge-act')?.value) || 28;
+  var nbRefs     = parseFloat(document.getElementById('dec-nb-refs')?.value) || 0;
+  var stock      = parseFloat(document.getElementById('dec-stock')?.value) || 0;
+  var tva        = parseFloat(document.getElementById('dec-tva')?.value) || 10;
+
+  var result = document.getElementById('dec-result');
+  if (!result) return;
+  if (caTTC === 0) { result.style.display='none'; return; }
+  result.style.display = 'block';
+
+  // Calculs de base
+  var caHT       = caTTC / (1 + tva/100);
+  var paActHT    = caHT * (1 - margeAct/100);        // PA actuel HT annuel
+  var caHTmois   = caHT / 12;
+
+  // Remise équivalente UG
+  var remiseUG   = ugAch > 0 ? (ugOff / (ugAch + ugOff)) * 100 : 0;
+  // Remise totale = remise catalogue + équivalent UG + RFA
+  var remiseTotale = remise + remiseUG * (1 - remise/100) + rfa;
+
+  // Nouveau PA après remise
+  var paNewHT    = paActHT * (1 - remiseTotale/100);
+  // Nouvelle marge
+  var nouvelleMargeEur = caHT - paNewHT;
+  var nouvelleMargeP   = (nouvelleMargeEur / caHT) * 100;
+  // Gain vs situation actuelle
+  var margeActEur = caHT * margeAct/100;
+  var gainAnnuel  = nouvelleMargeEur - margeActEur;
+  var gainMois    = gainAnnuel / 12;
+
+  // Commande minimum vs rythme de vente
+  var cmdParMois = caHTmois;  // approximation CA HT = achat HT (simplification)
+  var couvertureStock = minCmd > 0 && cmdParMois > 0 ? minCmd / cmdParMois : 0;
+
+  // Score décision
+  var score = 0;
+  var points = [];
+  var alertes = [];
+
+  // Critère 1 : gain marge significatif
+  if (gainAnnuel > 500) { score += 3; points.push('✅ Gain marge +' + Math.round(gainAnnuel) + ' €/an'); }
+  else if (gainAnnuel > 0) { score += 1; points.push('⚠ Gain marge faible +' + Math.round(gainAnnuel) + ' €/an'); }
+  else { score -= 2; alertes.push('❌ Aucun gain de marge'); }
+
+  // Critère 2 : nouvelle marge acceptable (>28%)
+  if (nouvelleMargeP >= 32) { score += 2; points.push('✅ Marge ' + nouvelleMargeP.toFixed(1) + '% (excellente)'); }
+  else if (nouvelleMargeP >= 28) { score += 1; points.push('✅ Marge ' + nouvelleMargeP.toFixed(1) + '% (correcte)'); }
+  else { score -= 1; alertes.push('⚠ Marge ' + nouvelleMargeP.toFixed(1) + '% — en dessous de 28%'); }
+
+  // Critère 3 : minimum commande raisonnable
+  if (minCmd === 0) { score += 1; points.push('✅ Pas de minimum de commande'); }
+  else if (couvertureStock <= 1.5) { score += 1; points.push('✅ Minimum commande = ' + couvertureStock.toFixed(1) + ' mois de stock'); }
+  else if (couvertureStock <= 3) { score += 0; alertes.push('⚠ Minimum commande = ' + couvertureStock.toFixed(1) + ' mois — stock important'); }
+  else { score -= 2; alertes.push('❌ Minimum commande = ' + couvertureStock.toFixed(1) + ' mois — trop lourd'); }
+
+  // Critère 4 : engagement
+  if (engagement <= 3) { score += 1; points.push('✅ Engagement court (' + engagement + ' mois)'); }
+  else if (engagement <= 12) { score += 0; }
+  else { score -= 1; alertes.push('⚠ Engagement long (' + engagement + ' mois)'); }
+
+  // Critère 5 : ROI stock
+  if (stock > 0) {
+    var roiMois = gainAnnuel > 0 ? (stock / (gainAnnuel/12)) : 999;
+    if (roiMois <= 3) { score += 1; points.push('✅ ROI stock ' + roiMois.toFixed(1) + ' mois'); }
+    else if (roiMois <= 6) { alertes.push('⚠ ROI stock ' + roiMois.toFixed(1) + ' mois'); }
+    else { score -= 1; alertes.push('❌ ROI stock ' + roiMois.toFixed(1) + ' mois — trop long'); }
+  }
+
+  // Verdict
+  var verdict, verdictColor, verdictBg;
+  if (score >= 5) {
+    verdict = '✅ OUI — Ouvrez ce marché';
+    verdictColor = '#1a7340'; verdictBg = '#e6f9e6';
+  } else if (score >= 2) {
+    verdict = '⚠ PEUT-ÊTRE — Négociez avant de signer';
+    verdictColor = '#7a4f00'; verdictBg = '#fff8e1';
+  } else {
+    verdict = '❌ NON — Conditions insuffisantes';
+    verdictColor = '#c01c28'; verdictBg = '#fde8e8';
+  }
+
+  var html = '<div style="padding:16px;border-radius:var(--radius-sm);background:' + verdictBg + ';border:2px solid ' + verdictColor + ';margin-bottom:12px">';
+  html += '<p style="font-size:18px;font-weight:700;color:' + verdictColor + ';margin:0 0 4px">' + verdict + '</p>';
+  html += '<p style="font-size:12px;color:var(--text-sec);margin:0">Score : ' + score + '/7</p>';
+  html += '</div>';
+
+  // KPIs
   html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">';
-  [{l:'Remise totale',v:remiseTotale.toFixed(1)+'%',ok:remiseTotale>=25},
-   {l:'Gain annuel',v:(gainAnnuel>=0?'+':'')+Math.round(gainAnnuel).toLocaleString('fr')+' €',ok:gainAnnuel>0},
-   {l:'Nouvelle marge',v:nouvelleMargeP.toFixed(1)+'%',ok:nouvelleMargeP>=28},
-   {l:'Gain/mois',v:(gainMois>=0?'+':'')+Math.round(gainMois)+' €',ok:gainMois>0},
-   {l:'CA annuel HT',v:Math.round(caht).toLocaleString('fr')+' €',ok:true},
-   {l:'Min commande',v:minCmd>0?minCmd.toLocaleString('fr')+' €':'Aucun',ok:couvertureCmd<=1},
-  ].forEach(function(k){
-    html+='<div style="background:var(--surface2);padding:10px;border-radius:var(--radius-sm);text-align:center">';
-    html+='<p style="font-size:10px;color:var(--text-ter);margin:0 0 3px;text-transform:uppercase">'+k.l+'</p>';
-    html+='<p style="font-size:16px;font-weight:700;color:'+(k.ok?'var(--accent-text)':'#c01c28')+';margin:0">'+k.v+'</p></div>';
+  var kpis = [
+    { label:'Remise totale', val: remiseTotale.toFixed(1) + '%', color: remiseTotale >= 30 ? '#1a7340' : '#555' },
+    { label:'Nouvelle marge', val: nouvelleMargeP.toFixed(1) + '%', color: nouvelleMargeP >= 28 ? '#1a7340' : '#c01c28' },
+    { label:'Gain annuel', val: (gainAnnuel >= 0 ? '+' : '') + Math.round(gainAnnuel) + ' €', color: gainAnnuel >= 0 ? '#1a7340' : '#c01c28' },
+    { label:'Gain mensuel', val: (gainMois >= 0 ? '+' : '') + Math.round(gainMois) + ' €/mois', color: '#555' },
+    { label:'CA annuel HT', val: Math.round(caHT) + ' €', color: '#555' },
+    { label:'Min commande', val: minCmd > 0 ? minCmd + ' €' : 'Aucun', color: '#555' },
+  ];
+  kpis.forEach(function(k) {
+    html += '<div style="background:var(--surface2);padding:10px;border-radius:var(--radius-sm);text-align:center">';
+    html += '<p style="font-size:10px;color:var(--text-ter);margin:0 0 3px;text-transform:uppercase">' + k.label + '</p>';
+    html += '<p style="font-size:16px;font-weight:700;color:' + k.color + ';margin:0">' + k.val + '</p>';
+    html += '</div>';
   });
-  html+='</div>';
-  points.forEach(function(p){html+='<p style="font-size:12px;margin:4px 0">'+p+'</p>';});
-  if (alertes.length){html+='<div style="margin-top:6px">';alertes.forEach(function(a){html+='<p style="font-size:12px;margin:4px 0">'+a+'</p>';});html+='</div>';}
-  document.getElementById('dec-result').innerHTML = html;
+  html += '</div>';
+
+  // Points positifs
+  if (points.length > 0) {
+    html += '<div style="margin-bottom:8px">';
+    points.forEach(function(p) { html += '<p style="font-size:12px;margin:3px 0;color:var(--text)">' + p + '</p>'; });
+    html += '</div>';
+  }
+
+  // Alertes
+  if (alertes.length > 0) {
+    html += '<div>';
+    alertes.forEach(function(a) { html += '<p style="font-size:12px;margin:3px 0;color:var(--text)">' + a + '</p>'; });
+    html += '</div>';
+  }
+
+  result.innerHTML = html;
 }
 </script>
 </body>

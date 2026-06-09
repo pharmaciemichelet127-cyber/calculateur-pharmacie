@@ -6079,22 +6079,58 @@ function decAfficherResume(labo) {
   var el = document.getElementById('dec-resume');
   if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
   var prods = decOspharmProds[labo];
-  var caht = 0, marge = 0, stockVal = 0, nbRefs = 0;
+  var sorted = prods.slice().sort(function(a,b){ return b.caht - a.caht; });
+  var totCaht = 0, totMarge = 0, totStockVal = 0, totQte = 0;
   for (var i = 0; i < prods.length; i++) {
-    caht += prods[i].caht;
-    marge += prods[i].marge;
-    stockVal += prods[i].stock * prods[i].paht;
-    if (prods[i].caht > 0) nbRefs++;
+    totCaht    += prods[i].caht;
+    totMarge   += prods[i].marge;
+    totStockVal += prods[i].stock * prods[i].paht;
+    totQte     += prods[i].qte;
   }
-  var tauxMarge = caht > 0 ? (marge / caht) * 100 : 0;
-  el.innerHTML =
-    '<strong style="font-size:13px">' + labo + '</strong>' +
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">CA annuel HT</span><br><strong>' + Math.round(caht).toLocaleString('fr') + ' €</strong></div>' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">Marge actuelle</span><br><strong>' + tauxMarge.toFixed(1) + '%</strong></div>' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">Références</span><br><strong>' + nbRefs + '</strong></div>' +
-    '<div><span style="font-size:10px;color:var(--text-ter)">Stock estimé</span><br><strong>' + Math.round(stockVal).toLocaleString('fr') + ' €</strong></div>' +
-    '</div>';
+  var tauxMarge = totCaht > 0 ? (totMarge / totCaht) * 100 : 0;
+  var nbRefs = prods.filter(function(p){ return p.caht > 0; }).length;
+  var html = '<strong style="font-size:13px">' + labo + '</strong>';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 12px">';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">CA annuel HT</span><br><strong>' + Math.round(totCaht).toLocaleString('fr') + ' €</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Marge actuelle</span><br><strong>' + tauxMarge.toFixed(1) + '%</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Références</span><br><strong>' + nbRefs + '</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Stock estimé</span><br><strong>' + Math.round(totStockVal).toLocaleString('fr') + ' €</strong></div>';
+  html += '</div>';
+  var th = 'padding:6px 8px;font-size:10px;font-weight:600;text-transform:uppercase;background:#e8f5f0;text-align:right;border-bottom:1px solid var(--border)';
+  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+  html += '<thead><tr>';
+  html += '<th style="' + th + ';text-align:left">Produit</th>';
+  html += '<th style="' + th + '">Qté</th>';
+  html += '<th style="' + th + '">CA HT</th>';
+  html += '<th style="' + th + '">Marge</th>';
+  html += '<th style="' + th + '">Taux</th>';
+  html += '<th style="' + th + '">Stock val.</th>';
+  html += '</tr></thead><tbody>';
+  for (var i = 0; i < sorted.length; i++) {
+    var p = sorted[i];
+    var tm = p.caht > 0 ? (p.marge / p.caht * 100) : 0;
+    var sv = p.stock * p.paht;
+    var bg = i % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);text-align:right;background:' + bg;
+    html += '<tr>';
+    html += '<td style="' + td + ';text-align:left;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.lib.replace(/"/g,'&quot;') + '">' + p.lib + '</td>';
+    html += '<td style="' + td + '">' + Math.round(p.qte).toLocaleString('fr') + '</td>';
+    html += '<td style="' + td + '">' + Math.round(p.caht).toLocaleString('fr') + ' €</td>';
+    html += '<td style="' + td + '">' + Math.round(p.marge).toLocaleString('fr') + ' €</td>';
+    html += '<td style="' + td + ';color:' + (tm >= 28 ? 'var(--accent-text)' : '#c01c28') + ';font-weight:600">' + tm.toFixed(1) + '%</td>';
+    html += '<td style="' + td + '">' + Math.round(sv).toLocaleString('fr') + ' €</td>';
+    html += '</tr>';
+  }
+  var tdT = 'padding:6px 8px;text-align:right;font-weight:700;border-top:2px solid var(--border);background:var(--surface2)';
+  html += '<tr>';
+  html += '<td style="' + tdT + ';text-align:left">TOTAL (' + nbRefs + ' réf.)</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totCaht).toLocaleString('fr') + ' €</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totMarge).toLocaleString('fr') + ' €</td>';
+  html += '<td style="' + tdT + ';color:' + (tauxMarge >= 28 ? 'var(--accent-text)' : '#c01c28') + '">' + tauxMarge.toFixed(1) + '%</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totStockVal).toLocaleString('fr') + ' €</td>';
+  html += '</tr></tbody></table></div>';
+  el.innerHTML = html;
   el.style.display = 'block';
 }
 

@@ -1187,13 +1187,6 @@
         <input type="file" id="dec-file" accept=".xlsx,.xls" onchange="decImportOspharm(this)" style="font-size:12px">
         <p id="dec-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
       </div>
-      <div id="dec-search-wrap" style="display:none;margin-top:12px">
-        <p style="font-size:12px;font-weight:600;margin:0 0 8px">Rechercher le labo</p>
-        <input id="dec-labo-input" type="text" placeholder="Tapez 2 lettres..." oninput="decFiltrerLabos(this.value)"
-          style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:300px;box-sizing:border-box">
-        <div id="dec-labo-list" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;background:#fff;width:300px;margin-top:4px"></div>
-        <p id="dec-labo-choisi" style="font-size:12px;font-weight:600;color:var(--accent-text);margin:6px 0 0"></p>
-      </div>
     </div>
   </div>
 
@@ -7309,35 +7302,6 @@ window.addEventListener('DOMContentLoaded', function() {
 // ===== DECISION RDV =====
 var decOspharmData = null;
 
-function decFiltrerLabos(q) {
-  var list = document.getElementById('dec-labo-list');
-  if (!list) return;
-  q = (q || '').toUpperCase().trim();
-  if (!decOspharmData || q.length < 2) { list.style.display = 'none'; return; }
-  var matches = Object.keys(decOspharmData)
-    .filter(function(l) { return l.toUpperCase().indexOf(q) >= 0; })
-    .sort(function(a, b) { return decOspharmData[b] - decOspharmData[a]; })
-    .slice(0, 10);
-  if (matches.length === 0) {
-    list.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--text-ter)">Aucun résultat</div>';
-  } else {
-    list.innerHTML = matches.map(function(l) {
-      var ca = Math.round(decOspharmData[l]);
-      return '<div onclick="decChoisirLabo('' + l.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '')"'
-        + ' style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:0.5px solid var(--border)">'
-        + '<strong>' + l + '</strong>'
-        + ' <span style="color:var(--text-ter)">— ' + ca.toLocaleString('fr') + ' € HT</span></div>';
-    }).join('');
-  }
-  list.style.display = 'block';
-}
-
-function decChoisirLabo(labo) {
-  document.getElementById('dec-labo-input').value = labo;
-  document.getElementById('dec-labo-list').style.display = 'none';
-  document.getElementById('dec-labo-choisi').textContent = '✓ ' + labo;
-}
-
 function decImportOspharm(input) {
   var file = input.files[0];
   if (!file) return;
@@ -7371,7 +7335,6 @@ function decImportOspharm(input) {
       var nb = Object.keys(labos).length;
       status.textContent = '✅ ' + nb + ' labos chargés';
       status.style.color = 'var(--accent-text)';
-      document.getElementById('dec-search-wrap').style.display = 'block';
     } catch(err) {
       status.textContent = '❌ ' + err.message;
       status.style.color = 'var(--danger)';

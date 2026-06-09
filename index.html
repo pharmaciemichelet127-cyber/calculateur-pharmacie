@@ -6140,6 +6140,7 @@ function decAfficherResume(labo) {
 
 // ===== DECISION RDV : CONDITIONS LABO + VERDICT =====
 var decCurrentStats = null;
+var decCondCurrent = null;
 
 function decGetCondData() {
   try { return JSON.parse(localStorage.getItem('decCondLabos') || '{}'); } catch(e) { return {}; }
@@ -6168,25 +6169,122 @@ function decParseUG(str) {
   var n = parseFloat(str.replace(',', '.'));
   return isNaN(n) ? 0 : n;
 }
-function decAfficherConditions(labo) {
-  var el = document.getElementById('dec-conditions');
-  if (!el) return;
+function decNormaliserCond(c) {
+  // Migration ancien format { remise:'30' } -> marches[]
+  c = c || {};
+  if (!c.marches || !c.marches.length) {
+    var rem = parseFloat(c.remise);
+    c.marches = [{ nom: 'G\u00e9n\u00e9ral', mots: '', remise: isNaN(rem) ? '' : rem }];
+  }
+  if (c.ug === undefined) c.ug = '';
+  if (c.rfa === undefined) c.rfa = '';
+  if (c.franco === undefined) c.franco = '';
+  delete c.remise;
+  return c;
+}
+function decAffecterMarches(labo, marches) {
+  // Affecte chaque produit Ospharm au 1er marche dont un mot-cle matche le libelle ;
+  // sinon au 1er marche sans mots-cles (fourre-tout). Retourne stats + remise ponderee par CA.
+  var prods = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+  var stats = [], motsM = [];
+  var idxDef = 0;
+  for (var j = 0; j < marches.length; j++) {
+    stats.push({ ca: 0, nb: 0 });
+    motsM.push(String(marches[j].mots || '').split(',').map(function(m){ return m.trim().toUpperCase(); }).filter(function(m){ return m.length > 0; }));
+  }
+  for (var j = 0; j < marches.length; j++) { if (motsM[j].length === 0) { idxDef = j; break; } }
+  var caTot = 0, caPond = 0;
+  for (var i = 0; i < prods.length; i++) {
+    var lib = String(prods[i].lib || '').toUpperCase();
+    var idx = idxDef;
+    for (var j = 0; j < marches.length; j++) {
+      var hit = false;
+      for (var k = 0; k < motsM[j].length; k++) { if (lib.indexOf(motsM[j][k]) !== -1) { hit = true; break; } }
+      if (hit) { idx = j; break; }
+    }
+    stats[idx].ca += prods[i].caht;
+    stats[idx].nb++;
+    caTot += prods[i].caht;
+    caPond += prods[i].caht * (parseFloat(marches[idx].remise) || 0);
+  }
+  return { stats: stats, caTot: caTot, remisePonderee: caTot > 0 ? caPond / caTot : (parseFloat(marches[idxDef].remise) || 0) };
+}
+function decPersist() {
+  if (!decCurrentStats || !decCondCurrent) return;
   var all = decGetCondData();
-  var c = all[labo] || { remise: '', ug: '', rfa: '', franco: '' };
+  all[decCurrentStats.labo] = decCondCurrent;
+  decSaveCondData(all);
+}
+function decUpdMarche(i, key, val) {
+  if (!decCondCurrent || !decCondCurrent.marches[i]) return;
+  decCondCurrent.marches[i][key] = val;
+  decPersist();
+  decRefreshAffectation();
+}
+function decUpdCond(key, val) {
+  if (!decCondCurrent) return;
+  decCondCurrent[key] = val;
+  decPersist();
+  decCalculerVerdict();
+}
+function decAddMarche() {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.marches.push({ nom: 'March\u00e9 ' + (decCondCurrent.marches.length + 1), mots: '', remise: '' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decDelMarche(i) {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.marches.splice(i, 1);
+  if (decCondCurrent.marches.length === 0) decCondCurrent.marches.push({ nom: 'G\u00e9n\u00e9ral', mots: '', remise: '' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decRefreshAffectation() {
+  // Met a jour les CA captes par marche + le verdict, sans re-render (conserve le focus de saisie)
+  if (!decCurrentStats || !decCondCurrent) return;
+  var aff = decAffecterMarches(decCurrentStats.labo, decCondCurrent.marches);
+  for (var i = 0; i < decCondCurrent.marches.length; i++) {
+    var s = document.getElementById('dec-m-ca-' + i);
+    if (s) s.textContent = Math.round(aff.stats[i].ca).toLocaleString('fr') + ' \u20ac \u00b7 ' + aff.stats[i].nb + ' r\u00e9f.';
+  }
+  decCalculerVerdict();
+}
+function decAfficherConditions(labo) {
+  var all = decGetCondData();
+  decCondCurrent = decNormaliserCond(all[labo]);
+  decRenderConditions(labo);
+}
+function decRenderConditions(labo) {
+  var el = document.getElementById('dec-conditions');
+  if (!el || !decCondCurrent) return;
+  var c = decCondCurrent;
   var seuils = decGetSeuils();
   var esc = function(v){ return String(v == null ? '' : v).replace(/"/g, '&quot;'); };
-  var inp = 'font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:100px';
+  var aff = decAffecterMarches(labo, c.marches);
+  var inp = 'font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff';
   var lbl = 'font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px';
-  var html = '<strong style="font-size:12px">Conditions — ' + labo + '</strong>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px">';
-  html += '<div><label style="' + lbl + '">Remise ligne (%)</label><input id="dec-c-remise" type="number" min="0" max="80" step="0.5" value="' + esc(c.remise) + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
-  html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input id="dec-c-ug" type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
-  html += '<div><label style="' + lbl + '">RFA (%)</label><input id="dec-c-rfa" type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
-  html += '<div><label style="' + lbl + '">Franco / min cde (\u20ac)</label><input id="dec-c-franco" type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  var html = '<strong style="font-size:12px">Conditions \u2014 ' + labo + '</strong>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">march\u00e9s n\u00e9goci\u00e9s en d\u00e9but d\u2019ann\u00e9e \u2014 sauvegard\u00e9s pour ce labo</span>';
+  for (var i = 0; i < c.marches.length; i++) {
+    var m = c.marches[i];
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px">';
+    html += '<div><label style="' + lbl + '">March\u00e9</label><input type="text" value="' + esc(m.nom) + '" style="' + inp + ';width:120px" oninput="decUpdMarche(' + i + ',\'nom\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(m.mots) + '" placeholder="ex: WHEY, PROTEINE" style="' + inp + ';width:190px" oninput="decUpdMarche(' + i + ',\'mots\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Remise (%)</label><input type="number" min="0" max="80" step="0.5" value="' + esc(m.remise) + '" style="' + inp + ';width:80px" oninput="decUpdMarche(' + i + ',\'remise\',this.value)"></div>';
+    html += '<span id="dec-m-ca-' + i + '" style="font-size:11px;color:var(--text-sec);padding-bottom:7px">' + Math.round(aff.stats[i].ca).toLocaleString('fr') + ' \u20ac \u00b7 ' + aff.stats[i].nb + ' r\u00e9f.</span>';
+    if (c.marches.length > 1) html += '<button type="button" onclick="decDelMarche(' + i + ')" title="Supprimer ce march\u00e9" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
+    html += '</div>';
+  }
+  html += '<button type="button" onclick="decAddMarche()" style="margin-top:8px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ March\u00e9</button>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
+  html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + ';width:100px" oninput="decUpdCond(\'ug\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">RFA (%)</label><input type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'rfa\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">Franco / min cde (\u20ac)</label><input type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'franco\',this.value)"></div>';
   html += '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
-  html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac)</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + seuils.caOui + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
-  html += '<div><label style="' + lbl + '">Remise totale mini OUI (%)</label><input id="dec-s-rem" type="number" min="0" max="80" step="1" value="' + seuils.remOui + '" style="' + inp + '" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac)</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + seuils.caOui + '" style="' + inp + ';width:100px" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">Remise totale mini OUI (%)</label><input id="dec-s-rem" type="number" min="0" max="80" step="1" value="' + seuils.remOui + '" style="' + inp + ';width:100px" oninput="decCalculerVerdict()"></div>';
   html += '</div>';
   el.innerHTML = html;
   el.style.display = 'block';
@@ -6194,22 +6292,18 @@ function decAfficherConditions(labo) {
 }
 function decCalculerVerdict() {
   var el = document.getElementById('dec-verdict');
-  if (!el || !decCurrentStats) return;
-  var labo = decCurrentStats.labo;
+  if (!el || !decCurrentStats || !decCondCurrent) return;
   var ca = decCurrentStats.caht;
   function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
-  var remise = parseFloat(val('dec-c-remise')) || 0;
-  var ugStr = val('dec-c-ug');
-  var ugPct = decParseUG(ugStr);
-  var rfa = parseFloat(val('dec-c-rfa')) || 0;
-  var franco = parseFloat(val('dec-c-franco')) || 0;
+  var aff = decAffecterMarches(decCurrentStats.labo, decCondCurrent.marches);
+  var remPond = aff.remisePonderee;
+  var ugPct = decParseUG(decCondCurrent.ug);
+  var rfa = parseFloat(decCondCurrent.rfa) || 0;
+  var franco = parseFloat(decCondCurrent.franco) || 0;
   var caOui = parseFloat(val('dec-s-ca')) || 5000;
   var remOui = parseFloat(val('dec-s-rem')) || 35;
-  var all = decGetCondData();
-  all[labo] = { remise: val('dec-c-remise'), ug: ugStr, rfa: val('dec-c-rfa'), franco: val('dec-c-franco') };
-  decSaveCondData(all);
   try { localStorage.setItem('decSeuils', JSON.stringify({ caOui: caOui, remOui: remOui })); } catch(e) {}
-  var remTot = remise + ugPct + rfa;
+  var remTot = remPond + ugPct + rfa;
   var caOk = ca >= caOui;
   var remOk = remTot >= remOui;
   var verdict, bg, fg, expl = [];
@@ -6224,7 +6318,7 @@ function decCalculerVerdict() {
     if (!caOk) expl.push('CA ' + Math.round(ca).toLocaleString('fr') + ' \u20ac sous le seuil de ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac \u2192 n\u00e9gocier UG/RFA pour compenser.');
     if (!remOk) expl.push('Remise totale ' + remTot.toFixed(1) + '% : il manque ' + (remOui - remTot).toFixed(1) + ' pt(s) pour un OUI.');
   }
-  var det = 'Remise ' + remise.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>' + (franco > 0 ? ' \u00b7 Franco ' + Math.round(franco).toLocaleString('fr') + ' \u20ac' : '');
+  var det = 'Remise pond\u00e9r\u00e9e ' + remPond.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>' + (franco > 0 ? ' \u00b7 Franco ' + Math.round(franco).toLocaleString('fr') + ' \u20ac' : '');
   var html = '<div style="padding:12px;border-radius:var(--radius-sm);background:' + bg + '">';
   html += '<span style="font-size:18px;font-weight:700;color:' + fg + '">' + verdict + '</span>';
   html += '<span style="font-size:11px;color:var(--text-sec);margin-left:10px">' + det + '</span>';

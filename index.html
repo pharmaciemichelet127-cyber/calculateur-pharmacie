@@ -1228,6 +1228,7 @@ git push origin main</pre>
         <div style="margin-top:10px"><label style="font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px">Période de l'export Ospharm</label><select id="dec-periode" onchange="decChangerPeriode()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff"><option value="lissee">Année lissée (12 derniers mois)</option><option value="encours">Année en cours (1er janv → dernier mois échu)</option></select></div>
         <div id="dec-conditions" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-verdict" style="display:none;margin-top:10px"></div>
+        <div id="dec-thea" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
       </div>
     </div>
@@ -6209,6 +6210,7 @@ function decAfficherResume(labo) {
   el.style.display = 'block';
   decCurrentStats = { labo: labo, caht: caAnnu, caPeriode: totCaht, margeEur: margeAnnu, taux: tauxMarge, mois: mois, periode: periode };
   decAfficherConditions(labo);
+  decAfficherTheaAnalyse(labo);
 }
 
 
@@ -6437,6 +6439,102 @@ function decCalculerVerdict() {
   for (var i = 0; i < expl.length; i++) html += '<div style="font-size:11px;margin-top:4px;color:var(--text-sec)">' + expl[i] + '</div>';
   html += margeProjHtml;
   html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+// ===== ANALYSE MARCHE THEA (engagement annuel 96/156/348) =====
+var DEC_THEA_NIVEAUX = [
+  { nom: 'March\u00e9 1', seuil: 96,  taux: { otc:45, blepha:30, thealose:16.5, vitabact_fl:45, monoprost:2, nutrof180:30, cromadoses:7, rx_autres:0 } },
+  { nom: 'March\u00e9 2', seuil: 156, taux: { otc:50, blepha:30, thealose:16.5, vitabact_fl:50, monoprost:4, nutrof180:30, cromadoses:7, rx_autres:0 } },
+  { nom: 'March\u00e9 3', seuil: 348, taux: { otc:50, blepha:35, thealose:16.5, vitabact_fl:55, monoprost:6, nutrof180:30, cromadoses:10, rx_autres:0 } }
+];
+var DEC_THEA_GAMMES_LABELS = { otc:'OTC Conseil', blepha:'Blepha', thealose:'Th\u00e9alose 15ml', vitabact_fl:'Vitabact flacon', monoprost:'Monoprost', nutrof180:'Nutrof Total 180', cromadoses:'Cromadoses', rx_autres:'Autres RX (0%)' };
+
+function decTheaGamme(lib) {
+  lib = String(lib || '').toUpperCase();
+  if (lib.indexOf('BLEPHADEMODEX') >= 0) return 'rx_autres';
+  if (lib.indexOf('THEALOSE') >= 0) return 'thealose';
+  if (lib.indexOf('VITABACT') >= 0) return (lib.indexOf('FL') >= 0 && lib.indexOf('UNIDOSE') < 0 && lib.indexOf(' UD') < 0) ? 'vitabact_fl' : 'otc';
+  if (lib.indexOf('MONOPROST') >= 0) return 'monoprost';
+  if (lib.indexOf('NUTROF') >= 0) return lib.indexOf('180') >= 0 ? 'nutrof180' : 'rx_autres';
+  if (lib.indexOf('OFTAMAC') >= 0) return 'rx_autres';
+  if (lib.indexOf('CROMA') >= 0) return 'cromadoses';
+  if (lib.indexOf('BLEPHA') >= 0) return 'blepha';
+  return 'otc';
+}
+function decTheaAnalyse(labo) {
+  var prods = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+  if (!prods.length) return null;
+  var periode = decGetPeriode();
+  var mois = periode === 'encours' ? decMoisEchus() : 12;
+  var fact = mois > 0 ? 12 / mois : 1;
+  var gammes = {};
+  var totQte = 0;
+  for (var i = 0; i < prods.length; i++) {
+    var g = decTheaGamme(prods[i].lib);
+    if (!gammes[g]) gammes[g] = { qte: 0, achats: 0 };
+    var q = (prods[i].qte || 0) * fact;
+    gammes[g].qte += q;
+    gammes[g].achats += q * (prods[i].paht || 0);
+    totQte += q;
+  }
+  var niveaux = DEC_THEA_NIVEAUX.map(function(n) {
+    var remise = 0;
+    for (var g in gammes) remise += gammes[g].achats * (n.taux[g] || 0) / 100;
+    var effort = n.seuil - totQte; // unités à ajouter par rapport au rythme naturel
+    return { nom: n.nom, seuil: n.seuil, remise: remise, effort: effort, atteignable: n.seuil <= totQte * 1.15 };
+  });
+  // Recommandation : parmi les niveaux à portée (effort <= 15%), celui qui rapporte le plus
+  var reco = null;
+  for (var j = 0; j < niveaux.length; j++) {
+    if (niveaux[j].atteignable && (!reco || niveaux[j].remise > reco.remise)) reco = niveaux[j];
+  }
+  return { totQte: totQte, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco };
+}
+function decAfficherTheaAnalyse(labo) {
+  var el = document.getElementById('dec-thea');
+  if (!el) return;
+  if (String(labo || '').toUpperCase().indexOf('THEA') < 0) { el.style.display = 'none'; return; }
+  var a = decTheaAnalyse(labo);
+  if (!a) { el.style.display = 'none'; return; }
+  var html = '<strong style="font-size:12px">Analyse march\u00e9 Th\u00e9a</strong>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement annuel UPP \u00b7 volume annualis\u00e9 : <strong>' + Math.round(a.totQte) + ' unit\u00e9s/an</strong>' + (a.periode === 'encours' ? ' (sur ' + a.mois + ' mois \u00e9chus \u00d712/' + a.mois + ')' : '') + '</span>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil</th><th style="padding:3px 6px">Faisabilit\u00e9</th><th style="padding:3px 6px">Remise estim\u00e9e</th></tr>';
+  for (var i = 0; i < a.niveaux.length; i++) {
+    var n = a.niveaux[i];
+    var isReco = a.reco && n.nom === a.reco.nom;
+    var fais, col;
+    if (n.effort <= 0) { fais = '\u2713 dans ton rythme actuel'; col = 'var(--accent-text)'; }
+    else if (n.atteignable) { fais = '\u2197 +' + Math.ceil(n.effort) + ' unit\u00e9s \u00e0 engager (+' + Math.round(n.effort / a.totQte * 100) + '%)'; col = 'var(--warn)'; }
+    else { fais = '\u2717 \u00d7' + (n.seuil / a.totQte).toFixed(1) + ' de ton volume \u2192 surstock'; col = 'var(--danger)'; }
+    html += '<tr style="' + (isReco ? 'background:var(--accent-bg);font-weight:600' : '') + '">';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + (isReco ? ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMAND\u00c9</span>' : '') + '</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.seuil + ' u</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">\u2248 ' + Math.round(n.remise).toLocaleString('fr') + ' \u20ac/an</td>';
+    html += '</tr>';
+  }
+  html += '</table>';
+  if (a.reco) {
+    var idx = a.niveaux.findIndex(function(n){ return n.nom === a.reco.nom; });
+    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u)</strong> : ';
+    why += a.reco.effort <= 0 ? 'd\u00e9j\u00e0 couvert par ton rythme naturel (' + Math.round(a.totQte) + ' u/an).' : 'atteignable en engageant ' + Math.ceil(a.reco.effort) + ' unit\u00e9s de plus que ton rythme (' + Math.round(a.totQte) + ' u/an), soit +' + Math.round(a.reco.effort / a.totQte * 100) + '%.';
+    if (idx > 0) {
+      var inf = a.niveaux[idx - 1];
+      why += ' Gain vs ' + inf.nom + ' : <strong>+' + Math.round(a.reco.remise - inf.remise).toLocaleString('fr') + ' \u20ac/an</strong>.';
+    }
+    if (idx < a.niveaux.length - 1) {
+      var sup = a.niveaux[idx + 1];
+      if (!sup.atteignable) why += ' Le ' + sup.nom + ' (' + sup.seuil + ' u) rapporterait +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' \u20ac mais exigerait \u00d7' + (sup.seuil / a.totQte).toFixed(1) + ' ton volume \u2192 \u00e0 refuser sauf contrepartie du d\u00e9l\u00e9gu\u00e9.';
+      else why += ' Le ' + sup.nom + ' est aussi \u00e0 port\u00e9e : +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' \u20ac/an pour +' + Math.ceil(sup.effort) + ' unit\u00e9s.';
+    }
+    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)">' + why + '</div>';
+  } else {
+    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Volume annualis\u00e9 (' + Math.round(a.totQte) + ' u) insuffisant m\u00eame pour le March\u00e9 1 (96 u, soit \u00d7' + (96 / Math.max(a.totQte, 1)).toFixed(1) + ' ton rythme). N\u00e9gocier hors march\u00e9 ou d\u00e9velopper la gamme avant de s\u2019engager.</div>';
+  }
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Estimation bas\u00e9e sur tes ventes annualis\u00e9es Ospharm valoris\u00e9es \u00e0 tes prix d\u2019achat actuels \u2014 l\u2019engagement Th\u00e9a porte sur les achats : v\u00e9rifier l\u2019\u00e9cart de stock avant de signer.</div>';
   el.innerHTML = html;
   el.style.display = 'block';
 }

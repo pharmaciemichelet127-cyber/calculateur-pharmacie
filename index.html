@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.2</div>
+  <div class="ver">v2.3</div>
 </header>
 <div class="main">
 
@@ -6474,6 +6474,65 @@ function decTheaGamme(lib) {
   if (lib.indexOf('BLEPHA') >= 0) return 'blepha';
   return 'otc';
 }
+// Multiples de commande Théa par mot-clé (bon UPP) — défaut 12
+var DEC_THEA_MULTIPLES = [
+  ['BLEPHADERM', 3], ['NUTRILARM', 3], ['OPHTAKIT', 6], ['VITABACT', 6], ['VITAMINE B12', 6], ['BLEPHA', 6]
+];
+function decTheaMultiple(lib) {
+  lib = String(lib || '').toUpperCase();
+  for (var i = 0; i < DEC_THEA_MULTIPLES.length; i++) {
+    if (lib.indexOf(DEC_THEA_MULTIPLES[i][0]) !== -1) return DEC_THEA_MULTIPLES[i][1];
+  }
+  return 12;
+}
+function decTheaPlan(labo, a) {
+  // Plan de commande annuel pour atteindre le seuil du marché recommandé,
+  // réparti au prorata des ventes OTC réelles, arrondi aux multiples Théa.
+  if (!a || !a.reco) return null;
+  var prods = (decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+  var fact = a.mois > 0 ? 12 / a.mois : 1;
+  var lignes = [];
+  for (var i = 0; i < prods.length; i++) {
+    if (!decTheaEstEligible(prods[i].lib)) continue;
+    var g = decTheaGamme(prods[i].lib);
+    if (g !== 'otc' && g !== 'blepha') continue;
+    var qa = (prods[i].qte || 0) * fact;
+    if (qa <= 0) continue;
+    lignes.push({ lib: prods[i].lib, ventes: qa, mult: decTheaMultiple(prods[i].lib), cmd: 0 });
+  }
+  if (!lignes.length) return null;
+  lignes.sort(function(x, y){ return y.ventes - x.ventes; });
+  var cible = a.reco.seuil;
+  var tot = 0;
+  for (var i = 0; i < lignes.length; i++) {
+    var prop = lignes[i].ventes / a.volOTC * cible;
+    lignes[i].cmd = Math.round(prop / lignes[i].mult) * lignes[i].mult;
+    if (lignes[i].cmd === 0 && prop >= lignes[i].mult / 2) lignes[i].cmd = lignes[i].mult;
+    tot += lignes[i].cmd;
+  }
+  // Ajuster pour garantir total >= cible : bumper les plus gros vendeurs d'un multiple
+  var k = 0, garde = 0;
+  while (tot < cible && garde < 200) {
+    lignes[k % lignes.length].cmd += lignes[k % lignes.length].mult;
+    tot += lignes[k % lignes.length].mult;
+    k++; garde++;
+  }
+  var pauOTC = a.volOTC > 0 ? (function(){
+    // prix d'achat unitaire moyen OTC = achats OTC / volume OTC
+    var achatsOTC = 0;
+    for (var g in a.gammes) { if (g === 'otc' || g === 'blepha') achatsOTC += a.gammes[g].achats; }
+    return achatsOTC / a.volOTC;
+  })() : 0;
+  var effortU = Math.max(0, tot - a.volOTC);
+  return {
+    lignes: lignes, total: tot, cible: cible,
+    effortU: effortU,
+    effortPct: a.volOTC > 0 ? effortU / a.volOTC * 100 : 0,
+    effortEur: effortU * pauOTC,
+    effortMois: a.volOTC > 0 ? effortU / (a.volOTC / 12) : 0
+  };
+}
+
 function decTheaAnalyse(labo) {
   var prods = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
   if (!prods.length) return null;
@@ -6561,6 +6620,23 @@ function decAfficherTheaAnalyse(labo) {
       else why += ' Le ' + sup.nom + ' est aussi à portée : +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' €/an pour +' + Math.ceil(sup.effort) + ' u OTC.';
     }
     html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)">' + why + '</div>';
+    var plan = decTheaPlan(labo, a);
+    if (plan) {
+      html += '<details style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff">';
+      html += '<summary style="cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600">\ud83d\udce6 Plan de commande sugg\u00e9r\u00e9 \u2014 ' + a.reco.nom + ' (' + plan.total + ' u/an, arrondi aux multiples Th\u00e9a)</summary>';
+      html += '<div style="padding:0 10px 10px">';
+      html += '<div style="font-size:11px;margin:6px 0;padding:6px 8px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)"><strong>Effort vs ton rythme : ' + (plan.effortU > 0 ? '+' + Math.ceil(plan.effortU) + ' u (+' + Math.round(plan.effortPct) + '%) \u00b7 \u2248 ' + Math.round(plan.effortEur).toLocaleString('fr') + ' \u20ac d\u2019achats en plus \u00b7 \u2248 ' + plan.effortMois.toFixed(1) + ' mois de stock suppl\u00e9mentaire' : 'aucun \u2014 ton rythme couvre d\u00e9j\u00e0 le palier') + '</strong></div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+      html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Produit</th><th style="padding:3px 6px">Ventes/an</th><th style="padding:3px 6px">Commande/an sugg\u00e9r\u00e9e</th></tr>';
+      for (var p = 0; p < plan.lignes.length; p++) {
+        var L = plan.lignes[p];
+        html += '<tr><td style="padding:3px 6px;border-top:1px solid var(--border)">' + L.lib + '</td><td style="padding:3px 6px;border-top:1px solid var(--border)">' + Math.round(L.ventes) + '</td><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>' + L.cmd + '</strong> <span style="color:var(--text-ter)">(\u00d7' + L.mult + ')</span></td></tr>';
+      }
+      html += '<tr style="font-weight:600"><td style="padding:4px 6px;border-top:2px solid var(--border-med)">TOTAL</td><td style="padding:4px 6px;border-top:2px solid var(--border-med)">' + Math.round(a.volOTC) + '</td><td style="padding:4px 6px;border-top:2px solid var(--border-med)">' + plan.total + ' u (cible ' + plan.cible + ')</td></tr>';
+      html += '</table>';
+      html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">R\u00e9parti au prorata de tes ventes r\u00e9elles \u2014 \u00e0 \u00e9taler sur tes commandes de l\u2019ann\u00e9e (franco 114 \u20ac HT). Tu peux panacher diff\u00e9remment : seul le total engage.</div>';
+      html += '</div></details>';
+    }
   } else {
     html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Rythme OTC (' + Math.round(a.volOTC) + ' u/an) insuffisant même pour le Marché 1 (96 u, soit ×' + (96 / Math.max(a.volOTC, 1)).toFixed(1) + '). Négocier hors marché ou développer l\u2019OTC avant de s\u2019engager.</div>';
   }
@@ -7984,6 +8060,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.2</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.3</div>
 </body>
 </html>

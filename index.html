@@ -6450,6 +6450,17 @@ var DEC_THEA_NIVEAUX = [
   { nom: 'March\u00e9 3', seuil: 348, taux: { otc:50, blepha:35, thealose:16.5, vitabact_fl:55, monoprost:6, nutrof180:30, cromadoses:10, rx_autres:0 } }
 ];
 var DEC_THEA_GAMMES_LABELS = { otc:'OTC Conseil', blepha:'Blepha', thealose:'Th\u00e9alose 15ml', vitabact_fl:'Vitabact flacon', monoprost:'Monoprost', nutrof180:'Nutrof Total 180', cromadoses:'Cromadoses', rx_autres:'Autres RX (0%)' };
+// Seuls les produits CITES dans l'offre UPP comptent pour l'engagement.
+// Les rembours\u00e9s cit\u00e9s (Th\u00e9alose, Vitabact fl, Monoprost, Nutrof, Cromadoses) sont l'exception Th\u00e9a (remises crois\u00e9es) ;
+// tout autre produit Th\u00e9a vendu (Dexafree, Dacudoses, Sterdex, Hyabak...) est EXCLU du volume et du calcul de remise.
+var DEC_THEA_ELIGIBLES = ['LARMECRAN','MULTILARM','NAABAK','NUTRILARM','OPHTAKIT','THEALOZ','THEALOSE','THEAPHY','VITABACT','VITAMINE B12','ZAGRAPA','ZASPRAY','MONOPROST','NUTROF','OFTAMAC','CROMA','BLEPHA'];
+function decTheaEstEligible(lib) {
+  lib = String(lib || '').toUpperCase();
+  for (var i = 0; i < DEC_THEA_ELIGIBLES.length; i++) {
+    if (lib.indexOf(DEC_THEA_ELIGIBLES[i]) !== -1) return true;
+  }
+  return false;
+}
 
 function decTheaGamme(lib) {
   lib = String(lib || '').toUpperCase();
@@ -6471,10 +6482,15 @@ function decTheaAnalyse(labo) {
   var fact = mois > 0 ? 12 / mois : 1;
   var gammes = {};
   var totQte = 0;
+  var exclus = { nb: 0, qte: 0, libs: [] };
   for (var i = 0; i < prods.length; i++) {
+    var q = (prods[i].qte || 0) * fact;
+    if (!decTheaEstEligible(prods[i].lib)) {
+      if ((prods[i].qte || 0) > 0) { exclus.nb++; exclus.qte += q; if (exclus.libs.length < 4) exclus.libs.push(prods[i].lib); }
+      continue;
+    }
     var g = decTheaGamme(prods[i].lib);
     if (!gammes[g]) gammes[g] = { qte: 0, achats: 0 };
-    var q = (prods[i].qte || 0) * fact;
     gammes[g].qte += q;
     gammes[g].achats += q * (prods[i].paht || 0);
     totQte += q;
@@ -6490,7 +6506,7 @@ function decTheaAnalyse(labo) {
   for (var j = 0; j < niveaux.length; j++) {
     if (niveaux[j].atteignable && (!reco || niveaux[j].remise > reco.remise)) reco = niveaux[j];
   }
-  return { totQte: totQte, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco };
+  return { totQte: totQte, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, exclus: exclus };
 }
 function decAfficherTheaAnalyse(labo) {
   var el = document.getElementById('dec-thea');
@@ -6499,7 +6515,10 @@ function decAfficherTheaAnalyse(labo) {
   var a = decTheaAnalyse(labo);
   if (!a) { el.style.display = 'none'; return; }
   var html = '<strong style="font-size:12px">Analyse march\u00e9 Th\u00e9a</strong>';
-  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement annuel UPP \u00b7 volume annualis\u00e9 : <strong>' + Math.round(a.totQte) + ' unit\u00e9s/an</strong>' + (a.periode === 'encours' ? ' (sur ' + a.mois + ' mois \u00e9chus \u00d712/' + a.mois + ')' : '') + '</span>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement annuel UPP \u00b7 volume \u00e9ligible annualis\u00e9 : <strong>' + Math.round(a.totQte) + ' unit\u00e9s/an</strong>' + (a.periode === 'encours' ? ' (sur ' + a.mois + ' mois \u00e9chus \u00d712/' + a.mois + ')' : '') + '</span>';
+  if (a.exclus && a.exclus.nb > 0) {
+    html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">\u26a0 <strong>' + a.exclus.nb + ' r\u00e9f. exclues</strong> du calcul (\u2248 ' + Math.round(a.exclus.qte) + ' u/an) : produits Th\u00e9a hors offre UPP \u2014 rembours\u00e9s non cit\u00e9s, etc. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '\u2026' : '') + '</div>';
+  }
   html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">';
   html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil</th><th style="padding:3px 6px">Faisabilit\u00e9</th><th style="padding:3px 6px">Remise estim\u00e9e</th></tr>';
   for (var i = 0; i < a.niveaux.length; i++) {

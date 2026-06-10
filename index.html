@@ -3816,12 +3816,21 @@ async function condChargerGitHub() {
 
   try {
     var resp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH, {
-      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.raw' }
     });
     if (!resp.ok) throw new Error('Fichier introuvable sur GitHub');
-    var file = await resp.json();
-    var b64clean = file.content.split('\n').join('');
-    var decoded = decodeURIComponent(escape(atob(b64clean)));
+    var decoded = await resp.text();
+    if (!decoded || !decoded.trim()) throw new Error('Contenu vide renvoy\u00e9 par GitHub \u2014 r\u00e9essayez');
+    // Repli : si GitHub a ignor\u00e9 le mode raw et renvoy\u00e9 l'objet API, d\u00e9coder le base64
+    if (decoded.charAt(0) === '{') {
+      var maybeApi = null;
+      try { maybeApi = JSON.parse(decoded); } catch(eParse) { maybeApi = null; }
+      if (maybeApi && maybeApi.encoding === 'base64' && typeof maybeApi.content === 'string') {
+        if (!maybeApi.content) throw new Error('Fichier trop volumineux pour ce mode \u2014 r\u00e9essayez');
+        var b64clean = maybeApi.content.split('\n').join('');
+        decoded = decodeURIComponent(escape(atob(b64clean)));
+      }
+    }
     var data = JSON.parse(decoded);
     if (!data.condLabos) throw new Error('Format invalide');
     Object.keys(data.condLabos).forEach(function(id) {

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.3</div>
+  <div class="ver">v2.4</div>
 </header>
 <div class="main">
 
@@ -6456,6 +6456,10 @@ var DEC_THEA_GAMMES_LABELS = { otc:'OTC Conseil', blepha:'Blepha', thealose:'Th\
 var DEC_THEA_ELIGIBLES = ['LARMECRAN','MULTILARM','NAABAK','NUTRILARM','OPHTAKIT','THEALOZ','THEALOSE','THEAPHY','VITABACT','VITAMINE B12','ZAGRAPA','ZASPRAY','MONOPROST','NUTROF','OFTAMAC','CROMA','BLEPHA'];
 function decTheaEstEligible(lib) {
   lib = String(lib || '').toUpperCase();
+  // Présentations NON citées dans l'offre (souvent remboursées) qui matcheraient un mot-clé :
+  // l'offre cite la B12 en boîte 20 UD (conseil), pas le flacon 5 ml (remboursé) ; idem Naabak flacon.
+  if (lib.indexOf('VITAMINE B12') !== -1 && (lib.indexOf('5ML') !== -1 || lib.indexOf('5 ML') !== -1 || (lib.indexOf('FL') !== -1 && lib.indexOf('UD') === -1 && lib.indexOf('UNIDOSE') === -1))) return false;
+  if (lib.indexOf('NAABAK') !== -1 && (lib.indexOf('FL') !== -1 && lib.indexOf('UD') === -1 && lib.indexOf('UNIDOSE') === -1)) return false;
   for (var i = 0; i < DEC_THEA_ELIGIBLES.length; i++) {
     if (lib.indexOf(DEC_THEA_ELIGIBLES[i]) !== -1) return true;
   }
@@ -6475,6 +6479,9 @@ function decTheaGamme(lib) {
   return 'otc';
 }
 // Multiples de commande Théa par mot-clé (bon UPP) — défaut 12
+// Références obligatoires de l'offre (assortiment imposé). Vide pour Théa (rien dans le bon UPP — à confirmer).
+// Format générique pour les autres labos : { label:'1 réf min parmi Lait Corps a/d', mots:['LAIT CORPS DUO','LAIT CORPS 1L'], min:1 }
+var DEC_THEA_OBLIGATOIRES = [];
 var DEC_THEA_MULTIPLES = [
   ['BLEPHADERM', 3], ['NUTRILARM', 3], ['OPHTAKIT', 6], ['VITABACT', 6], ['VITAMINE B12', 6], ['BLEPHA', 6]
 ];
@@ -6634,6 +6641,21 @@ function decAfficherTheaAnalyse(labo) {
       }
       html += '<tr style="font-weight:600"><td style="padding:4px 6px;border-top:2px solid var(--border-med)">TOTAL</td><td style="padding:4px 6px;border-top:2px solid var(--border-med)">' + Math.round(a.volOTC) + '</td><td style="padding:4px 6px;border-top:2px solid var(--border-med)">' + plan.total + ' u (cible ' + plan.cible + ')</td></tr>';
       html += '</table>';
+      if (typeof DEC_THEA_OBLIGATOIRES !== 'undefined' && DEC_THEA_OBLIGATOIRES.length > 0) {
+        for (var ob = 0; ob < DEC_THEA_OBLIGATOIRES.length; ob++) {
+          var regle = DEC_THEA_OBLIGATOIRES[ob];
+          var couverts = 0;
+          for (var pl = 0; pl < plan.lignes.length; pl++) {
+            if (plan.lignes[pl].cmd <= 0) continue;
+            var libU = String(plan.lignes[pl].lib).toUpperCase();
+            for (var mo = 0; mo < regle.mots.length; mo++) { if (libU.indexOf(regle.mots[mo].toUpperCase()) !== -1) { couverts++; break; } }
+          }
+          var okR = couverts >= (regle.min || 1);
+          html += '<div style="font-size:11px;margin-top:5px;padding:6px 8px;border-radius:var(--radius-sm);background:' + (okR ? 'var(--accent-bg)' : 'var(--danger-bg)') + ';color:' + (okR ? 'var(--accent-text)' : 'var(--danger)') + '">' + (okR ? '\u2713 Obligatoire couvert' : '\u26a0 OBLIGATOIRE NON COUVERT \u2014 ajouter au plan') + ' : ' + regle.label + (okR ? '' : ' (' + couverts + '/' + (regle.min || 1) + ')') + '</div>';
+        }
+      } else {
+        html += '<div style="font-size:10px;color:var(--text-sec);margin-top:5px;padding:5px 8px;background:var(--surface2);border-radius:var(--radius-sm)">\u2139 R\u00e9f\u00e9rences obligatoires : aucune identifi\u00e9e dans le bon UPP Th\u00e9a \u2014 \u00e0 confirmer avec le d\u00e9l\u00e9gu\u00e9 (assortiment impos\u00e9 fr\u00e9quent chez d\u2019autres labos).</div>';
+      }
       html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">R\u00e9parti au prorata de tes ventes r\u00e9elles \u2014 \u00e0 \u00e9taler sur tes commandes de l\u2019ann\u00e9e (franco 114 \u20ac HT). Tu peux panacher diff\u00e9remment : seul le total engage.</div>';
       html += '</div></details>';
     }
@@ -8060,6 +8082,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.3</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.4</div>
 </body>
 </html>

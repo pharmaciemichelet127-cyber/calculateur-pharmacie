@@ -970,6 +970,37 @@
   <div id="panel-cond" style="display:none">
 
     <div class="card">
+      <details style="margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+        <summary style="cursor:pointer;padding:10px 12px;font-size:12px;font-weight:600;color:var(--accent-text)">📖 Workflow — Intégrer un nouveau catalogue labo</summary>
+        <div style="padding:0 14px 14px;font-size:12px;line-height:1.55;color:var(--text)">
+          <p style="margin:6px 0"><strong>1. Préparer le document tarifaire</strong> — PDF avec : références (EAN, désignation, prix HT, TVA si dispo), conditions de remise (marchés, paliers, UG), franco / minimum de commande. Sources : CGV annuelles, tarif général, bon de commande groupement, grille délégué.</p>
+          <p style="margin:6px 0"><strong>2. Demander l'intégration à Claude</strong> — uploader le PDF avec ce message :</p>
+          <p style="margin:6px 0 6px 12px;padding:8px 10px;background:#fff;border-radius:var(--radius-sm);border:1px solid var(--border);font-style:italic">« Intègre le catalogue [NOM DU LABO] avec ce PDF, sur le même modèle que TOPICREM/BAYER/THEA : produits pré-chargés + marchés de remises. Récupère d'abord la version stable depuis GitHub et vérifie que les fixes précédents sont présents. Teste avec Node avant de me livrer. »</p>
+          <p style="margin:6px 0 6px 12px;color:var(--text-sec)">Vérifier dans la réponse : nombre de références, marchés et paliers, anomalies signalées (TVA estimées, paliers ambigus, offres datées) → points à confirmer avec le délégué.</p>
+          <p style="margin:6px 0"><strong>3. Télécharger le fichier</strong> — l'index.html livré, <u>sur le Mac de déploiement</u>. Vérifier le nom : <code>ls -lt ~/Downloads/index*.html</code> (prendre le plus récent ; si « index (1).html », adapter le cp).</p>
+          <p style="margin:6px 0"><strong>4. Déployer</strong> :</p>
+          <pre style="margin:4px 0 4px 12px;padding:8px 10px;background:#1a1a18;color:#e8e6df;border-radius:var(--radius-sm);font-size:11px;overflow-x:auto">cd ~/calculateur-pharmacie
+git pull origin main
+cp ~/Downloads/index.html index.html
+git add index.html
+git commit -m "feat: catalogue [LABO] XX refs"
+git push origin main</pre>
+          <p style="margin:4px 0 4px 12px;color:var(--text-sec)">Si pull refusé (divergence) : <code>git fetch origin &amp;&amp; git reset --hard origin/main</code> puis cp / add / commit / push. Machine sans repo : <code>git clone https://github.com/pharmaciemichelet127-cyber/calculateur-pharmacie.git</code> d'abord. Attendre 1-2 min (Vercel).</p>
+          <p style="margin:6px 0"><strong>5. Activer dans l'app</strong> — ① <strong>Cmd+Shift+R</strong> (obligatoire, sinon ancien code en cache) · ② si machine vierge : « Charger depuis GitHub » d'abord · ③ « + Nouveau labo », nom <u>exact et sans accent</u> (THEA, pas THÉA) · ④ <strong>cliquer la pastille du labo</strong> — c'est ce clic qui charge le catalogue · ⑤ onglet Catalogue : vérifier les références · ⑥ « Sauvegarder sur GitHub » → ✓.</p>
+          <p style="margin:6px 0"><strong>6. Contrôles avant le RDV</strong> — pointer 2-3 prix contre le PDF · vérifier les TVA si estimées · confirmer les points flaggés avec le délégué · saisir les conditions négociées dans ⚡ Décision RDV.</p>
+          <p style="margin:10px 0 4px"><strong>Pièges connus</strong> :</p>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Symptôme</th><th style="padding:3px 6px">Solution</th></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Rien ne change après déploiement</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Cmd+Shift+R (cache Firefox)</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Produits ne se chargent pas</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Re-cliquer la pastille · nom sans accent</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">git pull refusé (divergence)</td><td style="padding:3px 6px;border-top:1px solid var(--border)"><code>git fetch origin &amp;&amp; git reset --hard origin/main</code></td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">« Aucun labo » sur une machine</td><td style="padding:3px 6px;border-top:1px solid var(--border)">« Charger depuis GitHub » — jamais Sauvegarder avant</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Erreur sauvegarde/chargement</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Console (Cmd+Option+K) → capture des lignes rouges → Claude</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Un ancien fix a disparu</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Déployer chaque livraison avant le chantier suivant</td></tr>
+          </table>
+          <p style="margin:10px 0 0;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)"><strong>Règle d'or multi-Mac</strong> : GitHub est la source de vérité. Toujours <strong>Charger</strong> avant de travailler, <strong>Sauvegarder</strong> après. Ne jamais sauvegarder depuis une machine qui affiche moins de labos que la réalité.</p>
+        </div>
+      </details>
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Conditions commerciales par labo</span>
         <div style="display:flex;gap:8px">
@@ -1194,7 +1225,7 @@
           style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;width:300px;box-sizing:border-box">
         <div id="dec-labo-list" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:200px;overflow-y:auto;background:#fff;width:300px;margin-top:4px"></div>
         <p id="dec-labo-choisi" style="font-size:12px;font-weight:600;color:var(--accent-text);margin:6px 0 0"></p>
-        <div style="margin-top:10px"><label style="font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px">P\u00e9riode de l'export Ospharm</label><select id="dec-periode" onchange="decChangerPeriode()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff"><option value="lissee">Ann\u00e9e liss\u00e9e (12 derniers mois)</option><option value="encours">Ann\u00e9e en cours (1er janv \u2192 dernier mois \u00e9chu)</option></select></div>
+        <div style="margin-top:10px"><label style="font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px">Période de l'export Ospharm</label><select id="dec-periode" onchange="decChangerPeriode()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff"><option value="lissee">Année lissée (12 derniers mois)</option><option value="encours">Année en cours (1er janv → dernier mois échu)</option></select></div>
         <div id="dec-conditions" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-verdict" style="display:none;margin-top:10px"></div>
         <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>

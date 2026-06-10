@@ -6481,7 +6481,7 @@ function decTheaAnalyse(labo) {
   var mois = periode === 'encours' ? decMoisEchus() : 12;
   var fact = mois > 0 ? 12 / mois : 1;
   var gammes = {};
-  var totQte = 0;
+  var totQte = 0, totCaElig = 0, totAchatsElig = 0;
   var exclus = { nb: 0, qte: 0, libs: [] };
   for (var i = 0; i < prods.length; i++) {
     var q = (prods[i].qte || 0) * fact;
@@ -6492,7 +6492,11 @@ function decTheaAnalyse(labo) {
     var g = decTheaGamme(prods[i].lib);
     if (!gammes[g]) gammes[g] = { qte: 0, achats: 0 };
     gammes[g].qte += q;
-    gammes[g].achats += q * (prods[i].paht || 0);
+    // Achats = CA HT - marge (co\u00fbt d'achat des ventes) : on n'utilise PAS la colonne "Prix achat HT"
+    // d'Ospharm, qui contient un montant total et non un prix unitaire (source d'erreurs x60).
+    gammes[g].achats += Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
+    totCaElig += (prods[i].caht || 0) * fact;
+    totAchatsElig += Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
     totQte += q;
   }
   var niveaux = DEC_THEA_NIVEAUX.map(function(n) {
@@ -6506,7 +6510,7 @@ function decTheaAnalyse(labo) {
   for (var j = 0; j < niveaux.length; j++) {
     if (niveaux[j].atteignable && (!reco || niveaux[j].remise > reco.remise)) reco = niveaux[j];
   }
-  return { totQte: totQte, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, exclus: exclus };
+  return { totQte: totQte, caElig: totCaElig, achatsElig: totAchatsElig, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, exclus: exclus };
 }
 function decAfficherTheaAnalyse(labo) {
   var el = document.getElementById('dec-thea');
@@ -6515,7 +6519,7 @@ function decAfficherTheaAnalyse(labo) {
   var a = decTheaAnalyse(labo);
   if (!a) { el.style.display = 'none'; return; }
   var html = '<strong style="font-size:12px">Analyse march\u00e9 Th\u00e9a</strong>';
-  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement annuel UPP \u00b7 volume \u00e9ligible annualis\u00e9 : <strong>' + Math.round(a.totQte) + ' unit\u00e9s/an</strong>' + (a.periode === 'encours' ? ' (sur ' + a.mois + ' mois \u00e9chus \u00d712/' + a.mois + ')' : '') + '</span>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement annuel UPP \u00b7 base \u00e9ligible (produits cit\u00e9s dans l\u2019offre uniquement) : <strong>' + Math.round(a.totQte) + ' u/an</strong> \u00b7 CA \u2248 ' + Math.round(a.caElig).toLocaleString('fr') + ' \u20ac \u00b7 achats \u2248 ' + Math.round(a.achatsElig).toLocaleString('fr') + ' \u20ac/an' + (a.periode === 'encours' ? ' (annualis\u00e9 \u00d712/' + a.mois + ')' : '') + '</span>';
   if (a.exclus && a.exclus.nb > 0) {
     html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">\u26a0 <strong>' + a.exclus.nb + ' r\u00e9f. exclues</strong> du calcul (\u2248 ' + Math.round(a.exclus.qte) + ' u/an) : produits Th\u00e9a hors offre UPP \u2014 rembours\u00e9s non cit\u00e9s, etc. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '\u2026' : '') + '</div>';
   }

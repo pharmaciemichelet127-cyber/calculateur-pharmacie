@@ -3733,7 +3733,8 @@ async function condSyncGitHubAuto() {
     // Si SHA mismatch, retenter avec un SHA refetch
     if (!putResp.ok) {
       var errData = await putResp.json();
-      if (errData.message && errData.message.indexOf('does not match') >= 0) {
+      var msgA = String(errData.message || '');
+      if (msgA.indexOf('does not match') >= 0 || msgA.toLowerCase().indexOf('sha') >= 0) {
         var getResp2 = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?t=' + Date.now(), {
           headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
         });
@@ -3768,14 +3769,14 @@ async function condSyncGitHub() {
   if (status) { status.textContent = 'Sauvegarde en cours...'; status.style.color = 'var(--text-sec)'; }
 
   try {
-    // Récupérer le SHA du fichier existant si il existe
+    // Récupérer le SHA du fichier existant si il existe (cache-buster pour éviter une réponse raw en cache)
     var sha = null;
-    var getResp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH, {
-      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+    var getResp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
     });
     if (getResp.ok) {
       var existing = await getResp.json();
-      sha = existing.sha;
+      sha = (existing && existing.sha) ? existing.sha : null;
     }
 
     // Encoder les données en base64
@@ -3786,8 +3787,9 @@ async function condSyncGitHub() {
     var putResp = await condGitHubPut(token, b64, sha);
     if (!putResp.ok) {
       var errData2 = await putResp.json();
-      if (errData2.message && errData2.message.indexOf('does not match') >= 0) {
-        // SHA obsolète — récupérer le SHA actuel et réessayer
+      var msg2 = String(errData2.message || '');
+      if (msg2.indexOf('does not match') >= 0 || msg2.toLowerCase().indexOf('sha') >= 0) {
+        // SHA obsolète ou manquant — récupérer le SHA actuel et réessayer
         var gr2 = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?t=' + Date.now(), {
           headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
         });

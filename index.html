@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.4</div>
+  <div class="ver">v2.5</div>
 </header>
 <div class="main">
 
@@ -6456,10 +6456,12 @@ var DEC_THEA_GAMMES_LABELS = { otc:'OTC Conseil', blepha:'Blepha', thealose:'Th\
 var DEC_THEA_ELIGIBLES = ['LARMECRAN','MULTILARM','NAABAK','NUTRILARM','OPHTAKIT','THEALOZ','THEALOSE','THEAPHY','VITABACT','VITAMINE B12','ZAGRAPA','ZASPRAY','MONOPROST','NUTROF','OFTAMAC','CROMA','BLEPHA'];
 function decTheaEstEligible(lib) {
   lib = String(lib || '').toUpperCase();
-  // Présentations NON citées dans l'offre (souvent remboursées) qui matcheraient un mot-clé :
-  // l'offre cite la B12 en boîte 20 UD (conseil), pas le flacon 5 ml (remboursé) ; idem Naabak flacon.
-  if (lib.indexOf('VITAMINE B12') !== -1 && (lib.indexOf('5ML') !== -1 || lib.indexOf('5 ML') !== -1 || (lib.indexOf('FL') !== -1 && lib.indexOf('UD') === -1 && lib.indexOf('UNIDOSE') === -1))) return false;
-  if (lib.indexOf('NAABAK') !== -1 && (lib.indexOf('FL') !== -1 && lib.indexOf('UD') === -1 && lib.indexOf('UNIDOSE') === -1)) return false;
+  // Familles ambiguës : l'offre ne cite que la présentation UNIDOSES (Naabak 10 UD, B12 20 UD).
+  // Logique POSITIVE : sans marqueur UD/UNIDOSE explicite, on exclut (les flacons/solutions sont remboursés
+  // et leurs libellés varient trop pour une liste noire — ex. "NAABAK 4.9% COLLYRE SOLUTION 10ML").
+  var estUD = lib.indexOf('UNIDOSE') !== -1 || / UD\b|UD /.test(lib) || lib.indexOf('10 UD') !== -1 || lib.indexOf('20 UD') !== -1 || /\bUD$/.test(lib);
+  if (lib.indexOf('VITAMINE B12') !== -1 && !estUD) return false;
+  if (lib.indexOf('NAABAK') !== -1 && !estUD) return false;
   for (var i = 0; i < DEC_THEA_ELIGIBLES.length; i++) {
     if (lib.indexOf(DEC_THEA_ELIGIBLES[i]) !== -1) return true;
   }
@@ -6470,7 +6472,7 @@ function decTheaGamme(lib) {
   lib = String(lib || '').toUpperCase();
   if (lib.indexOf('BLEPHADEMODEX') >= 0) return 'rx_autres';
   if (lib.indexOf('THEALOSE') >= 0) return 'thealose';
-  if (lib.indexOf('VITABACT') >= 0) return (lib.indexOf('FL') >= 0 && lib.indexOf('UNIDOSE') < 0 && lib.indexOf(' UD') < 0) ? 'vitabact_fl' : 'otc';
+  if (lib.indexOf('VITABACT') >= 0) return (lib.indexOf('UNIDOSE') !== -1 || / UD\b|UD /.test(lib) || /\bUD$/.test(lib)) ? 'otc' : 'vitabact_fl';
   if (lib.indexOf('MONOPROST') >= 0) return 'monoprost';
   if (lib.indexOf('NUTROF') >= 0) return lib.indexOf('180') >= 0 ? 'nutrof180' : 'rx_autres';
   if (lib.indexOf('OFTAMAC') >= 0) return 'rx_autres';
@@ -8082,6 +8084,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.4</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.5</div>
 </body>
 </html>

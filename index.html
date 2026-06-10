@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.1</div>
+  <div class="ver">v2.2</div>
 </header>
 <div class="main">
 
@@ -6480,8 +6480,13 @@ function decTheaAnalyse(labo) {
   var periode = decGetPeriode();
   var mois = periode === 'encours' ? decMoisEchus() : 12;
   var fact = mois > 0 ? 12 / mois : 1;
+  // L'engagement Théa porte sur les unités OTC (gammes otc + blepha) : c'est LE critère de faisabilité.
+  // Les remboursés à remise croisée (Théalose, Vitabact fl, Monoprost, Nutrof 180, Cromadoses) sont un bonus,
+  // affiché séparément — ils ne comptent ni dans le volume d'engagement ni dans le choix du marché.
+  // Achats = CA HT - marge (jamais la colonne "Prix achat HT" d'Ospharm : montant total, pas unitaire).
+  var GAMMES_OTC = { otc: true, blepha: true };
   var gammes = {};
-  var totQte = 0, totCaElig = 0, totAchatsElig = 0;
+  var volOTC = 0, qteRx = 0, totCaElig = 0, totAchatsElig = 0;
   var exclus = { nb: 0, qte: 0, libs: [] };
   for (var i = 0; i < prods.length; i++) {
     var q = (prods[i].qte || 0) * fact;
@@ -6492,25 +6497,26 @@ function decTheaAnalyse(labo) {
     var g = decTheaGamme(prods[i].lib);
     if (!gammes[g]) gammes[g] = { qte: 0, achats: 0 };
     gammes[g].qte += q;
-    // Achats = CA HT - marge (co\u00fbt d'achat des ventes) : on n'utilise PAS la colonne "Prix achat HT"
-    // d'Ospharm, qui contient un montant total et non un prix unitaire (source d'erreurs x60).
-    gammes[g].achats += Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
+    var achatsLigne = Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
+    gammes[g].achats += achatsLigne;
     totCaElig += (prods[i].caht || 0) * fact;
-    totAchatsElig += Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
-    totQte += q;
+    totAchatsElig += achatsLigne;
+    if (GAMMES_OTC[g]) volOTC += q; else qteRx += q;
   }
   var niveaux = DEC_THEA_NIVEAUX.map(function(n) {
-    var remise = 0;
-    for (var g in gammes) remise += gammes[g].achats * (n.taux[g] || 0) / 100;
-    var effort = n.seuil - totQte; // unités à ajouter par rapport au rythme naturel
-    return { nom: n.nom, seuil: n.seuil, remise: remise, effort: effort, atteignable: n.seuil <= totQte * 1.15 };
+    var remOTC = 0, remRx = 0;
+    for (var g in gammes) {
+      var r = gammes[g].achats * (n.taux[g] || 0) / 100;
+      if (GAMMES_OTC[g]) remOTC += r; else remRx += r;
+    }
+    var effort = n.seuil - volOTC;
+    return { nom: n.nom, seuil: n.seuil, remOTC: remOTC, remRx: remRx, remise: remOTC + remRx, effort: effort, atteignable: n.seuil <= volOTC * 1.15 };
   });
-  // Recommandation : parmi les niveaux à portée (effort <= 15%), celui qui rapporte le plus
   var reco = null;
   for (var j = 0; j < niveaux.length; j++) {
     if (niveaux[j].atteignable && (!reco || niveaux[j].remise > reco.remise)) reco = niveaux[j];
   }
-  return { totQte: totQte, caElig: totCaElig, achatsElig: totAchatsElig, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, exclus: exclus };
+  return { volOTC: volOTC, qteRx: qteRx, caElig: totCaElig, achatsElig: totAchatsElig, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, exclus: exclus };
 }
 function decAfficherTheaAnalyse(labo) {
   var el = document.getElementById('dec-thea');
@@ -6518,46 +6524,47 @@ function decAfficherTheaAnalyse(labo) {
   if (String(labo || '').toUpperCase().indexOf('THEA') < 0) { el.style.display = 'none'; return; }
   var a = decTheaAnalyse(labo);
   if (!a) { el.style.display = 'none'; return; }
-  var html = '<strong style="font-size:12px">Analyse march\u00e9 Th\u00e9a</strong>';
-  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement annuel UPP \u00b7 base \u00e9ligible (produits cit\u00e9s dans l\u2019offre uniquement) : <strong>' + Math.round(a.totQte) + ' u/an</strong> \u00b7 CA \u2248 ' + Math.round(a.caElig).toLocaleString('fr') + ' \u20ac \u00b7 achats \u2248 ' + Math.round(a.achatsElig).toLocaleString('fr') + ' \u20ac/an' + (a.periode === 'encours' ? ' (annualis\u00e9 \u00d712/' + a.mois + ')' : '') + '</span>';
+  var html = '<strong style="font-size:12px">Analyse marché Théa</strong>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement = unités <strong>OTC + Blepha</strong> uniquement · ton rythme : <strong>' + Math.round(a.volOTC) + ' u OTC/an</strong> · CA éligible ≈ ' + Math.round(a.caElig).toLocaleString('fr') + ' € · achats ≈ ' + Math.round(a.achatsElig).toLocaleString('fr') + ' €/an' + (a.periode === 'encours' ? ' (annualisé ×12/' + a.mois + ')' : '') + '</span>';
   if (a.exclus && a.exclus.nb > 0) {
-    html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">\u26a0 <strong>' + a.exclus.nb + ' r\u00e9f. exclues</strong> du calcul (\u2248 ' + Math.round(a.exclus.qte) + ' u/an) : produits Th\u00e9a hors offre UPP \u2014 rembours\u00e9s non cit\u00e9s, etc. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '\u2026' : '') + '</div>';
+    html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">⚠ <strong>' + a.exclus.nb + ' réf. exclues</strong> du calcul (≈ ' + Math.round(a.exclus.qte) + ' u/an) : produits Théa hors offre UPP. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '…' : '') + '</div>';
   }
   html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">';
-  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil</th><th style="padding:3px 6px">Faisabilit\u00e9</th><th style="padding:3px 6px">Remise estim\u00e9e</th></tr>';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil OTC</th><th style="padding:3px 6px">Faisabilité (sur ton OTC)</th><th style="padding:3px 6px">Remise OTC</th><th style="padding:3px 6px">+ Bonus remboursés</th></tr>';
   for (var i = 0; i < a.niveaux.length; i++) {
     var n = a.niveaux[i];
     var isReco = a.reco && n.nom === a.reco.nom;
     var fais, col;
-    if (n.effort <= 0) { fais = '\u2713 dans ton rythme actuel'; col = 'var(--accent-text)'; }
-    else if (n.atteignable) { fais = '\u2197 +' + Math.ceil(n.effort) + ' unit\u00e9s \u00e0 engager (+' + Math.round(n.effort / a.totQte * 100) + '%)'; col = 'var(--warn)'; }
-    else { fais = '\u2717 \u00d7' + (n.seuil / a.totQte).toFixed(1) + ' de ton volume \u2192 surstock'; col = 'var(--danger)'; }
+    if (n.effort <= 0) { fais = '✓ dans ton rythme OTC'; col = 'var(--accent-text)'; }
+    else if (n.atteignable) { fais = '↗ +' + Math.ceil(n.effort) + ' u OTC à engager (+' + Math.round(n.effort / Math.max(a.volOTC, 1) * 100) + '%)'; col = 'var(--warn)'; }
+    else { fais = '✗ ×' + (n.seuil / Math.max(a.volOTC, 1)).toFixed(1) + ' de ton OTC → surstock'; col = 'var(--danger)'; }
     html += '<tr style="' + (isReco ? 'background:var(--accent-bg);font-weight:600' : '') + '">';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + (isReco ? ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMAND\u00c9</span>' : '') + '</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + (isReco ? ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>' : '') + '</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.seuil + ' u</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">\u2248 ' + Math.round(n.remise).toLocaleString('fr') + ' \u20ac/an</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:var(--text-sec)">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
     html += '</tr>';
   }
   html += '</table>';
   if (a.reco) {
     var idx = a.niveaux.findIndex(function(n){ return n.nom === a.reco.nom; });
-    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u)</strong> : ';
-    why += a.reco.effort <= 0 ? 'd\u00e9j\u00e0 couvert par ton rythme naturel (' + Math.round(a.totQte) + ' u/an).' : 'atteignable en engageant ' + Math.ceil(a.reco.effort) + ' unit\u00e9s de plus que ton rythme (' + Math.round(a.totQte) + ' u/an), soit +' + Math.round(a.reco.effort / a.totQte * 100) + '%.';
+    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u OTC)</strong> : ';
+    why += a.reco.effort <= 0 ? 'couvert par ton rythme OTC naturel (' + Math.round(a.volOTC) + ' u/an).' : 'atteignable en engageant ' + Math.ceil(a.reco.effort) + ' u OTC de plus que ton rythme (' + Math.round(a.volOTC) + ' u/an), soit +' + Math.round(a.reco.effort / Math.max(a.volOTC, 1) * 100) + '%.';
     if (idx > 0) {
       var inf = a.niveaux[idx - 1];
-      why += ' Gain vs ' + inf.nom + ' : <strong>+' + Math.round(a.reco.remise - inf.remise).toLocaleString('fr') + ' \u20ac/an</strong>.';
+      why += ' Gain vs ' + inf.nom + ' : <strong>+' + Math.round(a.reco.remOTC - inf.remOTC).toLocaleString('fr') + ' €/an sur l\u2019OTC</strong>' + (Math.round(a.reco.remRx - inf.remRx) > 0 ? ' (+ ' + Math.round(a.reco.remRx - inf.remRx).toLocaleString('fr') + ' € de bonus remboursés)' : '') + '.';
     }
     if (idx < a.niveaux.length - 1) {
       var sup = a.niveaux[idx + 1];
-      if (!sup.atteignable) why += ' Le ' + sup.nom + ' (' + sup.seuil + ' u) rapporterait +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' \u20ac mais exigerait \u00d7' + (sup.seuil / a.totQte).toFixed(1) + ' ton volume \u2192 \u00e0 refuser sauf contrepartie du d\u00e9l\u00e9gu\u00e9.';
-      else why += ' Le ' + sup.nom + ' est aussi \u00e0 port\u00e9e : +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' \u20ac/an pour +' + Math.ceil(sup.effort) + ' unit\u00e9s.';
+      if (!sup.atteignable) why += ' Le ' + sup.nom + ' (' + sup.seuil + ' u) rapporterait +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' € mais exigerait ×' + (sup.seuil / Math.max(a.volOTC, 1)).toFixed(1) + ' ton OTC → à refuser sauf contrepartie du délégué.';
+      else why += ' Le ' + sup.nom + ' est aussi à portée : +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' €/an pour +' + Math.ceil(sup.effort) + ' u OTC.';
     }
     html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)">' + why + '</div>';
   } else {
-    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Volume annualis\u00e9 (' + Math.round(a.totQte) + ' u) insuffisant m\u00eame pour le March\u00e9 1 (96 u, soit \u00d7' + (96 / Math.max(a.totQte, 1)).toFixed(1) + ' ton rythme). N\u00e9gocier hors march\u00e9 ou d\u00e9velopper la gamme avant de s\u2019engager.</div>';
+    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Rythme OTC (' + Math.round(a.volOTC) + ' u/an) insuffisant même pour le Marché 1 (96 u, soit ×' + (96 / Math.max(a.volOTC, 1)).toFixed(1) + '). Négocier hors marché ou développer l\u2019OTC avant de s\u2019engager.</div>';
   }
-  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Estimation bas\u00e9e sur tes ventes annualis\u00e9es Ospharm valoris\u00e9es \u00e0 tes prix d\u2019achat actuels \u2014 l\u2019engagement Th\u00e9a porte sur les achats : v\u00e9rifier l\u2019\u00e9cart de stock avant de signer.</div>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Faisabilité jugée sur tes ventes OTC annualisées (Ospharm) — l\u2019engagement porte sur les achats : vérifier l\u2019écart de stock. Le bonus remboursés (' + Math.round(a.qteRx) + ' u/an : Théalose, Vitabact fl, Monoprost, Nutrof, Cromadoses) est estimé à conditions croisées Théa, hors critère de décision.</div>';
   el.innerHTML = html;
   el.style.display = 'block';
 }
@@ -7977,6 +7984,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.1</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.2</div>
 </body>
 </html>

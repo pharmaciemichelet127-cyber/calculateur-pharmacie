@@ -3711,6 +3711,16 @@ async function condGitHubPut(token, b64, sha) {
   });
 }
 
+// PUT avec une seconde tentative automatique en cas d'erreur réseau transitoire (NetworkError)
+async function condGitHubPutRetry(token, b64, sha) {
+  try {
+    return await condGitHubPut(token, b64, sha);
+  } catch (eNet) {
+    await new Promise(function(r){ setTimeout(r, 1500); });
+    return await condGitHubPut(token, b64, sha);
+  }
+}
+
 async function condSyncGitHubAuto() {
   var token = localStorage.getItem('gh_token');
   if (!token) return;
@@ -3721,7 +3731,7 @@ async function condSyncGitHubAuto() {
     Object.keys(condLabosSave).forEach(function(k) {
       condLabosSave[k].produits = [];
     });
-    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabosSave }, null, 2);
+    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabosSave });
     var b64 = btoa(unescape(encodeURIComponent(data)));
     // Toujours refetch le SHA frais avant PUT
     var sha = null;
@@ -3729,7 +3739,7 @@ async function condSyncGitHubAuto() {
       headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
     });
     if (getResp.ok) { var existing = await getResp.json(); sha = existing.sha; }
-    var putResp = await condGitHubPut(token, b64, sha);
+    var putResp = await condGitHubPutRetry(token, b64, sha);
     // Si SHA mismatch, retenter avec un SHA refetch
     if (!putResp.ok) {
       var errData = await putResp.json();
@@ -3739,7 +3749,7 @@ async function condSyncGitHubAuto() {
           headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
         });
         if (getResp2.ok) { var ex2 = await getResp2.json(); sha = ex2.sha; }
-        putResp = await condGitHubPut(token, b64, sha);
+        putResp = await condGitHubPutRetry(token, b64, sha);
       }
     }
     if (putResp.ok) {
@@ -3780,11 +3790,11 @@ async function condSyncGitHub() {
     }
 
     // Encoder les données en base64
-    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabos }, null, 2);
+    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabos });
     var b64 = btoa(unescape(encodeURIComponent(data)));
 
     // PUT le fichier
-    var putResp = await condGitHubPut(token, b64, sha);
+    var putResp = await condGitHubPutRetry(token, b64, sha);
     if (!putResp.ok) {
       var errData2 = await putResp.json();
       var msg2 = String(errData2.message || '');
@@ -3794,7 +3804,7 @@ async function condSyncGitHub() {
           headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' }
         });
         if (gr2.ok) { var ex3 = await gr2.json(); sha = ex3.sha; }
-        putResp = await condGitHubPut(token, b64, sha);
+        putResp = await condGitHubPutRetry(token, b64, sha);
         if (!putResp.ok) {
           var errRetry = await putResp.json();
           throw new Error(errRetry.message || putResp.status);

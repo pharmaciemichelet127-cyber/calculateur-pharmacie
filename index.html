@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.8</div>
+  <div class="ver">v2.9</div>
 </header>
 <div class="main">
 
@@ -6270,13 +6270,18 @@ function decNormaliserCond(c) {
   if (c.ug === undefined) c.ug = '';
   if (c.rfa === undefined) c.rfa = '';
   if (c.franco === undefined) c.franco = '';
+  if (c.seuilCA === undefined || c.seuilRem === undefined) {
+    var defS = decGetSeuils();
+    if (c.seuilCA === undefined) c.seuilCA = defS.caOui;
+    if (c.seuilRem === undefined) c.seuilRem = defS.remOui;
+  }
   delete c.remise;
   return c;
 }
-function decAffecterMarches(labo, marches) {
+function decAffecterMarches(labo, marches, prodsOverride) {
   // Affecte chaque produit Ospharm au 1er marche dont un mot-cle matche le libelle ;
   // sinon au 1er marche sans mots-cles (fourre-tout). Retourne stats + remise ponderee par CA.
-  var prods = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+  var prods = prodsOverride || ((typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : []);
   var stats = [], motsM = [];
   var idxDef = 0;
   for (var j = 0; j < marches.length; j++) {
@@ -6371,6 +6376,7 @@ function decTheaPrefillConditions(labo, force) {
       { nom: 'Hors offre',          mots: '', remise: 0 }
     ],
     ug: '', rfa: '', franco: 114,
+    seuilCA: decGetSeuils().caOui, seuilRem: 30,
     prefillPalier: niveau.nom
   };
   var all = decGetCondData();
@@ -6422,8 +6428,8 @@ function decRenderConditions(labo) {
   html += '<div><label style="' + lbl + '">Palier impos\u00e9 / franco (\u20ac)</label><input type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'franco\',this.value)"></div>';
   html += '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
-  html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac)</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + seuils.caOui + '" style="' + inp + ';width:100px" oninput="decCalculerVerdict()"></div>';
-  html += '<div><label style="' + lbl + '">Remise totale mini OUI (%)</label><input id="dec-s-rem" type="number" min="0" max="80" step="1" value="' + seuils.remOui + '" style="' + inp + ';width:100px" oninput="decCalculerVerdict()"></div>';
+  html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac) \u2014 ce labo</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + esc(c.seuilCA) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'seuilCA\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">Remise totale mini OUI (%) \u2014 ce labo</label><input id="dec-s-rem" type="number" min="0" max="80" step="1" value="' + esc(c.seuilRem) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'seuilRem\',this.value)"></div>';
   html += '</div>';
   el.innerHTML = html;
   el.style.display = 'block';
@@ -6432,16 +6438,31 @@ function decRenderConditions(labo) {
 function decCalculerVerdict() {
   var el = document.getElementById('dec-verdict');
   if (!el || !decCurrentStats || !decCondCurrent) return;
+  var labo = decCurrentStats.labo;
   var ca = decCurrentStats.caht;
+  var perimOffre = false;
+  var prodsBase = null;
+  var fctVerd = decCurrentStats.mois > 0 ? 12 / decCurrentStats.mois : 1;
+  if (String(labo || '').toUpperCase().indexOf('THEA') >= 0 && typeof decTheaEstEligible === 'function') {
+    var tousProds = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+    prodsBase = tousProds.filter(function(p){ return decTheaEstEligible(p.lib); });
+    if (prodsBase.length > 0) {
+      perimOffre = true;
+      var caP = 0;
+      for (var pv = 0; pv < prodsBase.length; pv++) caP += (prodsBase[pv].caht || 0);
+      ca = caP * fctVerd; // CA annualisé du périmètre offre uniquement
+    } else { prodsBase = null; }
+  }
   function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
-  var aff = decAffecterMarches(decCurrentStats.labo, decCondCurrent.marches);
+  var aff = decAffecterMarches(labo, decCondCurrent.marches, prodsBase);
   var remPond = aff.remisePonderee;
   var ugPct = decParseUG(decCondCurrent.ug);
   var rfa = parseFloat(decCondCurrent.rfa) || 0;
   var franco = parseFloat(decCondCurrent.franco) || 0;
-  var caOui = parseFloat(val('dec-s-ca')) || 5000;
-  var remOui = parseFloat(val('dec-s-rem')) || 35;
-  try { localStorage.setItem('decSeuils', JSON.stringify({ caOui: caOui, remOui: remOui })); } catch(e) {}
+  var caOui = parseFloat(decCondCurrent.seuilCA);
+  var remOui = parseFloat(decCondCurrent.seuilRem);
+  if (isNaN(caOui)) caOui = 5000;
+  if (isNaN(remOui)) remOui = 35;
   var remTot = remPond + ugPct + rfa;
   var caOk = ca >= caOui;
   var remOk = remTot >= remOui;
@@ -6479,7 +6500,7 @@ function decCalculerVerdict() {
     if (!caOk) expl.push('CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac sous le seuil de ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac \u2192 n\u00e9gocier UG/RFA pour compenser.');
     if (!remOk) expl.push('Remise totale ' + remTot.toFixed(1) + '% : il manque ' + (remOui - remTot).toFixed(1) + ' pt(s) pour un OUI.');
   }
-  var det = 'Remise pond\u00e9r\u00e9e ' + remPond.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>';
+  var det = (perimOffre ? '<strong>P\u00e9rim\u00e8tre offre</strong> : CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac (produits cit\u00e9s uniquement) \u00b7 ' : '') + 'Remise pond\u00e9r\u00e9e ' + remPond.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>';
   var html = '<div style="padding:12px;border-radius:var(--radius-sm);background:' + bg + '">';
   html += palierHtml;
   html += '<span style="font-size:18px;font-weight:700;color:' + fg + '">' + verdict + '</span>';
@@ -8153,6 +8174,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.8</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.9</div>
 </body>
 </html>

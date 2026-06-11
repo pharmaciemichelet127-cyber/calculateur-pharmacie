@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.7</div>
+  <div class="ver">v2.8</div>
 </header>
 <div class="main">
 
@@ -6341,9 +6341,53 @@ function decRefreshAffectation() {
   }
   decCalculerVerdict();
 }
+// ===== PRE-REMPLISSAGE CONDITIONS DEPUIS L'OFFRE THEA =====
+function decTheaCondVierge(c) {
+  if (!c) return true;
+  var m = c.marches || [];
+  var aRemise = false;
+  for (var i = 0; i < m.length; i++) { if (String(m[i].mots || '').trim() || String(m[i].remise || '').trim() !== '') aRemise = true; }
+  return !aRemise && !String(c.ug || '').trim() && !String(c.rfa || '').trim() && !String(c.franco || '').trim();
+}
+function decTheaPrefillConditions(labo, force) {
+  if (String(labo || '').toUpperCase().indexOf('THEA') < 0) return false;
+  if (force && !confirm('Remplacer les conditions saisies par celles de l\u2019offre UPP Th\u00e9a (taux du palier recommand\u00e9) ?')) return false;
+  // Palier de r\u00e9f\u00e9rence : celui du plan d'action (palier sup. \u00e0 port\u00e9e sinon recommand\u00e9), d\u00e9faut March\u00e9 1
+  var a = decTheaAnalyse(labo);
+  var palier = (a && (a.nudge || a.reco)) ? (a.nudge || a.reco) : null;
+  var niveau = DEC_THEA_NIVEAUX[0];
+  if (palier) { for (var i = 0; i < DEC_THEA_NIVEAUX.length; i++) { if (DEC_THEA_NIVEAUX[i].nom === palier.nom) niveau = DEC_THEA_NIVEAUX[i]; } }
+  var t = niveau.taux;
+  var cond = {
+    marches: [
+      { nom: 'Th\u00e9alose 15ml',   mots: 'THEALOSE', remise: t.thealose },
+      { nom: 'Autres RX 0%',        mots: 'OFTAMAC, BLEPHADEMODEX, NUTROF UNO', remise: 0 },
+      { nom: 'Vitabact flacon',     mots: 'VITABACT', remise: t.vitabact_fl },
+      { nom: 'Monoprost',           mots: 'MONOPROST', remise: t.monoprost },
+      { nom: 'Nutrof Total',        mots: 'NUTROF', remise: t.nutrof180 },
+      { nom: 'Cromadoses',          mots: 'CROMA', remise: t.cromadoses },
+      { nom: 'Blepha',              mots: 'BLEPHA', remise: t.blepha },
+      { nom: 'OTC offre',           mots: 'LARMECRAN, MULTILARM, NAABAK, NUTRILARM, OPHTAKIT, THEALOZ, THEAPHY, ZAGRAPA, ZASPRAY, VITAMINE B12', remise: t.otc },
+      { nom: 'Hors offre',          mots: '', remise: 0 }
+    ],
+    ug: '', rfa: '', franco: 114,
+    prefillPalier: niveau.nom
+  };
+  var all = decGetCondData();
+  all[labo] = cond;
+  decSaveCondData(all);
+  decCondCurrent = cond;
+  if (force && decCurrentStats) decRenderConditions(labo);
+  return true;
+}
+
 function decAfficherConditions(labo) {
   var all = decGetCondData();
-  decCondCurrent = decNormaliserCond(all[labo]);
+  if (String(labo || '').toUpperCase().indexOf('THEA') >= 0 && decTheaCondVierge(all[labo])) {
+    decTheaPrefillConditions(labo, false);
+  } else {
+    decCondCurrent = decNormaliserCond(all[labo]);
+  }
   decRenderConditions(labo);
 }
 function decRenderConditions(labo) {
@@ -6357,6 +6401,10 @@ function decRenderConditions(labo) {
   var lbl = 'font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px';
   var html = '<strong style="font-size:12px">Conditions \u2014 ' + labo + '</strong>';
   html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">march\u00e9s n\u00e9goci\u00e9s en d\u00e9but d\u2019ann\u00e9e \u2014 sauvegard\u00e9s pour ce labo</span>';
+  if (String(labo || '').toUpperCase().indexOf('THEA') >= 0) {
+    html += '<button type="button" onclick="decTheaPrefillConditions(decCurrentStats.labo, true)" style="margin-left:10px;font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);color:var(--accent-text);cursor:pointer">\u21ba Pr\u00e9-remplir (offre UPP)</button>';
+    if (c.prefillPalier) html += '<span style="font-size:10px;color:var(--accent-text);margin-left:8px">pr\u00e9-rempli : taux du ' + c.prefillPalier + ' \u2014 ajustable</span>';
+  }
   for (var i = 0; i < c.marches.length; i++) {
     var m = c.marches[i];
     html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px">';
@@ -8105,6 +8153,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.7</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.8</div>
 </body>
 </html>

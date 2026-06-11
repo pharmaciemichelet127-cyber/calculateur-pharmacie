@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.6</div>
+  <div class="ver">v2.7</div>
 </header>
 <div class="main">
 
@@ -6553,7 +6553,7 @@ function decTheaAnalyse(labo) {
   // Les remboursés à remise croisée sont un bonus, hors critère. Achats = CA HT - marge (jamais "Prix achat HT" Ospharm).
   var GAMMES_OTC = { otc: true, blepha: true };
   var gammes = {};
-  var volOTC = 0, qteRx = 0, totCaElig = 0, totAchatsElig = 0, margeOTC = 0, margeRx = 0;
+  var volOTC = 0, qteRx = 0, caOTC = 0, caRx = 0, achatsOTC = 0, achatsRx = 0, margeOTC = 0, margeRx = 0;
   var exclus = { nb: 0, qte: 0, libs: [] };
   for (var i = 0; i < prods.length; i++) {
     var q = (prods[i].qte || 0) * fact;
@@ -6567,9 +6567,9 @@ function decTheaAnalyse(labo) {
     var achatsLigne = Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
     var margeLigne = (prods[i].marge || 0) * fact;
     gammes[g].achats += achatsLigne;
-    totCaElig += (prods[i].caht || 0) * fact;
-    totAchatsElig += achatsLigne;
-    if (GAMMES_OTC[g]) { volOTC += q; margeOTC += margeLigne; } else { qteRx += q; margeRx += margeLigne; }
+    var caLigne = (prods[i].caht || 0) * fact;
+    if (GAMMES_OTC[g]) { volOTC += q; margeOTC += margeLigne; caOTC += caLigne; achatsOTC += achatsLigne; }
+    else { qteRx += q; margeRx += margeLigne; caRx += caLigne; achatsRx += achatsLigne; }
   }
   var niveaux = DEC_THEA_NIVEAUX.map(function(n) {
     var remOTC = 0, remRx = 0;
@@ -6594,7 +6594,8 @@ function decTheaAnalyse(labo) {
     var n2 = niveaux[k];
     if (!n2.absorbe && n2.aPortee20) { nudge = n2; break; }
   }
-  return { volOTC: volOTC, qteRx: qteRx, caElig: totCaElig, achatsElig: totAchatsElig, margeOTC: margeOTC, margeRx: margeRx,
+  return { volOTC: volOTC, qteRx: qteRx, caOTC: caOTC, caRx: caRx, achatsOTC: achatsOTC, achatsRx: achatsRx,
+           margeOTC: margeOTC, margeRx: margeRx,
            mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, nudge: nudge, exclus: exclus };
 }
 function decAfficherTheaAnalyse(labo) {
@@ -6604,7 +6605,18 @@ function decAfficherTheaAnalyse(labo) {
   var a = decTheaAnalyse(labo);
   if (!a) { el.style.display = 'none'; return; }
   var html = '<strong style="font-size:12px">Analyse marché Théa</strong>';
-  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">engagement = unités <strong>OTC + Blepha</strong> uniquement · ton rythme : <strong>' + Math.round(a.volOTC) + ' u OTC/an</strong> · CA éligible ≈ ' + Math.round(a.caElig).toLocaleString('fr') + ' € · achats ≈ ' + Math.round(a.achatsElig).toLocaleString('fr') + ' €/an' + (a.periode === 'encours' ? ' (annualisé ×12/' + a.mois + ')' : '') + '</span>';
+  var txOTC = a.caOTC > 0 ? (a.margeOTC / a.caOTC * 100) : 0;
+  html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm)">';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-bottom:4px">MARCHÉ OTC RECONSTITUÉ — produits de l\u2019offre uniquement (OTC + Blepha)' + (a.periode === 'encours' ? ' · annualisé ×12/' + a.mois : ' · année lissée') + '</div>';
+  html += '<div style="display:flex;gap:18px;flex-wrap:wrap">';
+  html += '<span>Volume<br><strong style="font-size:13px">' + Math.round(a.volOTC) + ' u/an</strong></span>';
+  html += '<span>CA HT<br><strong style="font-size:13px">' + Math.round(a.caOTC).toLocaleString('fr') + ' €</strong></span>';
+  html += '<span>Achats<br><strong style="font-size:13px">' + Math.round(a.achatsOTC).toLocaleString('fr') + ' €</strong></span>';
+  html += '<span>Marge<br><strong style="font-size:13px">' + Math.round(a.margeOTC).toLocaleString('fr') + ' €</strong></span>';
+  html += '<span>Taux<br><strong style="font-size:13px">' + txOTC.toFixed(1) + '%</strong></span>';
+  html += '</div>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px;border-top:1px dashed var(--border);padding-top:5px">Remboursés croisés suivis pour le bonus uniquement (hors décision) : ' + Math.round(a.qteRx) + ' u/an · CA ' + Math.round(a.caRx).toLocaleString('fr') + ' € · marge ' + Math.round(a.margeRx).toLocaleString('fr') + ' €</div>';
+  html += '</div>';
   if (a.exclus && a.exclus.nb > 0) {
     html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">⚠ <strong>' + a.exclus.nb + ' réf. exclues</strong> du calcul (≈ ' + Math.round(a.exclus.qte) + ' u/an) : produits Théa hors offre UPP. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '…' : '') + '</div>';
   }
@@ -8093,6 +8105,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.6</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.7</div>
 </body>
 </html>

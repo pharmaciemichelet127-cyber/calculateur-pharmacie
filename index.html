@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.5</div>
+  <div class="ver">v2.6</div>
 </header>
 <div class="main">
 
@@ -6494,10 +6494,11 @@ function decTheaMultiple(lib) {
   }
   return 12;
 }
-function decTheaPlan(labo, a) {
-  // Plan de commande annuel pour atteindre le seuil du marché recommandé,
+function decTheaPlan(labo, a, niveauCible) {
+  // Plan de commande annuel pour atteindre le seuil du palier cible (palier supérieur à portée si <=20%, sinon recommandé),
   // réparti au prorata des ventes OTC réelles, arrondi aux multiples Théa.
-  if (!a || !a.reco) return null;
+  niveauCible = niveauCible || (a && a.reco);
+  if (!a || !niveauCible) return null;
   var prods = (decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
   var fact = a.mois > 0 ? 12 / a.mois : 1;
   var lignes = [];
@@ -6511,7 +6512,7 @@ function decTheaPlan(labo, a) {
   }
   if (!lignes.length) return null;
   lignes.sort(function(x, y){ return y.ventes - x.ventes; });
-  var cible = a.reco.seuil;
+  var cible = niveauCible.seuil;
   var tot = 0;
   for (var i = 0; i < lignes.length; i++) {
     var prop = lignes[i].ventes / a.volOTC * cible;
@@ -6548,13 +6549,11 @@ function decTheaAnalyse(labo) {
   var periode = decGetPeriode();
   var mois = periode === 'encours' ? decMoisEchus() : 12;
   var fact = mois > 0 ? 12 / mois : 1;
-  // L'engagement Théa porte sur les unités OTC (gammes otc + blepha) : c'est LE critère de faisabilité.
-  // Les remboursés à remise croisée (Théalose, Vitabact fl, Monoprost, Nutrof 180, Cromadoses) sont un bonus,
-  // affiché séparément — ils ne comptent ni dans le volume d'engagement ni dans le choix du marché.
-  // Achats = CA HT - marge (jamais la colonne "Prix achat HT" d'Ospharm : montant total, pas unitaire).
+  // L'engagement Théa porte sur les unités OTC (gammes otc + blepha) : critère = ABSORPTION du volume.
+  // Les remboursés à remise croisée sont un bonus, hors critère. Achats = CA HT - marge (jamais "Prix achat HT" Ospharm).
   var GAMMES_OTC = { otc: true, blepha: true };
   var gammes = {};
-  var volOTC = 0, qteRx = 0, totCaElig = 0, totAchatsElig = 0;
+  var volOTC = 0, qteRx = 0, totCaElig = 0, totAchatsElig = 0, margeOTC = 0, margeRx = 0;
   var exclus = { nb: 0, qte: 0, libs: [] };
   for (var i = 0; i < prods.length; i++) {
     var q = (prods[i].qte || 0) * fact;
@@ -6566,10 +6565,11 @@ function decTheaAnalyse(labo) {
     if (!gammes[g]) gammes[g] = { qte: 0, achats: 0 };
     gammes[g].qte += q;
     var achatsLigne = Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
+    var margeLigne = (prods[i].marge || 0) * fact;
     gammes[g].achats += achatsLigne;
     totCaElig += (prods[i].caht || 0) * fact;
     totAchatsElig += achatsLigne;
-    if (GAMMES_OTC[g]) volOTC += q; else qteRx += q;
+    if (GAMMES_OTC[g]) { volOTC += q; margeOTC += margeLigne; } else { qteRx += q; margeRx += margeLigne; }
   }
   var niveaux = DEC_THEA_NIVEAUX.map(function(n) {
     var remOTC = 0, remRx = 0;
@@ -6578,13 +6578,24 @@ function decTheaAnalyse(labo) {
       if (GAMMES_OTC[g]) remOTC += r; else remRx += r;
     }
     var effort = n.seuil - volOTC;
-    return { nom: n.nom, seuil: n.seuil, remOTC: remOTC, remRx: remRx, remise: remOTC + remRx, effort: effort, atteignable: n.seuil <= volOTC * 1.15 };
+    var s = volOTC > 0 ? Math.max(1, n.seuil / volOTC) : 1; // proportionner au volume du palier si > rythme
+    // Marge si TOUT le volume du palier est vendu : marge OTC actuelle proportionnée + remise OTC proportionnée,
+    // + part remboursés inchangée (le rythme RX ne dépend pas de l'engagement) + son bonus.
+    var margePalier = s * (margeOTC + remOTC) + margeRx + remRx;
+    return { nom: n.nom, seuil: n.seuil, remOTC: remOTC * s, remRx: remRx, remise: remOTC * s + remRx,
+             margePalier: margePalier, effort: effort, absorbe: n.seuil <= volOTC, aPortee20: n.seuil <= volOTC * 1.20 };
   });
+  // Recommandation = le plus haut palier ABSORBÉ par le rythme actuel (pas d'effort forcé)
   var reco = null;
-  for (var j = 0; j < niveaux.length; j++) {
-    if (niveaux[j].atteignable && (!reco || niveaux[j].remise > reco.remise)) reco = niveaux[j];
+  for (var j = 0; j < niveaux.length; j++) { if (niveaux[j].absorbe) reco = niveaux[j]; }
+  // Palier supérieur à signaler s'il est à <= 20% d'effort
+  var nudge = null;
+  for (var k = 0; k < niveaux.length; k++) {
+    var n2 = niveaux[k];
+    if (!n2.absorbe && n2.aPortee20) { nudge = n2; break; }
   }
-  return { volOTC: volOTC, qteRx: qteRx, caElig: totCaElig, achatsElig: totAchatsElig, mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, exclus: exclus };
+  return { volOTC: volOTC, qteRx: qteRx, caElig: totCaElig, achatsElig: totAchatsElig, margeOTC: margeOTC, margeRx: margeRx,
+           mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, nudge: nudge, exclus: exclus };
 }
 function decAfficherTheaAnalyse(labo) {
   var el = document.getElementById('dec-thea');
@@ -6598,13 +6609,13 @@ function decAfficherTheaAnalyse(labo) {
     html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">⚠ <strong>' + a.exclus.nb + ' réf. exclues</strong> du calcul (≈ ' + Math.round(a.exclus.qte) + ' u/an) : produits Théa hors offre UPP. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '…' : '') + '</div>';
   }
   html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">';
-  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil OTC</th><th style="padding:3px 6px">Faisabilité (sur ton OTC)</th><th style="padding:3px 6px">Remise OTC</th><th style="padding:3px 6px">+ Bonus remboursés</th></tr>';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil OTC</th><th style="padding:3px 6px">Absorption (ton rythme OTC)</th><th style="padding:3px 6px">Remise OTC</th><th style="padding:3px 6px">+ Bonus remboursés</th><th style="padding:3px 6px">Marge si tout vendu</th></tr>';
   for (var i = 0; i < a.niveaux.length; i++) {
     var n = a.niveaux[i];
     var isReco = a.reco && n.nom === a.reco.nom;
     var fais, col;
-    if (n.effort <= 0) { fais = '✓ dans ton rythme OTC'; col = 'var(--accent-text)'; }
-    else if (n.atteignable) { fais = '↗ +' + Math.ceil(n.effort) + ' u OTC à engager (+' + Math.round(n.effort / Math.max(a.volOTC, 1) * 100) + '%)'; col = 'var(--warn)'; }
+    if (n.absorbe) { fais = '✓ absorbé par ton rythme'; col = 'var(--accent-text)'; }
+    else if (n.aPortee20) { fais = '↗ +' + Math.ceil(n.effort) + ' u à faire en plus (+' + Math.round(n.effort / Math.max(a.volOTC, 1) * 100) + '%)'; col = 'var(--warn)'; }
     else { fais = '✗ ×' + (n.seuil / Math.max(a.volOTC, 1)).toFixed(1) + ' de ton OTC → surstock'; col = 'var(--danger)'; }
     html += '<tr style="' + (isReco ? 'background:var(--accent-bg);font-weight:600' : '') + '">';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + (isReco ? ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>' : '') + '</td>';
@@ -6612,27 +6623,22 @@ function decAfficherTheaAnalyse(labo) {
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:var(--text-sec)">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)"><strong>≈ ' + Math.round(n.margePalier).toLocaleString('fr') + ' €/an</strong></td>';
     html += '</tr>';
   }
   html += '</table>';
   if (a.reco) {
     var idx = a.niveaux.findIndex(function(n){ return n.nom === a.reco.nom; });
-    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u OTC)</strong> : ';
-    why += a.reco.effort <= 0 ? 'couvert par ton rythme OTC naturel (' + Math.round(a.volOTC) + ' u/an).' : 'atteignable en engageant ' + Math.ceil(a.reco.effort) + ' u OTC de plus que ton rythme (' + Math.round(a.volOTC) + ' u/an), soit +' + Math.round(a.reco.effort / Math.max(a.volOTC, 1) * 100) + '%.';
-    if (idx > 0) {
-      var inf = a.niveaux[idx - 1];
-      why += ' Gain vs ' + inf.nom + ' : <strong>+' + Math.round(a.reco.remOTC - inf.remOTC).toLocaleString('fr') + ' €/an sur l\u2019OTC</strong>' + (Math.round(a.reco.remRx - inf.remRx) > 0 ? ' (+ ' + Math.round(a.reco.remRx - inf.remRx).toLocaleString('fr') + ' € de bonus remboursés)' : '') + '.';
-    }
-    if (idx < a.niveaux.length - 1) {
-      var sup = a.niveaux[idx + 1];
-      if (!sup.atteignable) why += ' Le ' + sup.nom + ' (' + sup.seuil + ' u) rapporterait +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' € mais exigerait ×' + (sup.seuil / Math.max(a.volOTC, 1)).toFixed(1) + ' ton OTC → à refuser sauf contrepartie du délégué.';
-      else why += ' Le ' + sup.nom + ' est aussi à portée : +' + Math.round(sup.remise - a.reco.remise).toLocaleString('fr') + ' €/an pour +' + Math.ceil(sup.effort) + ' u OTC.';
-    }
+    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u OTC)</strong> : le plus haut palier absorbé par ton rythme OTC naturel (' + Math.round(a.volOTC) + ' u/an). Marge si tout le volume est vendu : <strong>≈ ' + Math.round(a.reco.margePalier).toLocaleString('fr') + ' €/an</strong> (remise ' + Math.round(a.reco.remise).toLocaleString('fr') + ' € incluse).';
     html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)">' + why + '</div>';
-    var plan = decTheaPlan(labo, a);
+    if (a.nudge) {
+      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>' + a.nudge.nom + ' à portée : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '% de ton rythme, sous le seuil des 20%). Gain : remise +' + Math.round(a.nudge.remise - a.reco.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an (+' + Math.round(a.nudge.margePalier - a.reco.margePalier).toLocaleString('fr') + ' €).</div>';
+    }
+    var cibleNiveau = a.nudge || a.reco;
+    var plan = decTheaPlan(labo, a, cibleNiveau);
     if (plan) {
       html += '<details style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff">';
-      html += '<summary style="cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600">\ud83d\udce6 Plan de commande sugg\u00e9r\u00e9 \u2014 ' + a.reco.nom + ' (' + plan.total + ' u/an, arrondi aux multiples Th\u00e9a)</summary>';
+      html += '<summary style="cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600">\ud83d\udce6 Plan de commande sugg\u00e9r\u00e9 \u2014 ' + cibleNiveau.nom + ' (' + plan.total + ' u/an, arrondi aux multiples Th\u00e9a)</summary>';
       html += '<div style="padding:0 10px 10px">';
       html += '<div style="font-size:11px;margin:6px 0;padding:6px 8px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)"><strong>Effort vs ton rythme : ' + (plan.effortU > 0 ? '+' + Math.ceil(plan.effortU) + ' u (+' + Math.round(plan.effortPct) + '%) \u00b7 \u2248 ' + Math.round(plan.effortEur).toLocaleString('fr') + ' \u20ac d\u2019achats en plus \u00b7 \u2248 ' + plan.effortMois.toFixed(1) + ' mois de stock suppl\u00e9mentaire' : 'aucun \u2014 ton rythme couvre d\u00e9j\u00e0 le palier') + '</strong></div>';
       html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
@@ -6662,7 +6668,10 @@ function decAfficherTheaAnalyse(labo) {
       html += '</div></details>';
     }
   } else {
-    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Rythme OTC (' + Math.round(a.volOTC) + ' u/an) insuffisant même pour le Marché 1 (96 u, soit ×' + (96 / Math.max(a.volOTC, 1)).toFixed(1) + '). Négocier hors marché ou développer l\u2019OTC avant de s\u2019engager.</div>';
+    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Aucun palier absorbé par ton rythme OTC (' + Math.round(a.volOTC) + ' u/an). Négocier hors marché ou développer l\u2019OTC avant de s\u2019engager.</div>';
+    if (a.nudge) {
+      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>' + a.nudge.nom + ' (' + a.nudge.seuil + ' u) à portée : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '%). Remise ≈ ' + Math.round(a.nudge.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an.</div>';
+    }
   }
   html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Faisabilité jugée sur tes ventes OTC annualisées (Ospharm) — l\u2019engagement porte sur les achats : vérifier l\u2019écart de stock. Le bonus remboursés (' + Math.round(a.qteRx) + ' u/an : Théalose, Vitabact fl, Monoprost, Nutrof, Cromadoses) est estimé à conditions croisées Théa, hors critère de décision.</div>';
   el.innerHTML = html;
@@ -8084,6 +8093,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.5</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.6</div>
 </body>
 </html>

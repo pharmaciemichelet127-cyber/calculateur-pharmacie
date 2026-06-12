@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.2</div>
+  <div class="ver">v3.3</div>
 </header>
 <div class="main">
 
@@ -3838,9 +3838,22 @@ async function condSyncGitHub() {
     var getResp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
       headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
     });
+    var tailleDistante = 0;
     if (getResp.ok) {
       var existing = await getResp.json();
       sha = (existing && existing.sha) ? existing.sha : null;
+      tailleDistante = (existing && existing.size) ? existing.size : 0;
+    }
+
+    // GARDE-FOU anti-écrasement : refuser d'écraser un fichier riche par une version quasi vide
+    var totalProdsLoc = 0;
+    Object.keys(condLabos).forEach(function(k){ totalProdsLoc += (condLabos[k].produits || []).length; });
+    if (totalProdsLoc === 0 && tailleDistante > 200000) {
+      var okEcrase = confirm('⚠️ ATTENTION : cette machine ne contient AUCUN produit, mais la sauvegarde GitHub existante est riche (' + Math.round(tailleDistante/1024) + ' Ko).\n\nSauvegarder maintenant écraserait les données distantes.\n\nConseil : cliquez d\u2019abord sur « Charger depuis GitHub ».\n\nÉcraser quand même ?');
+      if (!okEcrase) {
+        if (status) { status.textContent = 'Sauvegarde annulée — chargez d\u2019abord depuis GitHub'; status.style.color = 'var(--danger)'; }
+        return;
+      }
     }
 
     // Encoder les données en base64
@@ -3903,8 +3916,18 @@ async function condChargerGitHub() {
     }
     var data = JSON.parse(decoded);
     if (!data.condLabos) throw new Error('Format invalide');
+    var prodsConserves = 0;
     Object.keys(data.condLabos).forEach(function(id) {
-      condLabos[parseInt(id) || id] = data.condLabos[id];
+      var key = parseInt(id) || id;
+      var entrant = data.condLabos[id];
+      var local = condLabos[key];
+      // GARDE-FOU : un labo entrant SANS produits ne doit jamais effacer des produits locaux
+      // (l'auto-save GitHub vide les produits par design pour rester sous 1 Mo)
+      if (local && local.produits && local.produits.length > 0 && (!entrant.produits || entrant.produits.length === 0)) {
+        entrant = Object.assign({}, entrant, { produits: local.produits, catalogueMaj: local.catalogueMaj, tarifValidite: local.tarifValidite });
+        prodsConserves++;
+      }
+      condLabos[key] = entrant;
     });
     // Recalculer condNextId pour éviter les collisions
     var allIds = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n); });
@@ -3912,7 +3935,7 @@ async function condChargerGitHub() {
     condSauvegarder();
     condInit();
     var nb = Object.keys(data.condLabos).length;
-    if (status) { status.textContent = '✓ ' + nb + ' labo(s) chargé(s) depuis GitHub'; status.style.color = 'var(--accent-text)'; }
+    if (status) { status.textContent = '✓ ' + nb + ' labo(s) chargé(s) depuis GitHub' + (prodsConserves > 0 ? ' (catalogues locaux conservés sur ' + prodsConserves + ' labo(s))' : ''); status.style.color = 'var(--accent-text)'; }
     setTimeout(function(){ if (status) status.textContent = ''; }, 5000);
   } catch(err) {
     if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
@@ -8247,6 +8270,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.2</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.3</div>
 </body>
 </html>

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.8</div>
+  <div class="ver">v3.9</div>
 </header>
 <div class="main">
 
@@ -6195,7 +6195,7 @@ function decAfficherCarte(labo) {
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise proposée (%)</label><input id="dec-carte-rem" type="number" value="35" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise actuelle estimée (%)</label><input id="dec-carte-rem0" type="number" value="21" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mini de commande (€ HT net)</label><input id="dec-carte-min" type="number" value="1000" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:80px"></div>'
-    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Délai de paiement (jours)</label><input id="dec-carte-pay" type="number" value="60" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + (function(){ var ech = decCarteEcheance45fdm(); return '<div><label style="font-size:10px;color:var(--text-ter);display:block">Délai de paiement (j) — 45 j fdm → ' + ech.date.toLocaleDateString('fr-FR') + '</label><input id="dec-carte-pay" type="number" value="' + ech.jours + '" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'; })()
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Franco offre (€ net)</label><input id="dec-carte-franco" type="number" value="100" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<button type="button" onclick="decCarteCalculer()" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Calculer</button>'
     + '<button type="button" onclick="decCartePlan()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📦 Plan de commande (horizon cash)</button>'
@@ -6398,6 +6398,14 @@ var OFFRE_SDAV_MV_GB = [
 ["3401561371832","ABSOSOINS Set Post-op Petites plaies Bt3",1,6.66,3.97,3.13],
 ["3615370005509","ABSOSOINS Set perfusion Veines fragiles",1,11.99,8.39,5.76]
 ];
+function decCarteEcheance45fdm(d) {
+  // Échéance « 45 jours fin de mois » : date du jour + 45 j, ramenée à la fin de ce mois-là
+  d = d || new Date();
+  var e = new Date(d.getTime() + 45 * 86400000);
+  var fin = new Date(e.getFullYear(), e.getMonth() + 1, 0);
+  var jours = Math.round((fin - d) / 86400000);
+  return { date: fin, jours: jours };
+}
 function decCarteNorm(s) {
   return (s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ').trim();
 }
@@ -6437,14 +6445,15 @@ function decCarteOffreGB() {
   var hz = payJ / 360;
   var prods = decOspharmProds[decCarteLabo];
   var matches = decCarteMatchTous(OFFRE_SDAV_MV_GB, prods);
-  var totBrut = 0, totFdl = 0, totNet = 0, caHz = 0, nbMatch = 0, sansVente = 0, lignes = '';
+  var totBrut = 0, totFdl = 0, totNet = 0, caHz = 0, nbMatch = 0, sansVente = 0, multTropGrand = 0, lignes = '';
   OFFRE_SDAV_MV_GB.forEach(function(o, oIdx) {
     var ean = o[0], lib = o[1], mult = o[2], brut = o[3], fdl = o[4], net = o[5];
     var p = matches[oIdx] || null;
     var qteAn = p ? p.qte * f : 0;
     var q75 = qteAn * hz;
-    var qteCmd = q75 > 0 ? Math.ceil(q75 / mult) * mult : 0;
-    if (qteCmd === 0) { sansVente++; return; }
+    // Arrondi au multiple INFÉRIEUR : tout doit être vendu avant l'échéance
+    var qteCmd = Math.floor(q75 / mult) * mult;
+    if (qteCmd === 0) { if (q75 > 0) multTropGrand++; else sansVente++; return; }
     nbMatch++;
     var mNet = qteCmd * net, mFdl = qteCmd * fdl, mBrut = qteCmd * brut;
     totNet += mNet; totFdl += mFdl; totBrut += mBrut;
@@ -6455,6 +6464,7 @@ function decCarteOffreGB() {
       + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
       + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + q75.toFixed(1) + '</td>'
       + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">' + Math.round(qteCmd / Math.max(qteAn / 360, 0.001)) + ' j</td>'
       + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + net.toFixed(2).replace('.', ',') + ' €</td>'
       + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + mNet.toFixed(2).replace('.', ',') + ' €</td>'
       + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(remLigne) + '%</td>'
@@ -6464,11 +6474,13 @@ function decCarteOffreGB() {
   if (nbMatch === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucune ligne de l\u2019offre ne correspond à des ventes dans ton import. Si ton export Ospharm a une colonne EAN/CIP, réimporte le fichier (le rapprochement sera exact).</span>'; return; }
   var remTot = totBrut > 0 ? (1 - totNet / totBrut) * 100 : 0;
   var gainFdl = totFdl - totNet;
-  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 Offre SDAV gamme blanche — ' + nbMatch + ' lignes avec ventes (' + sansVente + ' réf. de l\u2019offre sans rotation, ignorées) — horizon ' + Math.round(payJ) + ' j</div>'
+  var dateEch = new Date(Date.now() + payJ * 86400000);
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 Offre SDAV gamme blanche — commande aujourd\u2019hui, <span style="color:var(--accent-text)">facture payable vers le ' + dateEch.toLocaleDateString('fr-FR') + '</span> (' + Math.round(payJ) + ' j)</div>'
+    + '<div style="font-size:10px;color:var(--text-ter)">' + nbMatch + ' lignes avec ventes · ' + sansVente + ' réf. sans rotation ignorées' + (multTropGrand > 0 ? ' · ' + multTropGrand + ' réf. vendues mais multiple trop grand pour tout écouler avant l\u2019échéance (laisse-les au fil de l\u2019eau)' : '') + '</div>'
     + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
-    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit (offre UPP)</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Prix net</td><td style="padding:2px 6px;text-align:right">Montant net</td><td style="padding:2px 6px;text-align:right">Remise vs brut</td><td style="padding:2px 6px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
+    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit (offre UPP)</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Écoulé en</td><td style="padding:2px 6px;text-align:right">Prix net</td><td style="padding:2px 6px;text-align:right">Montant net</td><td style="padding:2px 6px;text-align:right">Remise vs brut</td><td style="padding:2px 6px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
     + lignes
-    + '<tr><td style="padding:4px 6px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td>'
+    + '<tr><td style="padding:4px 6px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td><td></td>'
     + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + totNet.toFixed(2).replace('.', ',') + ' €</td>'
     + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(remTot) + '%</td>'
     + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700;color:var(--accent-text)">+' + gainFdl.toFixed(2).replace('.', ',') + ' €</td></tr>'
@@ -6479,7 +6491,7 @@ function decCarteOffreGB() {
   var coussin = caHz - totNet;
   html += '<div style="margin-top:6px;padding:10px 12px;background:' + (coussin >= 0 ? 'var(--accent-bg)' : '#fdecec') + ';border-radius:var(--radius-sm);font-size:12px">'
     + (coussin >= 0
-      ? '<strong>✅ Tu ne sors pas de cash.</strong> Cette commande = tes sorties jusqu\u2019à l\u2019échéance (' + Math.round(payJ) + ' j) : ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € avant que tu ne paies ' + Math.round(totNet).toLocaleString('fr') + ' € — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong>. Cash gagné vs fil de l\u2019eau : <strong>+' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong> sur cette commande, remise réelle ' + Math.round(remTot) + '% vs tarif brut.'
+      ? '<strong>✅ Tu ne sors pas de cash — et tout est vendu avant l\u2019échéance</strong> (quantités arrondies au multiple inférieur, colonne « écoulé en » ≤ ' + Math.round(payJ) + ' j) : ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € avant que tu ne paies ' + Math.round(totNet).toLocaleString('fr') + ' € — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong>. Cash gagné vs fil de l\u2019eau : <strong>+' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong> sur cette commande, remise réelle ' + Math.round(remTot) + '% vs tarif brut.'
       : '<strong>⚠️ Les arrondis aux multiples gonflent la commande au-delà de tes encaissements de l\u2019horizon</strong> (' + Math.round(caHz).toLocaleString('fr') + ' € encaissés pour ' + Math.round(totNet).toLocaleString('fr') + ' € à payer). Retire les lignes à faible rotation dont le multiple impose trop de stock.')
     + '</div>'
     + '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Rapprochement offre↔ventes par EAN quand ton export en a une colonne, sinon par nom (score ≥ 70%). Qtés arrondies au multiple de commande supérieur. « Gain vs fil de l\u2019eau » = (prix FDL − prix net SDAV) × qté.</div>';
@@ -8579,6 +8591,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.8</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.9</div>
 </body>
 </html>

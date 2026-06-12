@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.6</div>
+  <div class="ver">v3.8</div>
 </header>
 <div class="main">
 
@@ -6187,6 +6187,7 @@ function decAfficherCarte(labo) {
   var el = document.getElementById('dec-carte');
   if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
   decCarteLabo = labo;
+  var laboNomU = (labo || '').toUpperCase();
   el.style.display = 'block';
   el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:6px">🔍 Marché à la carte <span style="font-weight:400;color:var(--text-ter)">— reconstituer un marché par mots-clés et tester une offre du délégué</span></div>'
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
@@ -6195,7 +6196,10 @@ function decAfficherCarte(labo) {
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise actuelle estimée (%)</label><input id="dec-carte-rem0" type="number" value="21" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mini de commande (€ HT net)</label><input id="dec-carte-min" type="number" value="1000" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:80px"></div>'
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Délai de paiement (jours)</label><input id="dec-carte-pay" type="number" value="60" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Franco offre (€ net)</label><input id="dec-carte-franco" type="number" value="100" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<button type="button" onclick="decCarteCalculer()" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Calculer</button>'
+    + '<button type="button" onclick="decCartePlan()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📦 Plan de commande (horizon cash)</button>'
+    + (laboNomU.indexOf('MARQUE VERTE') >= 0 || laboNomU.indexOf('MARQUEVERTE') >= 0 ? '<button type="button" onclick="decCarteOffreGB()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📋 Offre SDAV gamme blanche (avr-juin 2026)</button>' : '')
     + '</div><div id="dec-carte-res" style="margin-top:8px"></div>';
 }
 function decCarteCalculer() {
@@ -6277,6 +6281,208 @@ function decCarteCalculer() {
     }
   }
   html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Encaissements estimés en CA HT (prudent : le TTC rentre en caisse). Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
+  res.innerHTML = html;
+}
+
+function decCartePlan() {
+  var res = document.getElementById('dec-carte-res');
+  if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
+  var kwRaw = (document.getElementById('dec-carte-kw').value || '').toUpperCase();
+  var kws = kwRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  if (kws.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Saisis les mots-clés des gammes de l\u2019offre (virgules).</span>'; return; }
+  var rem  = parseFloat(document.getElementById('dec-carte-rem').value) || 0;
+  var rem0 = parseFloat(document.getElementById('dec-carte-rem0').value) || 0;
+  var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 60;
+  var franco = parseFloat(document.getElementById('dec-carte-franco').value) || 0;
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var match = decOspharmProds[decCarteLabo].filter(function(p) {
+    var L = (p.lib || '').toUpperCase();
+    return p.qte > 0 && kws.some(function(k){ return L.indexOf(k) >= 0; });
+  }).sort(function(a,b){ return b.caht - a.caht; });
+  if (match.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucun produit vendu ne correspond à ces mots-clés.</span>'; return; }
+  var hz = payJ / 360; // fraction d'année couverte par l'horizon de paiement
+  var totCmd = 0, caHz = 0, lignes = '';
+  match.forEach(function(p) {
+    var qteAn = p.qte * f, caAn = p.caht * f, margeAn = p.marge * f;
+    var qteCmd = Math.ceil(qteAn * hz);
+    if (qteCmd < 1) return;
+    var achatsAn = Math.max(caAn - margeAn, 0);
+    var brutAn = rem0 < 100 ? achatsAn / (1 - rem0 / 100) : achatsAn;
+    var netUnit = qteAn > 0 ? (brutAn * (1 - rem / 100)) / qteAn : 0;
+    var mCmd = qteCmd * netUnit;
+    totCmd += mCmd; caHz += caAn * hz;
+    lignes += '<tr><td style="padding:2px 6px;border-top:1px solid var(--border)">' + p.lib + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + mCmd.toFixed(2).replace('.', ',') + ' €</td></tr>';
+  });
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📦 Plan de commande — horizon ' + Math.round(payJ) + ' jours (= ta consommation d\u2019ici l\u2019échéance)</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Montant net (à ' + rem + '%)</td></tr>'
+    + lignes
+    + '<tr><td style="padding:4px 6px;border-top:2px solid var(--border);font-weight:700">TOTAL commande</td><td></td><td></td><td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(totCmd).toLocaleString('fr') + ' €</td></tr>'
+    + '</table>';
+  // Verdicts : franco puis cash
+  if (franco > 0) {
+    html += totCmd >= franco
+      ? '<div style="margin-top:6px;font-size:12px;color:var(--accent-text);font-weight:600">✓ Franco ' + Math.round(franco) + ' € atteint (' + Math.round(totCmd).toLocaleString('fr') + ' €) — pas de frais de port.</div>'
+      : '<div style="margin-top:6px;font-size:12px;color:var(--warn);font-weight:600">⚠️ Franco ' + Math.round(franco) + ' € non atteint (' + Math.round(totCmd).toLocaleString('fr') + ' €) : allonge l\u2019horizon (champ délai), ajoute des gammes de l\u2019offre aux mots-clés, ou passe ce réassort au fil de l\u2019eau via CERP.</div>';
+  }
+  var coussin = caHz - totCmd;
+  html += '<div style="margin-top:6px;padding:10px 12px;background:' + (coussin >= 0 ? 'var(--accent-bg)' : '#fdecec') + ';border-radius:var(--radius-sm);font-size:12px">'
+    + (coussin >= 0
+      ? '<strong>✅ Règle du cash respectée par construction.</strong> Cette commande = ta consommation jusqu\u2019à l\u2019échéance : d\u2019ici le paiement, ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € pour ' + Math.round(totCmd).toLocaleString('fr') + ' € décaissés — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong> (ta marge). Tu ne sors jamais de cash.'
+      : '<strong>⚠️ Anomalie :</strong> le montant dépasse l\u2019encaissement prévu sur l\u2019horizon — vérifie les remises saisies.')
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Quantités arrondies à l\u2019unité supérieure — ajuste aux multiples du bon de commande à la saisie. Prix nets estimés depuis tes achats réels (CA − marge) et les remises saisies.</div>';
+  res.innerHTML = html;
+}
+
+// ===== OFFRE SDAV MARQUE VERTE — Gamme blanche avril-juin 2026 (bon UPP, franco 100 € net, 45 j fdm) =====
+var OFFRE_SDAV_MV_GB = [
+["3401099222675","ABSO Compresses non-tissé 10x10 Bt10",40,0.82,0.71,0.39],
+["3401099222736","ABSO Compresses non-tissé 10x10 Bt25",12,1.64,1.43,0.89],
+["3401099222965","ABSO Compresses non-tissé 10x10 Bt50",12,2.78,2.42,1.58],
+["3401099222385","ABSO Compresses non-tissé 7,5x7,5 Bt10",40,0.61,0.53,0.29],
+["3401099222446","ABSO Compresses non-tissé 7,5x7,5 Bt25",12,1.22,1.06,0.59],
+["3401099222507","ABSO Compresses non-tissé 7,5x7,5 Bt50",12,2.06,1.79,1.13],
+["3401099222095","ABSO Compresses gaze 10x10 Bt10",40,0.84,0.77,0.54],
+["3401099222156","ABSO Compresses gaze 10x10 Bt25",12,1.69,1.55,1.13],
+["3401099222217","ABSO Compresses gaze 10x10 Bt50",12,2.86,2.63,2.23],
+["3401099221784","ABSO Compresses gaze 7,5x7,5 Bt10",40,0.62,0.57,0.39],
+["3401099221845","ABSO Compresses gaze 7,5x7,5 Bt25",12,1.25,1.15,0.84],
+["3401099221906","ABSO Compresses gaze 7,5x7,5 Bt50",12,2.13,1.96,1.49],
+["3615370003727","ABSOPADS BIO Rectangles coton 8x10 Sachet 180",10,5.51,2.89,2.31],
+["3401560299465","ABSOPADS Rectangle coton 8x10 Sachet 200",10,5.51,2.89,2.31],
+["3401076975822","ABSO Bande extensible 4m x 10cm",20,0.77,0.27,0.15],
+["3401045035311","ABSO Bande extensible 4m x 15cm",20,1.31,0.46,0.25],
+["3401076975532","ABSO Bande extensible 4m x 5cm",20,0.43,0.15,0.09],
+["3401076975761","ABSO Bande extensible 4m x 7cm",20,0.64,0.22,0.12],
+["3401081632277","ABSO Bande crêpe 4m x 10cm",20,1.42,0.71,0.64],
+["3401081632338","ABSO Bande crêpe 4m x 15cm",20,2.11,1.05,0.95],
+["3401081632109","ABSO Bande crêpe 4m x 5cm",20,0.91,0.45,0.41],
+["3401081631966","ABSO Bande crêpe 4m x 7cm",20,1.12,0.55,0.50],
+["3401081631737","ABSO Bande crêpe 5m x 20cm",20,3.40,1.68,1.53],
+["3401072091052","ABSOPLAST Bande adh. élastique 2,5m x 10cm",1,8.03,4.81,3.61],
+["3401072090741","ABSOPLAST Bande adh. élastique 2,5m x 3cm",1,3.90,2.34,1.76],
+["3401072090802","ABSOPLAST Bande adh. élastique 2,5m x 6cm",1,5.30,3.17,2.38],
+["3401072090970","ABSOPLAST Bande adh. élastique 2,5m x 8cm",1,6.56,3.93,2.95],
+["3401042624587","ABSOPRESS Contention cohésive 3,5m x 10cm blanc",1,10.39,5.69,4.05],
+["3401042624648","ABSOPRESS Contention cohésive 3,5m x 10cm chair",1,10.39,5.69,4.05],
+["3401042624358","ABSOPRESS Contention cohésive 3m x 7cm blanc",1,8.16,4.46,3.18],
+["3401042624419","ABSOPRESS Contention cohésive 3m x 7cm chair",1,8.16,4.46,3.18],
+["3401079981318","ABSOPORE Sparadrap microporeux 5m x 2,5cm",20,0.99,0.59,0.50],
+["3401079981257","ABSOPORE Sparadrap microporeux 9,14m x 2,5cm",20,1.24,0.74,0.62],
+["3615370004007","ABSOTUB Bleu jersey 7,5cm x 10m",1,7.64,6.11,5.73],
+["3615370004014","ABSOTUB Jaune jersey 10,75cm x 10m",1,8.93,7.14,6.70],
+["3615370004236","ABSOTULLE GRAS Pansements gras 10x10 Bt10",12,8.45,3.38,2.37],
+["3401060122607","ABSODERM Pans. adhésifs 10x15 Bt10",1,9.75,3.92,2.34],
+["3401060122614","ABSODERM Pans. adhésifs 10x25 Bt10",1,14.68,5.89,3.08],
+["3401060213343","ABSODERM Pans. adhésifs 5x7 Bt10",1,2.73,1.09,0.76],
+["3401060122591","ABSODERM Pans. adhésifs 8x10 Bt10",1,5.30,2.13,1.38],
+["3401060122645","ABSOFILM Films adhésifs 10x12 Bt10",1,13.10,5.25,3.54],
+["3401060122652","ABSOFILM Films adhésifs 15x20 Bt10",1,18.29,7.34,4.94],
+["3615371700038","ABSOFILM+PAD 10x15 Bt5",1,10.86,4.36,3.26],
+["3615371700014","ABSOFILM+PAD 5x7 Bt5",1,4.57,1.83,1.37],
+["3615371700021","ABSOFILM+PAD 8x10 Bt5",1,7.35,2.95,2.20],
+["3401072091342","ABSOFIX Bande adhésive 10m x 10cm",1,5.84,3.21,2.63],
+["3401098218563","ABSOFIX Bande adhésive 10m x 5cm",1,3.74,2.06,1.68],
+["3401072091281","ABSOFIX Bande adhésive 2,5m x 10cm",1,2.40,1.32,1.08],
+["3401072091113","ABSOFIX Bande adhésive 5m x 5cm",1,2.40,1.32,1.08],
+["3401060034399","ABSOSOINS Set Plaies Chroniques Détersion Bt5",1,6.65,5.65,4.66],
+["3615370002218","ABSOSOINS Set Plaies Chroniques Méchage Bt5",1,6.65,5.65,4.66],
+["3401060034382","ABSOSOINS Set Plaies Chroniques Standard Bt5",1,6.65,5.65,4.66],
+["3401021211104","ABSOSOINS Set Post-op Grandes plaies Bt3",1,10.64,6.35,5.00],
+["3615370002201","ABSOSOINS Set Post-op Grandes + Ôte-agrafe Bt3",1,10.98,6.55,5.16],
+["3401021211272","ABSOSOINS Set Post-op Moyennes plaies Bt3",1,8.20,4.89,3.85],
+["3401561371832","ABSOSOINS Set Post-op Petites plaies Bt3",1,6.66,3.97,3.13],
+["3615370005509","ABSOSOINS Set perfusion Veines fragiles",1,11.99,8.39,5.76]
+];
+function decCarteNorm(s) {
+  return (s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ').trim();
+}
+function decCarteMatchTous(offre, prods) {
+  // Deux passes : 1) EAN exact pour TOUTES les lignes, 2) repli nom sur le reste
+  // (évite qu'une ligne similaire « vole » par nom un produit destiné à une ligne EAN ultérieure)
+  var used = {}, result = {};
+  offre.forEach(function(o, idx) {
+    for (var i = 0; i < prods.length; i++) {
+      if (used[i]) continue;
+      var e = (prods[i].ean || '');
+      if (e && e.slice(-13) === o[0]) { used[i] = true; result[idx] = prods[i]; return; }
+    }
+  });
+  offre.forEach(function(o, idx) {
+    if (result[idx]) return;
+    var toks = decCarteNorm(o[1]).split(' ').filter(function(t){ return t.length >= 2; });
+    var best = -1, bestScore = 0;
+    for (var j = 0; j < prods.length; j++) {
+      if (used[j]) continue;
+      var L = decCarteNorm(prods[j].lib);
+      var hit = 0;
+      toks.forEach(function(t){ if (L.indexOf(t) >= 0) hit++; });
+      var score = toks.length > 0 ? hit / toks.length : 0;
+      if (score > bestScore) { bestScore = score; best = j; }
+    }
+    if (best >= 0 && bestScore >= 0.7) { used[best] = true; result[idx] = prods[best]; }
+  });
+  return result;
+}
+function decCarteOffreGB() {
+  var res = document.getElementById('dec-carte-res');
+  if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
+  var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 75;
+  var franco = parseFloat(document.getElementById('dec-carte-franco').value) || 100;
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var hz = payJ / 360;
+  var prods = decOspharmProds[decCarteLabo];
+  var matches = decCarteMatchTous(OFFRE_SDAV_MV_GB, prods);
+  var totBrut = 0, totFdl = 0, totNet = 0, caHz = 0, nbMatch = 0, sansVente = 0, lignes = '';
+  OFFRE_SDAV_MV_GB.forEach(function(o, oIdx) {
+    var ean = o[0], lib = o[1], mult = o[2], brut = o[3], fdl = o[4], net = o[5];
+    var p = matches[oIdx] || null;
+    var qteAn = p ? p.qte * f : 0;
+    var q75 = qteAn * hz;
+    var qteCmd = q75 > 0 ? Math.ceil(q75 / mult) * mult : 0;
+    if (qteCmd === 0) { sansVente++; return; }
+    nbMatch++;
+    var mNet = qteCmd * net, mFdl = qteCmd * fdl, mBrut = qteCmd * brut;
+    totNet += mNet; totFdl += mFdl; totBrut += mBrut;
+    if (p) caHz += (p.caht * f) * hz;
+    var remLigne = brut > 0 ? (1 - net / brut) * 100 : 0;
+    lignes += '<tr>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border)">' + lib + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + q75.toFixed(1) + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + net.toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + mNet.toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(remLigne) + '%</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;color:var(--accent-text);font-weight:600">+' + (mFdl - mNet).toFixed(2).replace('.', ',') + ' €</td>'
+      + '</tr>';
+  });
+  if (nbMatch === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucune ligne de l\u2019offre ne correspond à des ventes dans ton import. Si ton export Ospharm a une colonne EAN/CIP, réimporte le fichier (le rapprochement sera exact).</span>'; return; }
+  var remTot = totBrut > 0 ? (1 - totNet / totBrut) * 100 : 0;
+  var gainFdl = totFdl - totNet;
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 Offre SDAV gamme blanche — ' + nbMatch + ' lignes avec ventes (' + sansVente + ' réf. de l\u2019offre sans rotation, ignorées) — horizon ' + Math.round(payJ) + ' j</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit (offre UPP)</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Prix net</td><td style="padding:2px 6px;text-align:right">Montant net</td><td style="padding:2px 6px;text-align:right">Remise vs brut</td><td style="padding:2px 6px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
+    + lignes
+    + '<tr><td style="padding:4px 6px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td>'
+    + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + totNet.toFixed(2).replace('.', ',') + ' €</td>'
+    + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(remTot) + '%</td>'
+    + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700;color:var(--accent-text)">+' + gainFdl.toFixed(2).replace('.', ',') + ' €</td></tr>'
+    + '</table>';
+  html += totNet >= franco
+    ? '<div style="margin-top:6px;font-size:12px;color:var(--accent-text);font-weight:600">✓ Franco ' + Math.round(franco) + ' € atteint (' + Math.round(totNet) + ' €) — pas de frais de port.</div>'
+    : '<div style="margin-top:6px;font-size:12px;color:var(--warn);font-weight:600">⚠️ Franco ' + Math.round(franco) + ' € non atteint (' + Math.round(totNet) + ' €) : allonge l\u2019horizon ou complète, sinon réassort fil de l\u2019eau.</div>';
+  var coussin = caHz - totNet;
+  html += '<div style="margin-top:6px;padding:10px 12px;background:' + (coussin >= 0 ? 'var(--accent-bg)' : '#fdecec') + ';border-radius:var(--radius-sm);font-size:12px">'
+    + (coussin >= 0
+      ? '<strong>✅ Tu ne sors pas de cash.</strong> Cette commande = tes sorties jusqu\u2019à l\u2019échéance (' + Math.round(payJ) + ' j) : ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € avant que tu ne paies ' + Math.round(totNet).toLocaleString('fr') + ' € — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong>. Cash gagné vs fil de l\u2019eau : <strong>+' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong> sur cette commande, remise réelle ' + Math.round(remTot) + '% vs tarif brut.'
+      : '<strong>⚠️ Les arrondis aux multiples gonflent la commande au-delà de tes encaissements de l\u2019horizon</strong> (' + Math.round(caHz).toLocaleString('fr') + ' € encaissés pour ' + Math.round(totNet).toLocaleString('fr') + ' € à payer). Retire les lignes à faible rotation dont le multiple impose trop de stock.')
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Rapprochement offre↔ventes par EAN quand ton export en a une colonne, sinon par nom (score ≥ 70%). Qtés arrondies au multiple de commande supérieur. « Gain vs fil de l\u2019eau » = (prix FDL − prix net SDAV) × qté.</div>';
   res.innerHTML = html;
 }
 
@@ -8352,10 +8558,12 @@ function decImportOspharm(input) {
         var paht  = parseFloat(String(row[cols['Prix achat HT']]    || '0').replace(/[^\d.-]/g,'')) || 0;
         var stock = parseFloat(String(row[cols['Stocks quantité']]  || '0').replace(/[^\d.-]/g,'')) || 0;
         var lib   = String(row[cols['Libellé produit']] || '').trim();
+        var eanKey = Object.keys(cols).find(function(k){ return /EAN|CIP|ACL/i.test(k); });
+        var ean = eanKey ? String(row[cols[eanKey]] || '').replace(/\D/g, '') : '';
         if (!labos[labo]) labos[labo] = 0;
         labos[labo] += caht;
         if (!prods[labo]) prods[labo] = [];
-        prods[labo].push({lib:lib, caht:caht, marge:marge, qte:qte, paht:paht, stock:stock});
+        prods[labo].push({lib:lib, ean:ean, caht:caht, marge:marge, qte:qte, paht:paht, stock:stock});
       }
       decOspharmData = labos;
       decOspharmProds = prods;
@@ -8371,6 +8579,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.6</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.8</div>
 </body>
 </html>

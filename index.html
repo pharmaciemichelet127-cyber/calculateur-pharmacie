@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.5</div>
+  <div class="ver">v3.6</div>
 </header>
 <div class="main">
 
@@ -6249,7 +6249,34 @@ function decCarteCalculer() {
         + '</td></tr>';
     }
   }
-  html += '</table><div style="font-size:10px;color:var(--text-ter);margin-top:4px">Encaissements estimés en CA HT (prudent : le TTC rentre en caisse). Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
+  html += '</table>';
+  // ===== CONCLUSION en français clair =====
+  if (minC > 0 && payJ > 0) {
+    var caMoisC = caAn / 12;
+    var moisVentesCmd = netNouveauAn > 0 ? minC / (netNouveauAn / 12) : 999;
+    var gainCmd = minC * ((1 - rem0 / 100) / Math.max(1 - rem / 100, 0.01) - 1);
+    var encC = caMoisC * (payJ / 30);
+    var ecartC = encC - minC;
+    if (ecartC >= 0) {
+      html += '<div style="margin-top:8px;padding:10px 12px;background:var(--accent-bg);border-radius:var(--radius-sm);font-size:12px">'
+        + '<strong>✅ OUI — cette offre respecte ta règle du cash.</strong> À l\u2019échéance de la facture (' + Math.round(payJ) + ' j), tes ventes auront déjà ré-encaissé ≈ ' + Math.round(encC).toLocaleString('fr') + ' €, soit plus que la commande de ' + Math.round(minC).toLocaleString('fr') + ' € : tu ne décaisses jamais un euro de ta poche. Gain estimé sur la commande : <strong>' + Math.round(gainCmd).toLocaleString('fr') + ' €</strong>.'
+        + (moisVentesCmd > 8 ? ' <span style="color:var(--warn)">Attention tout de même : la commande représente ' + moisVentesCmd.toFixed(1) + ' mois de ventes — vérifie les dates de péremption à la livraison.</span>' : '')
+        + '</div>';
+    } else {
+      var joursNecessaires = Math.ceil(minC / caMoisC * 30);
+      var nbLivr = Math.min(Math.ceil(minC / Math.max(encC, 1)), 12);
+      var montantLivr = Math.round(minC / nbLivr);
+      html += '<div style="margin-top:8px;padding:10px 12px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px">'
+        + '<strong>❌ NON EN L\u2019ÉTAT — cette offre ne respecte pas ta règle du cash à ' + Math.round(payJ) + ' jours.</strong> Quand la facture tombera, tu n\u2019auras ré-encaissé que ≈ ' + Math.round(encC).toLocaleString('fr') + ' € : tu avancerais <strong>' + Math.abs(Math.round(ecartC)).toLocaleString('fr') + ' €</strong> de ta poche, récupérés seulement vers le mois ' + (minC / caMoisC).toFixed(1) + '.'
+        + '<div style="margin-top:6px"><strong>Pour la rendre acceptable, demande au délégué l\u2019un des deux :</strong><br>'
+        + '· un paiement à <strong>' + joursNecessaires + ' jours</strong> (au lieu de ' + Math.round(payJ) + ') — à cette échéance tes ventes couvrent la commande<br>'
+        + '· ou un fractionnement en <strong>' + nbLivr + ' livraisons de ≈ ' + montantLivr.toLocaleString('fr') + ' €</strong> espacées, chacune payée à ' + Math.round(payJ) + ' j</div>'
+        + '<div style="margin-top:6px;padding:6px 8px;background:#fff;border-radius:4px">🗣 <em>« Ta remise à ' + rem + '%, je la veux. Mais ' + Math.round(minC).toLocaleString('fr') + ' € d\u2019un coup, c\u2019est ' + moisVentesCmd.toFixed(1) + ' mois de mes ventes et ' + Math.abs(Math.round(ecartC)).toLocaleString('fr') + ' € d\u2019avance de trésorerie. Donne-moi ' + joursNecessaires + ' jours de paiement ou ' + nbLivr + ' livraisons, et on signe. »</em></div>'
+        + '<div style="margin-top:6px;color:var(--text-ter)">S\u2019il ne bouge sur rien : déroger à ta règle te coûte ' + Math.abs(Math.round(ecartC)).toLocaleString('fr') + ' € avancés pendant ~' + Math.max(0, (minC / caMoisC - payJ / 30)).toFixed(1) + ' mois, pour gagner ' + Math.round(gainCmd).toLocaleString('fr') + ' € — rentable sur le papier, mais c\u2019est ta trésorerie qui tranche.</div>'
+        + '</div>';
+    }
+  }
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Encaissements estimés en CA HT (prudent : le TTC rentre en caisse). Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
   res.innerHTML = html;
 }
 
@@ -8344,6 +8371,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.5</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.6</div>
 </body>
 </html>

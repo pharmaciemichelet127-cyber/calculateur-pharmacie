@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.0</div>
+  <div class="ver">v3.1</div>
 </header>
 <div class="main">
 
@@ -988,6 +988,16 @@ git push origin main</pre>
           <p style="margin:4px 0 4px 12px;color:var(--text-sec)">Si pull refusé (divergence) : <code>git fetch origin &amp;&amp; git reset --hard origin/main</code> puis cp / add / commit / push. Machine sans repo : <code>git clone https://github.com/pharmaciemichelet127-cyber/calculateur-pharmacie.git</code> d'abord. Attendre 1-2 min (Vercel).</p>
           <p style="margin:6px 0"><strong>5. Activer dans l'app</strong> — ① <strong>Cmd+Shift+R</strong> (obligatoire, sinon ancien code en cache) · ② si machine vierge : « Charger depuis GitHub » d'abord · ③ « + Nouveau labo », nom <u>exact et sans accent</u> (THEA, pas THÉA) · ④ <strong>cliquer la pastille du labo</strong> — c'est ce clic qui charge le catalogue · ⑤ onglet Catalogue : vérifier les références · ⑥ « Sauvegarder sur GitHub » → ✓.</p>
           <p style="margin:6px 0"><strong>6. Contrôles avant le RDV</strong> — pointer 2-3 prix contre le PDF · vérifier les TVA si estimées · confirmer les points flaggés avec le délégué · saisir les conditions négociées dans ⚡ Décision RDV.</p>
+          <p style="margin:10px 0 4px"><strong>Lexique</strong> :</p>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border);white-space:nowrap"><strong>↺ Pré-remplir (offre UPP)</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Recopie dans les Conditions tout ce que contient l'offre du labo (marchés, mots-clés, taux, franco), avec les taux du <em>palier objectif</em>. C'est un « retour à l'offre » : si les cases contiennent déjà l'offre, cliquer ne change rien ; si tu as modifié des valeurs à la main, cliquer les efface pour revenir à l'offre officielle (confirmation demandée). Jamais de cumul : 10 clics = 1 clic.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>✓ ACQUIS</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Le plus haut palier d'engagement que ton rythme de vente OTC couvre déjà, sans aucun effort. C'est ta position de repli en négociation.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>🎯 OBJECTIF</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Le palier supérieur quand il est à moins de 20% d'effort de ton rythme. Le plan de commande et le pré-remplissage des conditions visent ce palier. L'écart entre ACQUIS et OBJECTIF = ce que le délégué doit t'aider à financer.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Périmètre offre</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Les seuls produits cités dans l'offre du labo. Le verdict, le volume d'engagement et les remises se calculent dessus — jamais sur tout ton CA labo (les remboursés hors offre à 0% dilueraient tout).</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Bonus remboursés</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Remises croisées sur les remboursés cités (ex. Théa : Monoprost, Théalose…). De l'argent réel, mais jamais le critère de choix du marché — le choix se fait sur l'absorption du volume OTC.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Badge version</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">La pastille en bas à droite. Si elle diffère du numéro annoncé par Claude : Cmd+Shift+R, ou attendre 1-2 min que Vercel déploie.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Charger / Sauvegarder</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">GitHub est la source de vérité des données. Sur chaque Mac : Charger avant de travailler, Sauvegarder après. Jamais Sauvegarder depuis une machine qui affiche moins de labos que la réalité.</td></tr>
+          </table>
           <p style="margin:10px 0 4px"><strong>Pièges connus</strong> :</p>
           <table style="width:100%;border-collapse:collapse;font-size:11px">
             <tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Symptôme</th><th style="padding:3px 6px">Solution</th></tr>
@@ -8180,6 +8190,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.0</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.1</div>
 </body>
 </html>

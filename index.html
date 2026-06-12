@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.4</div>
+  <div class="ver">v3.5</div>
 </header>
 <div class="main">
 
@@ -6194,6 +6194,7 @@ function decAfficherCarte(labo) {
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise proposée (%)</label><input id="dec-carte-rem" type="number" value="35" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise actuelle estimée (%)</label><input id="dec-carte-rem0" type="number" value="21" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mini de commande (€ HT net)</label><input id="dec-carte-min" type="number" value="1000" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:80px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Délai de paiement (jours)</label><input id="dec-carte-pay" type="number" value="60" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
     + '<button type="button" onclick="decCarteCalculer()" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Calculer</button>'
     + '</div><div id="dec-carte-res" style="margin-top:8px"></div>';
 }
@@ -6206,6 +6207,7 @@ function decCarteCalculer() {
   var rem  = parseFloat(document.getElementById('dec-carte-rem').value) || 0;
   var rem0 = parseFloat(document.getElementById('dec-carte-rem0').value) || 0;
   var minC = parseFloat(document.getElementById('dec-carte-min').value) || 0;
+  var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 0;
   var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
   var match = decOspharmProds[decCarteLabo].filter(function(p) {
     var L = (p.lib || '').toUpperCase();
@@ -6234,8 +6236,20 @@ function decCarteCalculer() {
       + (nbCmd >= 1 ? nbCmd.toFixed(1) + ' commande(s)/an possibles — 1 commande mini = ' + (moisParCmd >= 99 ? '99+' : moisParCmd.toFixed(1)) + ' mois de ventes'
                     : '⚠️ ton rythme annuel (' + Math.round(netNouveauAn).toLocaleString('fr') + ' €) est SOUS le mini : 1 commande = ' + (moisParCmd >= 99 ? '99+' : moisParCmd.toFixed(1)) + ' mois de stock')
       + '</td></tr>';
+    if (payJ > 0) {
+      var caMois = caAn / 12;
+      var encaisse = caMois * (payJ / 30);
+      var ecartT = encaisse - minC;
+      var moisCouv = caMois > 0 ? minC / caMois : 999;
+      html += '<tr><td style="padding:3px 6px;color:var(--text-ter)">Trésorerie (paiement à ' + Math.round(payJ) + ' j)</td>'
+        + '<td style="padding:3px 6px;font-weight:700;color:' + (ecartT >= 0 ? 'var(--accent-text)' : 'var(--danger)') + '">'
+        + (ecartT >= 0
+          ? '✓ encaissé à l\u2019échéance ≈ ' + Math.round(encaisse).toLocaleString('fr') + ' € ≥ commande — tu ne décaisses jamais : règle du cash respectée'
+          : 'encaissé à l\u2019échéance ≈ ' + Math.round(encaisse).toLocaleString('fr') + ' € → avance de trésorerie de ' + Math.abs(Math.round(ecartT)).toLocaleString('fr') + ' € — cash intégralement récupéré vers le mois ' + (moisCouv >= 99 ? '99+' : moisCouv.toFixed(1)))
+        + '</td></tr>';
+    }
   }
-  html += '</table><div style="font-size:10px;color:var(--text-ter);margin-top:4px">Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
+  html += '</table><div style="font-size:10px;color:var(--text-ter);margin-top:4px">Encaissements estimés en CA HT (prudent : le TTC rentre en caisse). Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
   res.innerHTML = html;
 }
 
@@ -8330,6 +8344,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.4</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.5</div>
 </body>
 </html>

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.3</div>
+  <div class="ver">v3.4</div>
 </header>
 <div class="main">
 
@@ -1239,6 +1239,7 @@ git push origin main</pre>
         <div id="dec-conditions" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-verdict" style="display:none;margin-top:10px"></div>
         <div id="dec-thea" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
+        <div id="dec-carte" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
       </div>
     </div>
@@ -6180,6 +6181,64 @@ function cmdImprimer() {
   setTimeout(function(){ w.print(); }, 400);
 }
 
+// ===== MARCHE A LA CARTE — reconstituer un marché par mots-clés et le confronter à une offre =====
+var decCarteLabo = null;
+function decAfficherCarte(labo) {
+  var el = document.getElementById('dec-carte');
+  if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
+  decCarteLabo = labo;
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:6px">🔍 Marché à la carte <span style="font-weight:400;color:var(--text-ter)">— reconstituer un marché par mots-clés et tester une offre du délégué</span></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mots-clés produits (virgules)</label><input id="dec-carte-kw" placeholder="ex: ABSOFOAM" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:200px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise proposée (%)</label><input id="dec-carte-rem" type="number" value="35" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise actuelle estimée (%)</label><input id="dec-carte-rem0" type="number" value="21" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mini de commande (€ HT net)</label><input id="dec-carte-min" type="number" value="1000" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:80px"></div>'
+    + '<button type="button" onclick="decCarteCalculer()" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Calculer</button>'
+    + '</div><div id="dec-carte-res" style="margin-top:8px"></div>';
+}
+function decCarteCalculer() {
+  var res = document.getElementById('dec-carte-res');
+  if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
+  var kwRaw = (document.getElementById('dec-carte-kw').value || '').toUpperCase();
+  var kws = kwRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  if (kws.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Saisis au moins un mot-clé.</span>'; return; }
+  var rem  = parseFloat(document.getElementById('dec-carte-rem').value) || 0;
+  var rem0 = parseFloat(document.getElementById('dec-carte-rem0').value) || 0;
+  var minC = parseFloat(document.getElementById('dec-carte-min').value) || 0;
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var match = decOspharmProds[decCarteLabo].filter(function(p) {
+    var L = (p.lib || '').toUpperCase();
+    return kws.some(function(k){ return L.indexOf(k) >= 0; });
+  });
+  if (match.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucun produit ne contient « ' + kws.join(', ') + ' » dans cet import.</span>'; return; }
+  var vol = 0, ca = 0, marge = 0;
+  match.forEach(function(p){ vol += p.qte; ca += p.caht; marge += p.marge; });
+  var volAn = vol * f, caAn = ca * f, margeAn = marge * f;
+  var achatsAn = Math.max(caAn - margeAn, 0); // règle d'or : achats = CA − marge, jamais la colonne Ospharm
+  var brutAn = rem0 < 100 ? achatsAn / (1 - rem0 / 100) : achatsAn;
+  var netNouveauAn = brutAn * (1 - rem / 100);
+  var ecoAn = achatsAn - netNouveauAn;
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Réfs reconnues</td><td style="padding:3px 6px;font-weight:600">' + match.length + ' réf. — ' + match.slice(0,6).map(function(p){return p.lib;}).join(' · ') + (match.length > 6 ? ' …' : '') + '</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Volume annualisé</td><td style="padding:3px 6px;font-weight:600">' + Math.round(volAn) + ' u/an</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">CA HT annualisé</td><td style="padding:3px 6px;font-weight:600">' + Math.round(caAn).toLocaleString('fr') + ' €/an (marge ' + Math.round(margeAn).toLocaleString('fr') + ' €)</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Achats actuels estimés (CA − marge)</td><td style="padding:3px 6px;font-weight:600">' + Math.round(achatsAn).toLocaleString('fr') + ' €/an</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Achats à ' + rem + '% (tarif brut reconstitué via remise actuelle ' + rem0 + '%)</td><td style="padding:3px 6px;font-weight:600">' + Math.round(netNouveauAn).toLocaleString('fr') + ' €/an <span style="color:' + (ecoAn >= 0 ? 'var(--accent-text)' : 'var(--danger)') + '">(' + (ecoAn >= 0 ? 'économie' : 'surcoût') + ' ' + Math.abs(Math.round(ecoAn)).toLocaleString('fr') + ' €/an)</span></td></tr>';
+  if (minC > 0) {
+    var nbCmd = netNouveauAn / minC;
+    var moisParCmd = nbCmd > 0 ? 12 / nbCmd : 999;
+    var ok = moisParCmd <= 4, moyen = moisParCmd <= 8;
+    html += '<tr><td style="padding:3px 6px;color:var(--text-ter)">Mini de commande ' + Math.round(minC).toLocaleString('fr') + ' € net</td>'
+      + '<td style="padding:3px 6px;font-weight:700;color:' + (ok ? 'var(--accent-text)' : (moyen ? 'var(--warn)' : 'var(--danger)')) + '">'
+      + (nbCmd >= 1 ? nbCmd.toFixed(1) + ' commande(s)/an possibles — 1 commande mini = ' + (moisParCmd >= 99 ? '99+' : moisParCmd.toFixed(1)) + ' mois de ventes'
+                    : '⚠️ ton rythme annuel (' + Math.round(netNouveauAn).toLocaleString('fr') + ' €) est SOUS le mini : 1 commande = ' + (moisParCmd >= 99 ? '99+' : moisParCmd.toFixed(1)) + ' mois de stock')
+      + '</td></tr>';
+  }
+  html += '</table><div style="font-size:10px;color:var(--text-ter);margin-top:4px">Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
+  res.innerHTML = html;
+}
+
 function decAfficherResume(labo) {
   var el = document.getElementById('dec-resume');
   if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
@@ -6247,6 +6306,7 @@ function decAfficherResume(labo) {
   el.style.display = 'block';
   decCurrentStats = { labo: labo, caht: caAnnu, caPeriode: totCaht, margeEur: margeAnnu, taux: tauxMarge, mois: mois, periode: periode };
   decAfficherConditions(labo);
+  decAfficherCarte(labo);
   decAfficherTheaAnalyse(labo);
 }
 
@@ -8270,6 +8330,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.3</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.4</div>
 </body>
 </html>

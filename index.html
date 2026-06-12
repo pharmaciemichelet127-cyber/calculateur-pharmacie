@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.1</div>
+  <div class="ver">v3.2</div>
 </header>
 <div class="main">
 
@@ -3713,6 +3713,10 @@ function condSelectionnerLabo(id) {
     theaInitCatalogue(id);
     labo = condLabos[id]; // refresh
   }
+  if (labo && labo.nom && (labo.nom.toUpperCase().indexOf('MARQUE VERTE') >= 0 || labo.nom.toUpperCase().indexOf('MARQUEVERTE') >= 0)) {
+    marqueverteInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
   if (!labo) return;
   document.getElementById('cond-labo-form').style.display = 'block';
   document.getElementById('cond-labo-nom').value = labo.nom || '';
@@ -7092,6 +7096,52 @@ function thuasneInitCatalogue(laboId) {
   condLabos[laboId].tarifValidite = '2026-07-01'; // Tarif 01/2026 valide jusqu'au 07/2026 (next update)
 }
 
+// ===== MARQUE VERTE — Catalogue externalisé (marqueverte.json, tarif PharmUPP Essentiel janv. 2026) =====
+var MARCHES_MARQUEVERTE = [
+  {id:'abso_trad',      label:'ABSO Médical (traditionnel)',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 0–70% selon réf | SDAV 22–82% sous conditions de volume — Min cmd 75€ net, franco 300€ (+5€ port en dessous), 45j fin de mois. Dividende coopératif Welcoop 4% dès 3 000€ CA net/an (seuil de déclenchement, calcul dès le 1er euro)'},
+  {id:'abso_lpp',       label:'Pansements techniques LPP',        rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 21–35% | SDAV 26% — RFA fin d\u2019année 2/3/5% si part de marché valeur LMV ≥10/15/20% (mesurée 01/09→31/12/2026, non cumulable, CA tous canaux)'},
+  {id:'premiers_soins', label:'ABSO Famille (premiers soins)',    rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 25% | SDAV 40%'},
+  {id:'soludiab',       label:'Soludiab (diabétologie)',          rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Aiguilles 55% (SDAV 66%+UG, TVA 5,5) | autosurveillance glycémique 40%'},
+  {id:'dermasens',      label:'Dermasens (visage & corps)',       rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 20% | SDAV 45% sur flacons 1L, écorecharges et savons liquides'},
+  {id:'semesa',         label:'Semesa (incontinence)',            rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'55% sur toute la gamme'},
+  {id:'actikine',       label:'Actikiné (muscles & articulations)', rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 20% | SDAV 35%'},
+  {id:'digit',          label:'Digit (tests & mesure)',           rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Tensiomètres 40–68% selon réf | thermomètres 30% | Digitest 50% (SDAV 75%)'},
+  {id:'calmelia',       label:'Calmelia (phytothérapie)',         rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'20% uniforme, TVA 5,5 (sauf argile/henné 20%)'},
+  {id:'moustiko',       label:'Mousti KO (anti-moustiques)',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'50% — diffuseur électrique et recharge à 0%'},
+  {id:'uriprocare',     label:'Uriprocare (incontinence masc.)',  rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Etuis péniens 20% (LPPR 74,70€) | poches à urine 35% — TVA 5,5'},
+  {id:'quotisoin',      label:'Quotisoin (prévention)',           rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'20%'},
+  {id:'materiel',       label:'Matériel médical & coutellerie',   rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'20% (gants TVA 5,5)'}
+];
+
+var _marqueverteCache = null;
+var _marqueverteLoading = false;
+function marqueverteLoadCatalogue(cb) {
+  if (_marqueverteCache) { cb(_marqueverteCache); return; }
+  if (_marqueverteLoading) { setTimeout(function(){ marqueverteLoadCatalogue(cb); }, 300); return; }
+  _marqueverteLoading = true;
+  fetch('/marqueverte.json')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ _marqueverteCache = d; _marqueverteLoading = false; cb(d); })
+    .catch(function(){ _marqueverteLoading = false; cb([]); });
+}
+function marqueverteInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = '⏳ Chargement MARQUE VERTE...';
+  marqueverteLoadCatalogue(function(data) {
+    if (!condLabos[laboId]) return;
+    condLabos[laboId].produits = data.map(function(p) {
+      return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+    });
+    condLabos[laboId].catalogueMaj = new Date().toISOString();
+    condLabos[laboId].tarifValidite = '2026-12-31';
+    if (majEl) majEl.textContent = data.length + ' produits chargés';
+    if (condLaboActif == laboId) { var cs = document.getElementById('cat-labo-sel'); if (cs && cs.value == laboId) catChargeLabo(); }
+    condSauvegarder();
+  });
+}
+
 var MARCHES_THUASNE = [
   { id:'compression',  label:'Compression médicale',       rem:0, rem_30:0, rem_25:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Venoflex / Biflex / Lymphatrex' },
   { id:'orthopedie',   label:'Orthopédie',                 rem:0, rem_30:0, rem_25:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Dos / Genou / Cheville / Poignet' },
@@ -7229,6 +7279,13 @@ function getMarchesLabo(laboId) {
     return MARCHES_BAYER.map(function(m) {
       var nB = negB.find(function(x){ return x.marche_id === m.id; });
       return Object.assign({}, m, {rem: nB ? nB.rem : 0, rem_30: nB ? nB.rem : 0, rem_25: nB ? nB.rem : 0});
+    });
+  }
+  if (nom.indexOf('MARQUE VERTE') >= 0 || nom.indexOf('MARQUEVERTE') >= 0) {
+    var negMV = labo.marches_negocies || [];
+    return MARCHES_MARQUEVERTE.map(function(m) {
+      var nMV = negMV.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, {rem: nMV ? nMV.rem : 0, rem_30: nMV ? nMV.rem : 0, rem_25: nMV ? nMV.rem : 0});
     });
   }
   if (nom.indexOf('THEA') >= 0) {
@@ -8190,6 +8247,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.1</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.2</div>
 </body>
 </html>

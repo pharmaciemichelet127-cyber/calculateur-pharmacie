@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v2.9</div>
+  <div class="ver">v3.0</div>
 </header>
 <div class="main">
 
@@ -6409,7 +6409,7 @@ function decRenderConditions(labo) {
   html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">march\u00e9s n\u00e9goci\u00e9s en d\u00e9but d\u2019ann\u00e9e \u2014 sauvegard\u00e9s pour ce labo</span>';
   if (String(labo || '').toUpperCase().indexOf('THEA') >= 0) {
     html += '<button type="button" onclick="decTheaPrefillConditions(decCurrentStats.labo, true)" style="margin-left:10px;font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);color:var(--accent-text);cursor:pointer">\u21ba Pr\u00e9-remplir (offre UPP)</button>';
-    if (c.prefillPalier) html += '<span style="font-size:10px;color:var(--accent-text);margin-left:8px">pr\u00e9-rempli : taux du ' + c.prefillPalier + ' \u2014 ajustable</span>';
+    if (c.prefillPalier) html += '<span style="font-size:10px;color:var(--accent-text);margin-left:8px">pr\u00e9-rempli : taux du ' + c.prefillPalier + ' (palier objectif) \u2014 ajustable</span>';
   }
   for (var i = 0; i < c.marches.length; i++) {
     var m = c.marches[i];
@@ -6693,13 +6693,19 @@ function decAfficherTheaAnalyse(labo) {
   html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil OTC</th><th style="padding:3px 6px">Absorption (ton rythme OTC)</th><th style="padding:3px 6px">Remise OTC</th><th style="padding:3px 6px">+ Bonus remboursés</th><th style="padding:3px 6px">Marge si tout vendu</th></tr>';
   for (var i = 0; i < a.niveaux.length; i++) {
     var n = a.niveaux[i];
-    var isReco = a.reco && n.nom === a.reco.nom;
+    var isAcquis = a.reco && n.nom === a.reco.nom;
+    var isObjectif = a.nudge && n.nom === a.nudge.nom;
     var fais, col;
     if (n.absorbe) { fais = '✓ absorbé par ton rythme'; col = 'var(--accent-text)'; }
     else if (n.aPortee20) { fais = '↗ +' + Math.ceil(n.effort) + ' u à faire en plus (+' + Math.round(n.effort / Math.max(a.volOTC, 1) * 100) + '%)'; col = 'var(--warn)'; }
     else { fais = '✗ ×' + (n.seuil / Math.max(a.volOTC, 1)).toFixed(1) + ' de ton OTC → surstock'; col = 'var(--danger)'; }
-    html += '<tr style="' + (isReco ? 'background:var(--accent-bg);font-weight:600' : '') + '">';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + (isReco ? ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>' : '') + '</td>';
+    var rowBg = isObjectif ? 'background:var(--warn-bg);font-weight:600' : (isAcquis ? 'background:var(--accent-bg);font-weight:600' : '');
+    var badge = '';
+    if (isAcquis && a.nudge) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">✓ ACQUIS</span>';
+    else if (isAcquis) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>';
+    if (isObjectif) badge += ' <span style="font-size:9px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">OBJECTIF</span>';
+    html += '<tr style="' + rowBg + '">';
+    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + badge + '</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.seuil + ' u</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
     html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
@@ -6710,16 +6716,16 @@ function decAfficherTheaAnalyse(labo) {
   html += '</table>';
   if (a.reco) {
     var idx = a.niveaux.findIndex(function(n){ return n.nom === a.reco.nom; });
-    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u OTC)</strong> : le plus haut palier absorbé par ton rythme OTC naturel (' + Math.round(a.volOTC) + ' u/an). Marge si tout le volume est vendu : <strong>≈ ' + Math.round(a.reco.margePalier).toLocaleString('fr') + ' €/an</strong> (remise ' + Math.round(a.reco.remise).toLocaleString('fr') + ' € incluse).';
+    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u OTC)</strong> : le plus haut palier absorbé par ton rythme OTC naturel (' + Math.round(a.volOTC) + ' u/an)' + (a.nudge ? ' — ta position de repli sans aucun effort' : '') + '. Marge si tout le volume est vendu : <strong>≈ ' + Math.round(a.reco.margePalier).toLocaleString('fr') + ' €/an</strong> (remise ' + Math.round(a.reco.remise).toLocaleString('fr') + ' € incluse).';
     html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)">' + why + '</div>';
     if (a.nudge) {
-      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>' + a.nudge.nom + ' à portée : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '% de ton rythme, sous le seuil des 20%). Gain : remise +' + Math.round(a.nudge.remise - a.reco.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an (+' + Math.round(a.nudge.margePalier - a.reco.margePalier).toLocaleString('fr') + ' €).</div>';
+      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>Objectif conseillé — ' + a.nudge.nom + ' : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '% de ton rythme, sous le seuil des 20%). Gain : remise +' + Math.round(a.nudge.remise - a.reco.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an (+' + Math.round(a.nudge.margePalier - a.reco.margePalier).toLocaleString('fr') + ' €).</div>';
     }
     var cibleNiveau = a.nudge || a.reco;
     var plan = decTheaPlan(labo, a, cibleNiveau);
     if (plan) {
       html += '<details style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff">';
-      html += '<summary style="cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600">\ud83d\udce6 Plan de commande sugg\u00e9r\u00e9 \u2014 ' + cibleNiveau.nom + ' (' + plan.total + ' u/an, arrondi aux multiples Th\u00e9a)</summary>';
+      html += '<summary style="cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600">\ud83d\udce6 Plan de commande sugg\u00e9r\u00e9 \u2014 ' + (a.nudge ? 'objectif ' : '') + cibleNiveau.nom + ' (' + plan.total + ' u/an, arrondi aux multiples Th\u00e9a)</summary>';
       html += '<div style="padding:0 10px 10px">';
       html += '<div style="font-size:11px;margin:6px 0;padding:6px 8px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)"><strong>Effort vs ton rythme : ' + (plan.effortU > 0 ? '+' + Math.ceil(plan.effortU) + ' u (+' + Math.round(plan.effortPct) + '%) \u00b7 \u2248 ' + Math.round(plan.effortEur).toLocaleString('fr') + ' \u20ac d\u2019achats en plus \u00b7 \u2248 ' + plan.effortMois.toFixed(1) + ' mois de stock suppl\u00e9mentaire' : 'aucun \u2014 ton rythme couvre d\u00e9j\u00e0 le palier') + '</strong></div>';
       html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
@@ -6751,7 +6757,7 @@ function decAfficherTheaAnalyse(labo) {
   } else {
     html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Aucun palier absorbé par ton rythme OTC (' + Math.round(a.volOTC) + ' u/an). Négocier hors marché ou développer l\u2019OTC avant de s\u2019engager.</div>';
     if (a.nudge) {
-      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>' + a.nudge.nom + ' (' + a.nudge.seuil + ' u) à portée : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '%). Remise ≈ ' + Math.round(a.nudge.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an.</div>';
+      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>Objectif conseillé — ' + a.nudge.nom + ' (' + a.nudge.seuil + ' u) : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '%). Remise ≈ ' + Math.round(a.nudge.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an.</div>';
     }
   }
   html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Faisabilité jugée sur tes ventes OTC annualisées (Ospharm) — l\u2019engagement porte sur les achats : vérifier l\u2019écart de stock. Le bonus remboursés (' + Math.round(a.qteRx) + ' u/an : Théalose, Vitabact fl, Monoprost, Nutrof, Cromadoses) est estimé à conditions croisées Théa, hors critère de décision.</div>';
@@ -8174,6 +8180,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v2.9</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.0</div>
 </body>
 </html>

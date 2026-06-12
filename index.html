@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.10</div>
+  <div class="ver">v3.12</div>
 </header>
 <div class="main">
 
@@ -6200,6 +6200,7 @@ function decAfficherCarte(labo) {
     + '<button type="button" onclick="decCarteCalculer()" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Calculer</button>'
     + '<button type="button" onclick="decCartePlan()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📦 Plan de commande (horizon cash)</button>'
     + (laboNomU.indexOf('MARQUE VERTE') >= 0 || laboNomU.indexOf('MARQUEVERTE') >= 0 ? '<button type="button" onclick="decCarteOffreGB()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📋 Offre SDAV gamme blanche (avr-juin 2026)</button>' : '')
+    + '<div style="width:100%"><label style="font-size:10px;color:var(--text-ter);display:block;margin-top:4px">📥 Importer un bon de commande SDAV (PDF) — tout labo</label><input type="file" accept=".pdf" onchange="decCarteImportBonSDAV(this)" style="font-size:11px"></div>'
     + '</div><div id="dec-carte-res" style="margin-top:8px"></div>';
 }
 function decCarteCalculer() {
@@ -6436,7 +6437,152 @@ function decCarteMatchTous(offre, prods) {
   });
   return result;
 }
-function decCarteOffreGB() {
+// ===== IMPORT GÉNÉRIQUE D'UN BON DE COMMANDE SDAV (PDF) =====
+function decEan13Valide(ean) {
+  if (!/^\d{13}$/.test(ean)) return false;
+  var s = 0;
+  for (var i = 0; i < 12; i++) s += parseInt(ean[i], 10) * (i % 2 === 0 ? 1 : 3);
+  return (10 - (s % 10)) % 10 === parseInt(ean[12], 10);
+}
+function decCarteParseBonSDAV(text) {
+  // Lignes type : 3401099222675 ABSO Compresses non-tissé 10x10 – Bt10 sachets de 2 40 0,82 € 0,71 € 0,39 €
+  var re = /(\d{13})\s+(.{3,140}?)\s+(\d{1,3})\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€/g;
+  var out = [], vus = {}, m;
+  while ((m = re.exec(text)) !== null) {
+    var ean = m[1];
+    if (vus[ean]) continue;
+    vus[ean] = true;
+    var num = function(s){ return parseFloat(s.replace(',', '.')); };
+    out.push([ean, m[2].replace(/\s+/g, ' ').trim(), parseInt(m[3], 10) || 1, num(m[4]), num(m[5]), num(m[6])]);
+  }
+  var fr = text.match(/Franco de port\s*:\s*(\d+)/i);
+  // Comptage croisé : tous les EAN-13 valides présents dans le texte (candidats produits)
+  var cands = {}, cm, reAll = /\b(\d{13})\b/g;
+  while ((cm = reAll.exec(text)) !== null) { if (decEan13Valide(cm[1])) cands[cm[1]] = true; }
+  return { lignes: out, franco: fr ? parseInt(fr[1], 10) : null, candidatsList: Object.keys(cands) };
+}
+var _pdfjsReady = false;
+function decCartePdfEnsure(cb) {
+  if (_pdfjsReady && window.pdfjsLib) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload = function() {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    _pdfjsReady = true;
+    cb();
+  };
+  s.onerror = function() { alert('Impossible de charger le lecteur PDF — vérifie ta connexion.'); };
+  document.head.appendChild(s);
+}
+function decCarteImportBonSDAV(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var res = document.getElementById('dec-carte-res');
+  if (res) res.innerHTML = '<span style="font-size:11px;color:var(--text-ter)">⏳ Lecture du bon de commande...</span>';
+  decCartePdfEnsure(function() {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      window.pdfjsLib.getDocument({ data: new Uint8Array(e.target.result) }).promise.then(function(pdf) {
+        var pages = [];
+        var chain = Promise.resolve();
+        for (var i = 1; i <= pdf.numPages; i++) {
+          (function(n) {
+            chain = chain.then(function() {
+              return pdf.getPage(n).then(function(page) {
+                return page.getTextContent().then(function(tc) {
+                  pages.push(tc.items.map(function(it){ return it.str; }).join(' '));
+                });
+              });
+            });
+          })(i);
+        }
+        chain.then(function() {
+          var parsed = decCarteParseBonSDAV(pages.join(' '));
+          if (parsed.lignes.length === 0) {
+            if (res) res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucune ligne produit reconnue dans ce PDF — est-ce bien un bon de commande SDAV (colonnes EAN / multiple / prix brut / FDL / net) ?</span>';
+            return;
+          }
+          decCarteOffreImp = parsed.lignes;
+          decCarteOffreTitre = '📥 ' + (file.name || 'Bon SDAV').replace(/\.pdf$/i, '') + ' (' + parsed.lignes.length + ' réf.)';
+          if (parsed.franco !== null) { var fEl = document.getElementById('dec-carte-franco'); if (fEl) fEl.value = parsed.franco; }
+          decCarteValidationImport(parsed);
+        });
+      }).catch(function(err) {
+        if (res) res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Erreur de lecture du PDF : ' + err.message + '</span>';
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function decCarteOffreGB() { decCarteOffreRender(OFFRE_SDAV_MV_GB, 'Offre SDAV gamme blanche'); }
+var decCarteOffreImp = null;
+var decCarteOffreTitre = '';
+function decCarteCatalogueEanMap() {
+  // Croisement avec le catalogue du labo (condLabos) : ean -> prix tarif
+  var map = {};
+  try {
+    var cible = (decCarteLabo || '').toUpperCase();
+    Object.keys(condLabos).forEach(function(k) {
+      var nom = ((condLabos[k] || {}).nom || '').toUpperCase();
+      if (!nom) return;
+      if (cible.indexOf(nom) >= 0 || nom.indexOf(cible) >= 0 || nom.split(' ').some(function(w){ return w.length > 4 && cible.indexOf(w) >= 0; })) {
+        (condLabos[k].produits || []).forEach(function(p) { if (p.ean) map[String(p.ean)] = p.pu_catalogue; });
+      }
+    });
+  } catch(e) {}
+  return map;
+}
+function decCarteValidationImport(parsed) {
+  var res = document.getElementById('dec-carte-res');
+  if (!res) return;
+  var tarifs = decCarteCatalogueEanMap();
+  var nbAnomalies = 0, lignes = '';
+  parsed.lignes.forEach(function(o, i) {
+    var pbs = [];
+    if (!decEan13Valide(o[0])) pbs.push('clé EAN invalide');
+    if (!(o[5] <= o[4] + 0.005 && o[4] <= o[3] + 0.005)) pbs.push('prix incohérents (net ≤ FDL ≤ brut attendu)');
+    var remI = o[3] > 0 ? 1 - o[5] / o[3] : 0;
+    if (remI < -0.005 || remI > 0.9) pbs.push('remise implicite ' + Math.round(remI * 100) + '% suspecte');
+    var tCat = tarifs[o[0]];
+    var catCell = '—';
+    if (tCat !== undefined) {
+      if (Math.abs(tCat - o[3]) <= Math.max(0.01, tCat * 0.01)) catCell = '<span style="color:var(--accent-text)">✓ ' + tCat.toFixed(2).replace('.', ',') + '</span>';
+      else { catCell = '<span style="color:var(--danger)">⚠ tarif ' + tCat.toFixed(2).replace('.', ',') + ' €</span>'; pbs.push('brut ≠ tarif catalogue'); }
+    }
+    if (pbs.length > 0) nbAnomalies++;
+    lignes += '<tr style="' + (pbs.length > 0 ? 'background:#fdecec' : '') + '">'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);font-family:monospace;font-size:10px">' + o[0] + (decEan13Valide(o[0]) ? ' <span style="color:var(--accent-text)">✓</span>' : ' <span style="color:var(--danger)">✗</span>') + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border)">' + o[1] + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">×' + o[2] + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + o[3].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + o[4].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:600">' + o[5].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(remI * 100) + '%</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + catCell + '</td>'
+      + '<td style="padding:2px 6px;border-top:1px solid var(--border);font-size:10px;color:var(--danger)">' + pbs.join(' · ') + '</td>'
+      + '</tr>';
+  });
+  var eansExtraits = {};
+  parsed.lignes.forEach(function(o){ eansExtraits[o[0]] = true; });
+  var manquants = (parsed.candidatsList || []).filter(function(e){ return !eansExtraits[e]; }).length;
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">🔎 Contrôle de l\u2019import — ' + parsed.lignes.length + ' lignes extraites'
+    + (parsed.franco !== null ? ' · franco détecté ' + parsed.franco + ' €' : '') + '</div>';
+  if (manquants > 0) html += '<div style="margin-top:4px;padding:8px 10px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px;color:var(--danger);font-weight:600">⚠️ ' + manquants + ' code(s) EAN présent(s) dans le PDF n\u2019ont PAS été extraits en ligne produit — compare avec le bon avant de valider.</div>';
+  if (nbAnomalies > 0) html += '<div style="margin-top:4px;padding:8px 10px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px;color:var(--danger);font-weight:600">⚠️ ' + nbAnomalies + ' ligne(s) en anomalie (surlignées en rouge) — vérifie-les sur le PDF.</div>';
+  if (manquants === 0 && nbAnomalies === 0) html += '<div style="margin-top:4px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-text);font-weight:600">✓ Tous les contrôles passent : clés EAN valides, prix cohérents' + (Object.keys(tarifs).length > 0 ? ', tarifs conformes au catalogue' : '') + ', aucun EAN du PDF laissé de côté.</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">EAN (clé)</td><td style="padding:2px 6px">Libellé</td><td style="padding:2px 6px;text-align:right">Mult.</td><td style="padding:2px 6px;text-align:right">Brut</td><td style="padding:2px 6px;text-align:right">FDL</td><td style="padding:2px 6px;text-align:right">Net</td><td style="padding:2px 6px;text-align:right">Remise</td><td style="padding:2px 6px;text-align:right">Tarif catalogue</td><td style="padding:2px 6px">Anomalies</td></tr>'
+    + lignes + '</table>'
+    + '<div style="margin-top:8px"><button type="button" onclick="decCarteValiderImport()" style="font-size:12px;padding:8px 16px;background:' + (nbAnomalies > 0 || manquants > 0 ? 'var(--warn)' : 'var(--accent)') + ';color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:700">'
+    + (nbAnomalies > 0 || manquants > 0 ? '⚠️ Valider malgré les alertes et calculer' : '✓ Valider et calculer les quantités') + '</button></div>';
+  res.innerHTML = html;
+}
+function decCarteValiderImport() {
+  if (!decCarteOffreImp) return;
+  decCarteOffreRender(decCarteOffreImp, decCarteOffreTitre);
+}
+function decCarteOffreRender(OFFRE, TITRE) {
   var res = document.getElementById('dec-carte-res');
   if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
   var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 75;
@@ -6444,9 +6590,9 @@ function decCarteOffreGB() {
   var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
   var hz = payJ / 360;
   var prods = decOspharmProds[decCarteLabo];
-  var matches = decCarteMatchTous(OFFRE_SDAV_MV_GB, prods);
+  var matches = decCarteMatchTous(OFFRE, prods);
   var totBrut = 0, totFdl = 0, totNet = 0, caHz = 0, nbMatch = 0, sansVente = 0, multTropGrand = 0, lignes = '';
-  OFFRE_SDAV_MV_GB.forEach(function(o, oIdx) {
+  OFFRE.forEach(function(o, oIdx) {
     var ean = o[0], lib = o[1], mult = o[2], brut = o[3], fdl = o[4], net = o[5];
     var p = matches[oIdx] || null;
     var qteAn = p ? p.qte * f : 0;
@@ -6476,7 +6622,7 @@ function decCarteOffreGB() {
   var remTot = totBrut > 0 ? (1 - totNet / totBrut) * 100 : 0;
   var gainFdl = totFdl - totNet;
   var dateEch = new Date(Date.now() + payJ * 86400000);
-  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 Offre SDAV gamme blanche — commande aujourd\u2019hui, <span style="color:var(--accent-text)">facture payable vers le ' + dateEch.toLocaleDateString('fr-FR') + '</span> (' + Math.round(payJ) + ' j)</div>'
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 ' + TITRE + ' — commande aujourd\u2019hui, <span style="color:var(--accent-text)">facture payable vers le ' + dateEch.toLocaleDateString('fr-FR') + '</span> (' + Math.round(payJ) + ' j)</div>'
     + '<div style="font-size:10px;color:var(--text-ter)">' + nbMatch + ' lignes avec ventes · ' + sansVente + ' réf. sans rotation ignorées' + (multTropGrand > 0 ? ' · ' + multTropGrand + ' réf. vendues mais multiple trop grand pour tout écouler avant l\u2019échéance (laisse-les au fil de l\u2019eau)' : '') + '</div>'
     + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
     + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit (offre UPP)</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:2px 6px;text-align:right">Mult.</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Écoulé en</td><td style="padding:2px 6px;text-align:right">Prix net</td><td style="padding:2px 6px;text-align:right">Montant net</td><td style="padding:2px 6px;text-align:right">Remise vs brut</td><td style="padding:2px 6px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
@@ -8592,6 +8738,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.10</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.12</div>
 </body>
 </html>

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.21</div>
+  <div class="ver">v3.22</div>
 </header>
 <div class="main">
 
@@ -6924,6 +6924,15 @@ function decRenderConditions(labo) {
     html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(m.mots) + '" placeholder="ex: WHEY, PROTEINE" style="' + inp + ';width:190px" oninput="decUpdMarche(' + i + ',\'mots\',this.value)"></div>';
     html += '<div><label style="' + lbl + '">Remise (%)</label><input type="number" min="0" max="80" step="0.5" value="' + esc(m.remise) + '" style="' + inp + ';width:80px" oninput="decUpdMarche(' + i + ',\'remise\',this.value)"></div>';
     html += '<span id="dec-m-ca-' + i + '" style="font-size:11px;color:var(--text-sec);padding-bottom:7px">' + Math.round(aff.stats[i].ca).toLocaleString('fr') + ' \u20ac \u00b7 ' + aff.stats[i].nb + ' r\u00e9f.</span>';
+    if (String(labo || '').toUpperCase().indexOf('THEA') >= 0) {
+      var pal = theaPaliersPourMarche(m.nom, m.mots);
+      if (pal) {
+        html += '<div style="font-size:10px;color:var(--text-ter);padding-bottom:7px">Paliers UPP&nbsp;: ' + pal.map(function(p, pi) {
+          var actif = Math.abs(p - parseFloat(m.remise)) < 0.05;
+          return '<span style="' + (actif ? 'font-weight:700;color:var(--accent-text)' : '') + '">M' + (pi+1) + ' ' + p + '%</span>';
+        }).join(' / ') + '</div>';
+      }
+    }
     if (c.marches.length > 1) html += '<button type="button" onclick="decDelMarche(' + i + ')" title="Supprimer ce march\u00e9" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
     html += '</div>';
   }
@@ -7720,6 +7729,22 @@ function bayerInitCatalogue(laboId) {
   condLabos[laboId].francoPort = 200;
 }
 
+// Paliers réels de l'offre UPP Théa : [Marché1 96u, Marché2 156u, Marché3 348u] par gamme
+var THEA_PALIERS_UPP = {
+  'OTC':       [45, 50, 50],
+  'BLEPHA':    [30, 30, 35],
+  'THEALOSE':  [16.5, 16.5, 16.5],
+  'VITABACT':  [45, 50, 55],
+  'MONOPROST': [2, 4, 6],
+  'NUTROF':    [30, 30, 30],
+  'CROMA':     [7, 7, 10],
+  'AUTRES':    [0, 0, 0]
+};
+function theaPaliersPourMarche(nom, mots) {
+  var key = (nom + ' ' + (mots || '')).toUpperCase();
+  for (var k in THEA_PALIERS_UPP) { if (key.indexOf(k) >= 0) return THEA_PALIERS_UPP[k]; }
+  return null;
+}
 var MARCHES_THEA = [
   {id:'otc',         label:'Gamme OTC Conseil',          rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'45% (engagement 96u/an) | 50% (156u ou 348u) \u2014 paliers = engagement annuel UPP, pas qt\u00e9 par produit'},
   {id:'blepha',      label:'Gamme Blepha OTX',           rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'30% (96u ou 156u) | 35% (348u)'},
@@ -8741,6 +8766,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.21</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.22</div>
 </body>
 </html>

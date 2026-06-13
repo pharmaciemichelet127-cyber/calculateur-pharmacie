@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.46</div>
+  <div class="ver">v3.47</div>
 </header>
 <div class="main">
 
@@ -4582,35 +4582,35 @@ function condImportCatalogueLabo() {
     return;
   }
   var labo = condLabos[condLaboActif];
-  // Lire les produits déjà extraits via l'onglet Catalogue
-  var src = labo.produits || [];
+  // Fusionner produits (array) + catalogue (object clé→produit de l'onglet Catalogue)
+  var prodsFromProduits = labo.produits || [];
+  var prodsFromCatalogue = Object.values(labo.catalogue || {});
+  var merged = {};
+  prodsFromProduits.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k) merged[k]=p; });
+  prodsFromCatalogue.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k&&!merged[k]) merged[k]=p; });
+  var src = Object.values(merged);
   if (src.length === 0) {
     if (status) { status.textContent = 'Aucun produit dans le catalogue de ce labo — importez d\'abord via l\'onglet Catalogue → 🤖 Extraire produits (IA).'; status.style.color = 'var(--danger)'; }
     return;
   }
-  // Fusionner avec les produits existants (préserver les données de ventes)
-  var existing = labo.produits || [];
-  var eanMap = {};
-  existing.forEach(function(p){ if (p.ean) eanMap[p.ean] = p; });
 
   var nb = 0;
   var produits = src.map(function(p) {
-    var prev = eanMap[p.ean] || {};
     nb++;
     return {
-      nom: p.nom || prev.nom || '',
+      nom: p.nom || '',
       ean: p.ean || '',
-      format: p.format || prev.format || '',
-      pu_catalogue: p.pu_catalogue || prev.pu_catalogue || 0,
-      lppr: p.lppr || prev.lppr || 0,
-      colisage: p.colisage || p.uc || prev.colisage || 1,
-      tva: p.tva || prev.tva || 20,
-      famille: p.famille || prev.famille || '',
-      moy: prev.moy || 0, pa_net: prev.pa_net || 0,
-      pv_ttc: prev.pv_ttc || 0, pv_ht: prev.pv_ht || 0,
-      mbu: prev.mbu || 0, mb_pct: prev.mb_pct || 0,
-      rem_cat: prev.rem_cat || 0,
-      mois: prev.mois || new Array(12).fill(0)
+      format: p.format || '',
+      pu_catalogue: p.pu_catalogue || 0,
+      lppr: p.lppr || 0,
+      colisage: p.colisage || p.uc || 1,
+      tva: p.tva || 20,
+      famille: p.famille || '',
+      moy: p.moy || 0, pa_net: p.pa_net || 0,
+      pv_ttc: p.pv_ttc || 0, pv_ht: p.pv_ht || 0,
+      mbu: p.mbu || 0, mb_pct: p.mb_pct || 0,
+      rem_cat: p.rem_cat || 0,
+      mois: p.mois || new Array(12).fill(0)
     };
   });
 
@@ -9338,6 +9338,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.46</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.47</div>
 </body>
 </html>

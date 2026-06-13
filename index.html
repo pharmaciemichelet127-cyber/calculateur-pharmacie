@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.43</div>
+  <div class="ver">v3.44</div>
 </header>
 <div class="main">
 
@@ -8336,14 +8336,12 @@ var CAT_EXTRACT_PROMPT = 'Tu analyses un catalogue tarifaire pharmacie (format G
 async function catExtrarePDF(input) {
   var file = input.files[0];
   if (!file) return;
-  // Reset input so same file can be re-imported
   input.value = '';
   if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo dans la liste.'); return; }
 
-  // Clé API Anthropic stockée localement
   var apiKey = localStorage.getItem('anthropic_api_key') || '';
   if (!apiKey) {
-    apiKey = prompt('Clé API Anthropic (sk-ant-...) — stockée localement, jamais partagée :');
+    apiKey = prompt('Clé API Anthropic (sk-ant-...) — stockée localement :');
     if (!apiKey || !apiKey.startsWith('sk-')) { alert('Clé invalide.'); return; }
     localStorage.setItem('anthropic_api_key', apiKey);
   }
@@ -8362,116 +8360,106 @@ async function catExtrarePDF(input) {
     r.readAsDataURL(file);
   });
 
-  statusEl.innerHTML = '⏳ Envoi à Claude... (30-60 secondes)';
+  var PASSES = [
+    { label: 'pages 1–5',   prompt: 'Analyse UNIQUEMENT les pages 1 à 5 de ce PDF. ' },
+    { label: 'pages 6–10',  prompt: 'Analyse UNIQUEMENT les pages 6 à 10 de ce PDF. ' },
+    { label: 'pages 11–15', prompt: 'Analyse UNIQUEMENT les pages 11 à 15 de ce PDF. ' },
+    { label: 'pages 16–20', prompt: 'Analyse UNIQUEMENT les pages 16 à 20 de ce PDF. ' }
+  ];
 
-  try {
-    var resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
-            { type: 'text', text: CAT_EXTRACT_PROMPT }
-          ]
-        }]
-      })
-    });
+  var allProds = {};
+  var errors = [];
 
-    var responseText = await resp.text();
+  for (var pi = 0; pi < PASSES.length; pi++) {
+    var passe = PASSES[pi];
+    statusEl.innerHTML = '⏳ Passe ' + (pi+1) + '/4 — ' + passe.label + '...';
+    try {
+      var resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+              { type: 'text', text: passe.prompt + CAT_EXTRACT_PROMPT }
+            ]
+          }]
+        })
+      });
 
-    if (!resp.ok) {
-      // Si clé invalide, l'effacer pour redemander
-      if (resp.status === 401) { localStorage.removeItem('anthropic_api_key'); }
-      statusEl.innerHTML = '❌ Erreur API (' + resp.status + ') : ' + responseText.slice(0, 300);
-      return;
+      if (resp.status === 401) { localStorage.removeItem('anthropic_api_key'); statusEl.innerHTML = '❌ Clé API invalide.'; return; }
+      var responseText = await resp.text();
+      if (!resp.ok) { errors.push('Passe ' + (pi+1) + ': erreur ' + resp.status); continue; }
+      var data;
+      try { data = JSON.parse(responseText); } catch(e) { errors.push('Passe ' + (pi+1) + ': réponse non-JSON'); continue; }
+      if (data.error) { errors.push('Passe ' + (pi+1) + ': ' + (data.error.message || JSON.stringify(data.error))); continue; }
+
+      var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { errors.push('Passe ' + (pi+1) + ': pas de JSON'); continue; }
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+        var txt = jsonMatch[0].replace(/,\s*$/, '');
+        var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        for (var k=0;k<op;k++) txt+=']';
+        for (var k=0;k<ob;k++) txt+='}';
+        try { parsed = JSON.parse(txt); } catch(e2) { errors.push('Passe ' + (pi+1) + ': JSON invalide'); continue; }
+      }
+
+      var nbPasse = 0;
+      (parsed.produits || []).forEach(function(p) {
+        if (!p.nom || !p.pu_ht || p.pu_ht <= 0) return;
+        var key = (p.ean && p.ean.length >= 8) ? p.ean.replace(/\s/g,'') : (p.acl || p.nom);
+        if (allProds[key]) return;
+        allProds[key] = {
+          nom: (p.nom || '').trim(), ean: (p.ean || '').replace(/\s/g,''), acl: (p.acl || '').replace(/\s/g,''),
+          uc: parseInt(p.uc) || 1, tva: parseFloat(p.tva) || 20, pu_catalogue: parseFloat(p.pu_ht) || 0,
+          famille: (p.famille || '').trim(), format: '', marche_id: '', colisage: parseInt(p.uc) || 1,
+          min_cmd: parseInt(p.uc) || 1, panachage: true, nouveaute: false, remises_paliers: [], lppr: 0,
+          moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0, mois:[0,0,0,0,0,0,0,0,0,0,0,0]
+        };
+        nbPasse++;
+      });
+      statusEl.innerHTML = '✅ Passe ' + (pi+1) + '/4 — ' + passe.label + ' : ' + nbPasse + ' produits. Suite...';
+    } catch(err) {
+      errors.push('Passe ' + (pi+1) + ': ' + err.message);
     }
-
-    var data;
-    try { data = JSON.parse(responseText); } catch(e) {
-      statusEl.innerHTML = '❌ Réponse non-JSON : ' + responseText.slice(0, 300);
-      return;
-    }
-
-    if (data.error) {
-      statusEl.innerHTML = '❌ Erreur Claude : ' + JSON.stringify(data.error).slice(0, 200);
-      return;
-    }
-
-    var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
-    var jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      statusEl.innerHTML = '❌ Pas de JSON dans la réponse : ' + raw.slice(0, 300);
-      return;
-    }
-
-    var parsed;
-    try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
-      var txt = jsonMatch[0].replace(/,\s*$/, '');
-      var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
-      var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
-      for (var k=0;k<op;k++) txt+=']';
-      for (var k=0;k<ob;k++) txt+='}';
-      try { parsed = JSON.parse(txt); } catch(e2) { statusEl.innerHTML = '❌ JSON invalide : ' + e2.message; return; }
-    }
-
-    var allProds = {};
-    (parsed.produits || []).forEach(function(p) {
-      if (!p.nom || !p.pu_ht || p.pu_ht <= 0) return;
-      var key = (p.ean && p.ean.length >= 8) ? p.ean.replace(/\s/g,'') : (p.acl || p.nom);
-      if (allProds[key]) return;
-      allProds[key] = {
-        nom: (p.nom || '').trim(),
-        ean: (p.ean || '').replace(/\s/g,''),
-        acl: (p.acl || '').replace(/\s/g,''),
-        uc: parseInt(p.uc) || 1,
-        tva: parseFloat(p.tva) || 20,
-        pu_catalogue: parseFloat(p.pu_ht) || 0,
-        famille: (p.famille || '').trim(),
-        format: '', marche_id: '', colisage: parseInt(p.uc) || 1,
-        min_cmd: parseInt(p.uc) || 1, panachage: true, nouveaute: false,
-        remises_paliers: [], lppr: 0,
-        moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0,
-        mois: [0,0,0,0,0,0,0,0,0,0,0,0]
-      };
-    });
-
-    var prods = Object.values(allProds);
-    if (prods.length === 0) {
-      statusEl.innerHTML = '❌ Aucun produit extrait. Réponse : ' + raw.slice(0, 300);
-      return;
-    }
-
-    statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits extraits</strong>';
-
-    var familles = {};
-    prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
-    var famHtml = Object.keys(familles).sort().map(function(f){
-      return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>';
-    }).join('');
-
-    previewEl.style.display = 'block';
-    previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
-      + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées :</div>'
-      + '<div style="margin-bottom:10px">' + famHtml + '</div>'
-      + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Les produits seront <strong>ajoutés</strong> au catalogue existant. Doublons EAN ignorés.</div>'
-      + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
-      + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
-      + '</div>';
-
-    window._catExtractedProds = prods;
-
-  } catch(err) {
-    statusEl.innerHTML = '❌ Erreur réseau : ' + err.message;
   }
+
+  var prods = Object.values(allProds);
+  if (prods.length === 0) {
+    statusEl.innerHTML = '❌ Aucun produit extrait.' + (errors.length ? ' Erreurs : ' + errors.join(', ') : '');
+    return;
+  }
+
+  var warn = errors.length ? ' ⚠ ' + errors.length + ' passe(s) en erreur' : '';
+  statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits extraits</strong> en 4 passes.' + warn;
+
+  var familles = {};
+  prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
+  var famHtml = Object.keys(familles).sort().map(function(f){
+    return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>';
+  }).join('');
+
+  previewEl.style.display = 'block';
+  previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
+    + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées (' + prods.length + ' produits) :</div>'
+    + '<div style="margin-bottom:10px">' + famHtml + '</div>'
+    + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Les produits seront <strong>ajoutés</strong> au catalogue existant. Doublons EAN ignorés.</div>'
+    + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
+    + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
+    + '</div>';
+
+  window._catExtractedProds = prods;
 }
 
 function catInjecterProduits() {
@@ -9428,6 +9416,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.43</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.44</div>
 </body>
 </html>

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.40</div>
+  <div class="ver">v3.41</div>
 </header>
 <div class="main">
 
@@ -1631,7 +1631,7 @@ function showTab(t) {
   if (t === 'cond')     try { if(!condInited){condInited=true;condInit();} } catch(e) {}
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
   if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
-  if (t === 'cat') { if(!catInited){catInited=true;} catInit(); }
+  if (t === 'cat') { if(!condInited){condInited=true;condInit();} if(!catInited){catInited=true;} catInit(); }
   if (t === 'sim') { if(!simInited){simInited=true;} simInit(); }
   if (t === 'workflow') { wfInit(); wfRender(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
@@ -8539,12 +8539,10 @@ function catChargeLabo() {
   var sel = document.getElementById('cat-labo-sel');
   var rawId = sel ? sel.value : null;
   // Normaliser l'ID : essayer string puis number
-  catLaboActif = rawId;
+  catLaboActif = rawId ? String(rawId) : null;
   if (!catLaboActif) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
-  var labo = condLabos[catLaboActif] || condLabos[parseInt(catLaboActif)];
+  var labo = condLabos[catLaboActif];
   if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
-  // Forcer catLaboActif au bon type
-  if (!condLabos[catLaboActif] && condLabos[parseInt(catLaboActif)]) catLaboActif = parseInt(catLaboActif);
   catRenderOfficielInfo();
   var src = labo.produits || [];
   // Merge with existing catalogue if any
@@ -9447,6 +9445,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.40</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.41</div>
 </body>
 </html>

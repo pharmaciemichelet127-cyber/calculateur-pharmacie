@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.26</div>
+  <div class="ver">v3.28</div>
 </header>
 <div class="main">
 
@@ -1240,6 +1240,7 @@ git push origin main</pre>
         <div id="dec-verdict" style="display:none;margin-top:10px"></div>
         <div id="dec-thea" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-carte" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
+        <div id="dec-offres-spec" style="display:none;margin-top:10px"></div>
         <div id="dec-resume" style="display:none;margin-top:12px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
       </div>
     </div>
@@ -6731,6 +6732,7 @@ function decAfficherResume(labo) {
   decCurrentStats = { labo: labo, caht: caAnnu, caPeriode: totCaht, margeEur: margeAnnu, taux: tauxMarge, mois: mois, periode: periode };
   decAfficherConditions(labo);
   decAfficherCarte(labo);
+  decAfficherOffresSpec(labo);
   decAfficherTheaAnalyse(labo);
 }
 
@@ -6796,6 +6798,7 @@ function decNormaliserCond(c) {
     if (c.seuilCA === undefined) c.seuilCA = defS.caOui;
     if (c.seuilRem === undefined) c.seuilRem = defS.remOui;
   }
+  if (!c.offresSpec) c.offresSpec = [];
   delete c.remise;
   return c;
 }
@@ -6857,6 +6860,45 @@ function decDelMarche(i) {
   decPersist();
   decRenderConditions(decCurrentStats.labo);
 }
+function decAddOffreSpec() {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.offresSpec.push({ titre: 'Offre volumes', mots: '', paliers: '84:50, 156:55' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decUpdOffreSpec(i, key, val) {
+  if (!decCondCurrent || !decCondCurrent.offresSpec[i]) return;
+  decCondCurrent.offresSpec[i][key] = val;
+  decPersist();
+  if (decCurrentStats) decAfficherOffresSpec(decCurrentStats.labo);
+}
+function decDelOffreSpec(i) {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.offresSpec.splice(i, 1);
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decParsePaliers(str) {
+  var out = [];
+  (str || '').split(',').forEach(function(part) {
+    var m = part.match(/(\d+(?:[.,]\d+)?)\s*:\s*(\d+(?:[.,]\d+)?)/);
+    if (m) out.push({ seuil: parseFloat(m[1].replace(',','.')), remise: parseFloat(m[2].replace(',','.')) });
+  });
+  return out;
+}
+function decAfficherOffresSpec(labo) {
+  var el = document.getElementById('dec-offres-spec');
+  if (!el || !decCondCurrent) return;
+  var html = '';
+  (decCondCurrent.offresSpec || []).forEach(function(o) {
+    if (!o.mots || !o.titre) return;
+    var paliers = decParsePaliers(o.paliers);
+    if (paliers.length === 0) return;
+    html += decTheaAnalyseOffreSpecifique(o.titre, o.mots, paliers, labo);
+  });
+  el.innerHTML = html;
+  el.style.display = html ? 'block' : 'none';
+}
 function decRefreshAffectation() {
   // Met a jour les CA captes par marche + le verdict, sans re-render (conserve le focus de saisie)
   if (!decCurrentStats || !decCondCurrent) return;
@@ -6900,11 +6942,14 @@ function decTheaPrefillConditions(labo, force) {
     seuilCA: decGetSeuils().caOui, seuilRem: 30,
     prefillPalier: niveau.nom
   };
+  if (!cond.offresSpec || cond.offresSpec.length === 0) {
+    cond.offresSpec = [{ titre: 'Offre Vitabact volumes (permanente)', mots: 'VITABACT', paliers: '84:50, 156:55' }];
+  }
   var all = decGetCondData();
   all[labo] = cond;
   decSaveCondData(all);
   decCondCurrent = cond;
-  if (force && decCurrentStats) decRenderConditions(labo);
+  if (force && decCurrentStats) { decRenderConditions(labo); decAfficherOffresSpec(labo); }
   return true;
 }
 
@@ -6952,6 +6997,16 @@ function decRenderConditions(labo) {
     html += '</div>';
   }
   html += '<button type="button" onclick="decAddMarche()" style="margin-top:8px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ March\u00e9</button>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:14px;padding-top:8px;border-top:1px dashed var(--border)">\ud83c\udfaf Offres volumes sp\u00e9cifiques (produit ou groupe de produits, paliers ind\u00e9pendants de l\u2019engagement g\u00e9n\u00e9ral)</div>';
+  (c.offresSpec || []).forEach(function(o, i) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:6px">';
+    html += '<div><label style="' + lbl + '">Titre</label><input type="text" value="' + esc(o.titre) + '" placeholder="ex: Offre Vitabact volumes" style="' + inp + ';width:180px" oninput="decUpdOffreSpec(' + i + ',\'titre\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(o.mots) + '" placeholder="ex: VITABACT" style="' + inp + ';width:160px" oninput="decUpdOffreSpec(' + i + ',\'mots\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Paliers (seuil:remise, ...)</label><input type="text" value="' + esc(o.paliers) + '" placeholder="84:50, 156:55" style="' + inp + ';width:160px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'paliers\',this.value)"></div>';
+    html += '<button type="button" onclick="decDelOffreSpec(' + i + ')" title="Supprimer" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
+    html += '</div>';
+  });
+  html += '<button type="button" onclick="decAddOffreSpec()" style="margin-top:6px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ Offre volumes sp\u00e9cifique</button>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
   html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + ';width:100px" oninput="decUpdCond(\'ug\',this.value)"></div>';
   html += '<div><label style="' + lbl + '">RFA (%)</label><input type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'rfa\',this.value)"></div>';
@@ -7203,6 +7258,56 @@ var THEA_MARCHES_DETAIL = {
   m2: { engagement: '156 u', ouverture: '78 u', obli: '12 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 6 Blephasol + 36 Vitabact 10ml' },
   m3: { engagement: '348 u', ouverture: '174 u', obli: '24 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 18 Blepha (dont 12 Blephasol) + 96 Vitabact 10ml + 12 Cromadoses' }
 };
+// ===== OFFRES SPECIFIQUES PRODUIT (ex: Vitabact volumes 84u/156u) =====
+function decTheaAnalyseOffreSpecifique(titre, mots, paliers, labo) {
+  // paliers: [{seuil:84, remise:50}, {seuil:156, remise:55}]
+  if (!decOspharmProds || !decOspharmProds[labo]) return '';
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var motsU = mots.toUpperCase().split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  var vol = 0;
+  decOspharmProds[labo].forEach(function(p) {
+    var L = (p.lib || '').toUpperCase();
+    if (motsU.some(function(k){ return L.indexOf(k) >= 0; })) vol += p.qte;
+  });
+  var volAn = vol * f;
+  if (volAn <= 0) return '';
+  // recommandation : plus haut palier acquis sans effort, ou objectif si effort <= 20%
+  var reco = null, nudge = null;
+  paliers.forEach(function(pal) {
+    if (volAn >= pal.seuil) reco = pal;
+    else if (!nudge) {
+      var effort = pal.seuil - volAn;
+      if (effort / Math.max(volAn, 1) <= 0.20) nudge = pal;
+    }
+  });
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:10px">🎯 ' + titre + ' — ton volume : ' + Math.round(volAn) + ' u/an</div>';
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:4px;table-layout:auto">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 10px;white-space:nowrap">Palier</th><th style="padding:3px 10px;white-space:nowrap">Seuil</th><th style="padding:3px 10px;white-space:nowrap">Remise</th><th style="padding:3px 10px;white-space:nowrap">Absorption</th></tr>';
+  paliers.forEach(function(pal, i) {
+    var isAcquis = reco === pal;
+    var isObjectif = nudge === pal;
+    var badge = '';
+    if (isAcquis) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px">✓ ACQUIS</span>';
+    if (isObjectif) badge = ' <span style="font-size:9px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:8px">OBJECTIF</span>';
+    var rowBg = isAcquis ? 'background:var(--accent-bg);font-weight:600' : (isObjectif ? 'background:var(--warn-bg);font-weight:600' : '');
+    var fais;
+    if (volAn >= pal.seuil) fais = '✓ absorbé par ton rythme';
+    else {
+      var effort = pal.seuil - volAn, pct = Math.round(effort / Math.max(volAn,1) * 100);
+      fais = pct <= 20 ? '↗ +' + Math.ceil(effort) + ' u à faire en plus (+' + pct + '%)' : '✗ effort trop important (+' + pct + '%)';
+    }
+    html += '<tr style="' + rowBg + '"><td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">Marché ' + (i+1) + badge + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">' + pal.seuil + ' u</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">' + pal.remise + '%</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">' + fais + '</td></tr>';
+  });
+  html += '</table>';
+  if (reco) html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">À ce rythme, Marché ' + (paliers.indexOf(reco)+1) + ' (' + reco.seuil + 'u, ' + reco.remise + '%) est ta position de repli sans effort.</div>';
+  else if (nudge) html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Aucun palier encore acquis — Marché ' + (paliers.indexOf(nudge)+1) + ' est atteignable avec un effort raisonnable.</div>';
+  else html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Aucun palier absorbé ni à portée à ce rythme.</div>';
+  return html;
+}
+
 function decTheaComparatifMarches() {
   var rows = [
     ['Engagement annuel OTC', THEA_MARCHES_DETAIL.m1.engagement, THEA_MARCHES_DETAIL.m2.engagement, THEA_MARCHES_DETAIL.m3.engagement],
@@ -7326,6 +7431,7 @@ function decAfficherTheaAnalyse(labo) {
   }
   html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Faisabilité jugée sur tes ventes OTC annualisées (Ospharm) — l\u2019engagement porte sur les achats : vérifier l\u2019écart de stock. Le bonus remboursés (' + Math.round(a.qteRx) + ' u/an : Théalose, Vitabact fl, Monoprost, Nutrof, Cromadoses) est estimé à conditions croisées Théa, hors critère de décision.</div>';
   html += decTheaComparatifMarches();
+
   el.innerHTML = html;
   el.style.display = 'block';
 }
@@ -8822,6 +8928,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.26</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.28</div>
 </body>
 </html>

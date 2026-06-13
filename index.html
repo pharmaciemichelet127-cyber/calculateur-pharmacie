@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.30</div>
+  <div class="ver">v3.31</div>
 </header>
 <div class="main">
 
@@ -1227,6 +1227,12 @@ git push origin main</pre>
         <p style="font-size:12px;font-weight:600;margin:0 0 10px">Importer ventes Ospharm (Excel)</p>
         <input type="file" id="dec-file" accept=".xlsx,.xls" onchange="decImportOspharm(this)" style="font-size:12px">
         <p id="dec-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <p style="font-size:12px;font-weight:600;margin:0 0 6px">📊 Comparaison N-1 (optionnel)</p>
+          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Importer le même export Ospharm pour la période équivalente de l'année précédente, pour comparer les quantités vendues.</p>
+          <input type="file" id="dec-file-n1" accept=".xlsx,.xls" onchange="decImportOspharmN1(this)" style="font-size:12px">
+          <p id="dec-status-n1" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
+        </div>
       </div>
       <div id="dec-search-wrap" style="display:none;margin-top:12px">
         <p style="font-size:12px;font-weight:600;margin:0 0 8px">Rechercher le labo</p>
@@ -6692,16 +6698,24 @@ function decAfficherResume(labo) {
   html += '<div><span style="font-size:10px;color:var(--text-ter)">Stock (unités)</span><br><strong>' + Math.round(totStock).toLocaleString('fr') + '</strong></div>';
   html += '</div>';
   var th = 'padding:6px 8px;font-size:10px;font-weight:600;text-transform:uppercase;background:#e8f5f0;text-align:right;border-bottom:1px solid var(--border)';
+  var prodsN1 = (decOspharmProdsN1 && decOspharmProdsN1[labo]) ? decOspharmProdsN1[labo] : null;
+  var hasN1 = !!prodsN1;
   html += '<div style="overflow-x:auto"><table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto">';
   html += '<thead><tr>';
   html += '<th style="' + th + ';text-align:left">EAN</th>';
   html += '<th style="' + th + ';text-align:left">Produit</th>';
   html += '<th style="' + th + '">Qté</th>';
+  if (hasN1) {
+    html += '<th style="' + th + '">Qté N-1</th>';
+    html += '<th style="' + th + '">Qté N</th>';
+    html += '<th style="' + th + '">Évol %</th>';
+  }
   html += '<th style="' + th + '">CA HT</th>';
   html += '<th style="' + th + '">Marge</th>';
   html += '<th style="' + th + '">Taux</th>';
   html += '<th style="' + th + '">Stock</th>';
   html += '</tr></thead><tbody>';
+  var totQteN1 = 0, totQteN1Found = false;
   for (var i = 0; i < sorted.length; i++) {
     var p = sorted[i];
     var tm = p.caht > 0 ? (p.marge / p.caht * 100) : 0;
@@ -6711,6 +6725,19 @@ function decAfficherResume(labo) {
     html += '<td style="' + td + ';text-align:left;white-space:nowrap;font-family:monospace;font-size:10px;color:var(--text-ter)">' + (p.ean || '') + '</td>';
     html += '<td style="' + td + ';text-align:left;white-space:nowrap">' + p.lib + '</td>';
     html += '<td style="' + td + '">' + Math.round(p.qte).toLocaleString('fr') + '</td>';
+    if (hasN1) {
+      var qN1 = decTrouverQteN1(p, prodsN1);
+      if (qN1 !== null) { totQteN1 += qN1; totQteN1Found = true; }
+      var evol = (qN1 !== null && qN1 > 0) ? ((p.qte - qN1) / qN1 * 100) : null;
+      html += '<td style="' + td + (qN1 === null ? ';color:var(--text-ter)' : '') + '">' + (qN1 === null ? '—' : Math.round(qN1).toLocaleString('fr')) + '</td>';
+      html += '<td style="' + td + '">' + Math.round(p.qte).toLocaleString('fr') + '</td>';
+      if (evol === null) {
+        html += '<td style="' + td + ';color:var(--text-ter)">—</td>';
+      } else {
+        var evolColor = evol >= 0 ? 'var(--accent-text)' : '#c01c28';
+        html += '<td style="' + td + ';color:' + evolColor + ';font-weight:600">' + (evol >= 0 ? '+' : '') + evol.toFixed(1) + '%</td>';
+      }
+    }
     html += '<td style="' + td + '">' + Math.round(p.caht).toLocaleString('fr') + ' €</td>';
     html += '<td style="' + td + '">' + Math.round(p.marge).toLocaleString('fr') + ' €</td>';
     html += '<td style="' + td + ';color:' + (tm >= 28 ? 'var(--accent-text)' : '#c01c28') + ';font-weight:600">' + tm.toFixed(1) + '%</td>';
@@ -6722,6 +6749,12 @@ function decAfficherResume(labo) {
   html += '<td style="' + tdT + '"></td>';
   html += '<td style="' + tdT + ';text-align:left">TOTAL (' + nbRefs + ' réf.)</td>';
   html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
+  if (hasN1) {
+    var evolTot = (totQteN1Found && totQteN1 > 0) ? ((totQte - totQteN1) / totQteN1 * 100) : null;
+    html += '<td style="' + tdT + '">' + (totQteN1Found ? Math.round(totQteN1).toLocaleString('fr') : '—') + '</td>';
+    html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
+    html += '<td style="' + tdT + (evolTot === null ? '' : (';color:' + (evolTot >= 0 ? 'var(--accent-text)' : '#c01c28'))) + '">' + (evolTot === null ? '—' : (evolTot >= 0 ? '+' : '') + evolTot.toFixed(1) + '%') + '</td>';
+  }
   html += '<td style="' + tdT + '">' + Math.round(totCaht).toLocaleString('fr') + ' €</td>';
   html += '<td style="' + tdT + '">' + Math.round(totMarge).toLocaleString('fr') + ' €</td>';
   html += '<td style="' + tdT + ';color:' + (tauxMarge >= 28 ? 'var(--accent-text)' : '#c01c28') + '">' + tauxMarge.toFixed(1) + '%</td>';
@@ -8892,6 +8925,7 @@ window.addEventListener('DOMContentLoaded', function() {
 // ===== DECISION RDV =====
 var decOspharmData = null;
 var decOspharmProds = null;
+var decOspharmProdsN1 = null;
 
 function decFiltrerLabos(q) {
   var list = document.getElementById('dec-labo-list');
@@ -8983,7 +9017,67 @@ function decImportOspharm(input) {
   };
   reader.readAsArrayBuffer(file);
 }
+
+function decImportOspharmN1(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('dec-status-n1');
+  status.textContent = 'Lecture...';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      var header = rows[0];
+      var cols = {};
+      for (var i = 0; i < header.length; i++) {
+        var h = String(header[i] || '').trim();
+        if (h) cols[h] = i;
+      }
+      var prods = {};
+      for (var r = 1; r < rows.length; r++) {
+        var row = rows[r];
+        var labo = String(row[cols['Libellé laboratoire']] || '').trim();
+        if (!labo) continue;
+        var qte = parseFloat(String(row[cols['Quantité']] || '0').replace(/[^\d.-]/g,'')) || 0;
+        var lib = String(row[cols['Libellé produit']] || '').trim();
+        var eanKey = Object.keys(cols).find(function(k){ return /EAN|CIP|ACL/i.test(k); });
+        var ean = eanKey ? String(row[cols[eanKey]] || '').replace(/\D/g, '') : '';
+        if (!prods[labo]) prods[labo] = [];
+        prods[labo].push({lib:lib, ean:ean, qte:qte});
+      }
+      decOspharmProdsN1 = prods;
+      var nb = Object.keys(prods).length;
+      status.textContent = '✅ ' + nb + ' labos chargés (N-1)';
+      status.style.color = 'var(--accent-text)';
+      // Si un labo est déjà affiché, rafraîchir le résumé pour afficher la comparaison
+      if (decCurrentStats && decCurrentStats.labo) decAfficherResume(decCurrentStats.labo);
+    } catch(err) {
+      status.textContent = '❌ ' + err.message;
+      status.style.color = 'var(--danger)';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Rapprochement N-1 : EAN exact, puis libellé normalisé en repli
+function decTrouverQteN1(p, prodsN1) {
+  if (!prodsN1 || !prodsN1.length) return null;
+  if (p.ean && p.ean.length >= 8) {
+    for (var i = 0; i < prodsN1.length; i++) {
+      if (prodsN1[i].ean && prodsN1[i].ean === p.ean) return prodsN1[i].qte;
+    }
+  }
+  var libNorm = decCarteNorm(p.lib);
+  for (var j = 0; j < prodsN1.length; j++) {
+    if (decCarteNorm(prodsN1[j].lib) === libNorm) return prodsN1[j].qte;
+  }
+  return null;
+}
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.30</div>
+
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.31</div>
 </body>
 </html>

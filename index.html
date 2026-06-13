@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.32</div>
+  <div class="ver">v3.33</div>
 </header>
 <div class="main">
 
@@ -1492,6 +1492,8 @@ git push origin main</pre>
           <button type="button" onclick="catClassifierAuto(false)" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Auto-classifier</button>
           <button type="button" onclick="catClassifierAuto(true)" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Catalogue labo</button>
           <button type="button" onclick="catSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
+          <button type="button" onclick="catExportXLSX()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">&#8595; Export Excel</button>
+          <button type="button" onclick="catApercuPDF()" style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#128196; Aperçu PDF</button>
         </div>
       </p>
       <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">
@@ -8193,6 +8195,41 @@ function catClassifierProduit(nom) {
   return { cat: 'Autre', scat: '', marche: 'Non classe' };
 }
 
+// ===== EXPORT / APERCU CATALOGUE LABO (XLSX + PDF imprimable) =====
+function catExportXLSX() {
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
+  var labo = condLabos[catLaboActif];
+  var prods = labo.produits || [];
+  if (!prods.length) { alert('Aucun produit dans ce catalogue.'); return; }
+  var data = [['Nom','EAN','Format','Famille','PU Catalogue','TVA %','Colisage','Cmd min','Paliers remises','Panachage','Nouveauté']];
+  prods.forEach(function(p) {
+    var paliers = (p.remises_paliers || []).map(function(r){ return r[0]+'-'+r[1]+'u: '+r[2]+'%'; }).join(' | ');
+    data.push([p.nom||'', p.ean||'', p.format||'', p.famille||'', p.pu_catalogue||0, p.tva||0, p.colisage||1, p.min_cmd||0, paliers, p.panachage?'oui':'non', p.nouveaute?'oui':'non']);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:40},{wch:15},{wch:18},{wch:18},{wch:12},{wch:7},{wch:9},{wch:9},{wch:30},{wch:9},{wch:9}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Catalogue');
+  XLSX.writeFile(wb, 'Catalogue_' + (labo.nom||'labo').replace(/[^a-zA-Z0-9]+/g,'_') + '.xlsx');
+}
+function catApercuPDF() {
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
+  var labo = condLabos[catLaboActif];
+  var prods = labo.produits || [];
+  if (!prods.length) { alert('Aucun produit dans ce catalogue.'); return; }
+  var rows = prods.map(function(p) {
+    var paliers = (p.remises_paliers || []).map(function(r){ return r[0]+'-'+r[1]+'u: '+r[2]+'%'; }).join(' / ');
+    return '<tr><td>'+(p.nom||'')+'</td><td>'+(p.ean||'')+'</td><td>'+(p.format||'')+'</td><td>'+(p.famille||'')+'</td><td style="text-align:right">'+(p.pu_catalogue||0).toFixed(2)+' €</td><td style="text-align:right">'+(p.tva||0)+'%</td><td style="text-align:right">'+(p.colisage||1)+'</td><td style="text-align:right">'+(p.min_cmd||0)+'</td><td>'+paliers+'</td></tr>';
+  }).join('');
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Catalogue ' + (labo.nom||'') + '</title>'
+    + '<style>body{font-family:Arial,sans-serif;font-size:10px;margin:20px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#222;color:#fff;font-size:9px;text-transform:uppercase}tr:nth-child(even){background:#f5f5f5}</style>'
+    + '</head><body><h1>Catalogue ' + (labo.nom||'') + ' — ' + new Date().toLocaleDateString('fr-FR') + '</h1>'
+    + '<table><thead><tr><th>Nom</th><th>EAN</th><th>Format</th><th>Famille</th><th>PU Cat.</th><th>TVA</th><th>Colisage</th><th>Cmd min</th><th>Paliers remises</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<script>window.onload=function(){window.print();}</script></body></html>';
+  var w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
 function catInit() {
   // Load condLabos if needed
   if (Object.keys(condLabos).length === 0) {
@@ -9126,6 +9163,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.32</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.33</div>
 </body>
 </html>

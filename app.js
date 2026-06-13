@@ -42,7 +42,7 @@ function showTab(t) {
   if (t === 'cond')     try { if(!condInited){condInited=true;condInit();} } catch(e) {}
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
   if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
-  if (t === 'cat') { if(!condInited){condInited=true;condInit();} if(!catInited){catInited=true;} catInit(); }
+  if (t === 'cat') { if(!catInited){catInited=true;} catInit(); }
   if (t === 'sim') { if(!simInited){simInited=true;} simInit(); }
   if (t === 'workflow') { wfInit(); wfRender(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }

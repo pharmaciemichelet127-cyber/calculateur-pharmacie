@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.39</div>
+  <div class="ver">v3.40</div>
 </header>
 <div class="main">
 
@@ -8320,6 +8320,147 @@ function catApercuPDF() {
 }
 // ===== EXTRACTION PRODUITS CATALOGUE PDF PAR IA =====
 var CAT_EXTRACT_PROMPT = 'Tu analyses un catalogue tarifaire pharmacie (format GSA Healthcare / IDES PHARMA ou similaire). ' +
+'Extrais TOUS les produits listés dans les tableaux de tarifs. ' +
+'Pour chaque produit extrait : ' +
+'- nom : désignation complète du produit (string) ' +
+'- ean : code EAN/GTIN (string, sans espaces, sinon vide "") ' +
+'- acl : code ACL/CIP si présent (string, sinon "") ' +
+'- uc : quantité minimum de commande / unité de colisage (entier, défaut 1) ' +
+'- tva : taux TVA % (nombre : 2.1, 5.5, 10, ou 20) ' +
+'- pu_ht : prix unitaire HT en euros (nombre décimal) ' +
+'- famille : nom de la section/gamme/marque du tableau (string) ' +
+'Ignore : pages de couverture, images seules, pages de notes vides, textes logistiques, présentoirs sans EAN ni prix. ' +
+'Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après. ' +
+'Format exact : {"produits":[{"nom":"...","ean":"...","acl":"...","uc":1,"tva":20,"pu_ht":0.00,"famille":"..."}]}';
+
+async function catExtrarePDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo dans la liste.'); return; }
+
+  var statusEl = document.getElementById('cat-extract-status');
+  var previewEl = document.getElementById('cat-extract-preview');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '⏳ Lecture du PDF (' + (file.size / 1024 / 1024).toFixed(1) + ' Mo)...';
+  previewEl.style.display = 'none';
+  window._catExtractedProds = null;
+
+  var b64 = await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  statusEl.innerHTML = '⏳ Envoi à Claude pour extraction... (peut prendre 30-60 secondes selon la taille)';
+
+  try {
+    var resp = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: CAT_EXTRACT_PROMPT }
+          ]
+        }]
+      })
+    });
+
+    var responseText = await resp.text();
+
+    if (!resp.ok) {
+      statusEl.innerHTML = '❌ Erreur API (' + resp.status + ') : ' + responseText.slice(0, 200);
+      return;
+    }
+
+    var data;
+    try { data = JSON.parse(responseText); }
+    catch(e) {
+      statusEl.innerHTML = '❌ Réponse non-JSON : ' + responseText.slice(0, 300);
+      return;
+    }
+
+    if (data.error) {
+      statusEl.innerHTML = '❌ Erreur Claude : ' + JSON.stringify(data.error).slice(0, 200);
+      return;
+    }
+
+    var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
+    var jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      statusEl.innerHTML = '❌ Pas de JSON dans la réponse. Réponse brute : ' + raw.slice(0, 300);
+      return;
+    }
+
+    var parsed;
+    try { parsed = JSON.parse(jsonMatch[0]); }
+    catch(e) {
+      // Try to repair
+      var txt = jsonMatch[0].replace(/,\s*$/, '');
+      var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+      var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+      for (var k=0;k<op;k++) txt+=']';
+      for (var k=0;k<ob;k++) txt+='}';
+      try { parsed = JSON.parse(txt); }
+      catch(e2) { statusEl.innerHTML = '❌ JSON invalide : ' + e2.message + '<br><small>' + jsonMatch[0].slice(0,200) + '</small>'; return; }
+    }
+
+    var allProds = {};
+    (parsed.produits || []).forEach(function(p) {
+      if (!p.nom || !p.pu_ht || p.pu_ht <= 0) return;
+      var key = (p.ean && p.ean.length >= 8) ? p.ean.replace(/\s/g,'') : (p.acl || p.nom);
+      if (allProds[key]) return;
+      allProds[key] = {
+        nom: (p.nom || '').trim(),
+        ean: (p.ean || '').replace(/\s/g,''),
+        acl: (p.acl || '').replace(/\s/g,''),
+        uc: parseInt(p.uc) || 1,
+        tva: parseFloat(p.tva) || 20,
+        pu_catalogue: parseFloat(p.pu_ht) || 0,
+        famille: (p.famille || '').trim(),
+        format: '', marche_id: '', colisage: parseInt(p.uc) || 1,
+        min_cmd: parseInt(p.uc) || 1, panachage: true, nouveaute: false,
+        remises_paliers: [], lppr: 0,
+        moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0,
+        mois: [0,0,0,0,0,0,0,0,0,0,0,0]
+      };
+    });
+
+    var prods = Object.values(allProds);
+    if (prods.length === 0) {
+      statusEl.innerHTML = '❌ Aucun produit extrait (0 lignes valides avec nom+prix). Réponse brute : <br><small>' + raw.slice(0,400) + '</small>';
+      return;
+    }
+
+    statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits extraits</strong>';
+
+    var familles = {};
+    prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
+    var famHtml = Object.keys(familles).sort().map(function(f){
+      return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>';
+    }).join('');
+
+    previewEl.style.display = 'block';
+    previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
+      + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées :</div>'
+      + '<div style="margin-bottom:10px">' + famHtml + '</div>'
+      + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Les produits seront <strong>ajoutés</strong> au catalogue existant. Les doublons EAN sont ignorés.</div>'
+      + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
+      + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
+      + '</div>';
+
+    window._catExtractedProds = prods;
+
+  } catch(err) {
+    statusEl.innerHTML = '❌ Erreur réseau : ' + err.message;
+  }
+}
 'Extrais TOUS les produits listés dans les tableaux. ' +
 'Pour chaque produit extrait : ' +
 '- nom : désignation complète du produit (string) ' +
@@ -8347,107 +8488,7 @@ async function catExtrarePDF(input) {
   statusEl.style.display = 'block';
   statusEl.innerHTML = '⏳ Lecture du PDF...';
   previewEl.style.display = 'none';
-
-  // Read as base64
-  var b64 = await new Promise(function(res, rej) {
-    var r = new FileReader();
-    r.onload = function() { res(r.result.split(',')[1]); };
-    r.onerror = rej;
-    r.readAsDataURL(file);
-  });
-
-  // Strategy: send by chunks of pages (3 pages at a time) to avoid token limits
-  // We use a two-pass approach: first pass = full doc (if small enough), else chunked
-  var allProds = {};
-  var nbPages = 0;
-  var errors = [];
-
-  // Estimate: ~15 pages max per call to stay within limits
-  // We'll do 2 passes: pages 1-10, then 11+ (most catalogs are <20 pages)
-  var PAGE_GROUPS = [[1,8],[9,16],[17,24]];
-
-  for (var gi = 0; gi < PAGE_GROUPS.length; gi++) {
-    var pg = PAGE_GROUPS[gi];
-    statusEl.innerHTML = '⏳ Analyse pages ' + pg[0] + '–' + pg[1] + ' (passe ' + (gi+1) + '/' + PAGE_GROUPS.length + ')...';
-    try {
-      var resp = await fetch('/api/claude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 8000,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
-              { type: 'text', text: 'PAGES ' + pg[0] + ' à ' + pg[1] + ' UNIQUEMENT. ' + CAT_EXTRACT_PROMPT }
-            ]
-          }]
-        })
-      });
-      var data = await resp.json();
-      var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
-      var jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) { errors.push('Passe ' + (gi+1) + ': pas de JSON'); continue; }
-      var parsed;
-      try { parsed = JSON.parse(jsonMatch[0]); }
-      catch(e) {
-        var txt = jsonMatch[0].replace(/,\s*$/, '');
-        var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
-        var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
-        for (var k=0;k<op;k++) txt+=']';
-        for (var k=0;k<ob;k++) txt+='}';
-        try { parsed = JSON.parse(txt); } catch(e2) { errors.push('Passe ' + (gi+1) + ': JSON invalide'); continue; }
-      }
-      (parsed.produits || []).forEach(function(p) {
-        if (!p.nom || !p.pu_ht || p.pu_ht <= 0) return;
-        var key = (p.ean && p.ean.length >= 8) ? p.ean : (p.acl || p.nom);
-        if (allProds[key]) return; // déjà vu
-        allProds[key] = {
-          nom: (p.nom || '').trim(),
-          ean: (p.ean || '').replace(/\s/g,''),
-          acl: (p.acl || '').replace(/\s/g,''),
-          uc: parseInt(p.uc) || 1,
-          tva: parseFloat(p.tva) || 20,
-          pu_catalogue: parseFloat(p.pu_ht) || 0,
-          famille: (p.famille || '').trim(),
-          // champs requis par le calculateur
-          format: '', marche_id: '', colisage: parseInt(p.uc) || 1,
-          min_cmd: parseInt(p.uc) || 1, panachage: true, nouveaute: false,
-          remises_paliers: [], lppr: 0,
-          moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0,
-          mois: [0,0,0,0,0,0,0,0,0,0,0,0]
-        };
-        nbPages++;
-      });
-    } catch(err) {
-      errors.push('Passe ' + (gi+1) + ': ' + err.message);
-    }
-  }
-
-  var prods = Object.values(allProds);
-  if (prods.length === 0) {
-    statusEl.innerHTML = '❌ Aucun produit extrait.' + (errors.length ? ' Erreurs: ' + errors.join(', ') : '');
-    return;
-  }
-
-  // Show preview before injecting
-  statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits extraits</strong>' + (errors.length ? ' ⚠ ' + errors.length + ' erreur(s) de passe' : '');
-
-  var familles = {};
-  prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
-  var famHtml = Object.keys(familles).sort().map(function(f){ return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>'; }).join('');
-
-  previewEl.style.display = 'block';
-  previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
-    + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées :</div>'
-    + '<div style="margin-bottom:10px">' + famHtml + '</div>'
-    + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">⚠ Les produits seront <strong>ajoutés</strong> au catalogue existant du labo (pas d\'écrasement). Les doublons EAN sont ignorés.</div>'
-    + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
-    + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
-    + '</div>';
-
-  window._catExtractedProds = prods;
+  window._catExtractedProds = null;
 }
 
 function catInjecterProduits() {
@@ -8459,15 +8500,13 @@ function catInjecterProduits() {
   labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
   var added = 0;
   prods.forEach(function(p) {
-    if (p.ean && p.ean.length >= 8 && eanExist[p.ean]) return; // doublon EAN
+    if (p.ean && p.ean.length >= 8 && eanExist[p.ean]) return;
     labo.produits.push(p);
     if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true;
     added++;
   });
-  // Save to localStorage + trigger GitHub sync
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
   condSyncGitHubAuto();
-  // Refresh catalogue table
   catChargeLabo();
   document.getElementById('cat-extract-preview').style.display = 'none';
   document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
@@ -9408,6 +9447,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.39</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.40</div>
 </body>
 </html>

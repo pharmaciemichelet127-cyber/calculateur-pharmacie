@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.28</div>
+  <div class="ver">v3.29</div>
 </header>
 <div class="main">
 
@@ -6799,6 +6799,16 @@ function decNormaliserCond(c) {
     if (c.seuilRem === undefined) c.seuilRem = defS.remOui;
   }
   if (!c.offresSpec) c.offresSpec = [];
+  c.offresSpec.forEach(function(o) {
+    if ((o.seuils === undefined || o.remises === undefined) && o.paliers) {
+      var p = decParsePaliers(o.paliers);
+      o.seuils = p.map(function(x){ return x.seuil; }).join(', ');
+      o.remises = p.map(function(x){ return x.remise; }).join(', ');
+    }
+    if (o.seuils === undefined) o.seuils = '';
+    if (o.remises === undefined) o.remises = '';
+    delete o.paliers;
+  });
   delete c.remise;
   return c;
 }
@@ -6862,7 +6872,7 @@ function decDelMarche(i) {
 }
 function decAddOffreSpec() {
   if (!decCondCurrent || !decCurrentStats) return;
-  decCondCurrent.offresSpec.push({ titre: 'Offre volumes', mots: '', paliers: '84:50, 156:55' });
+  decCondCurrent.offresSpec.push({ titre: 'Offre volumes', mots: '', seuils: '84, 156', remises: '50, 55' });
   decPersist();
   decRenderConditions(decCurrentStats.labo);
 }
@@ -6878,6 +6888,15 @@ function decDelOffreSpec(i) {
   decPersist();
   decRenderConditions(decCurrentStats.labo);
 }
+function decParseListe(str) {
+  return (str || '').split(',').map(function(s){ return parseFloat(s.replace(',', '.').trim()); }).filter(function(n){ return !isNaN(n); });
+}
+function decParsePaliersSR(seuils, remises) {
+  var s = decParseListe(seuils), r = decParseListe(remises), out = [];
+  for (var i = 0; i < Math.min(s.length, r.length); i++) out.push({ seuil: s[i], remise: r[i] });
+  return out;
+}
+// Compat ascendante (ancien format "seuil:remise, ...")
 function decParsePaliers(str) {
   var out = [];
   (str || '').split(',').forEach(function(part) {
@@ -6892,7 +6911,7 @@ function decAfficherOffresSpec(labo) {
   var html = '';
   (decCondCurrent.offresSpec || []).forEach(function(o) {
     if (!o.mots || !o.titre) return;
-    var paliers = decParsePaliers(o.paliers);
+    var paliers = decParsePaliersSR(o.seuils, o.remises);
     if (paliers.length === 0) return;
     html += decTheaAnalyseOffreSpecifique(o.titre, o.mots, paliers, labo);
   });
@@ -6943,7 +6962,7 @@ function decTheaPrefillConditions(labo, force) {
     prefillPalier: niveau.nom
   };
   if (!cond.offresSpec || cond.offresSpec.length === 0) {
-    cond.offresSpec = [{ titre: 'Offre Vitabact volumes (permanente)', mots: 'VITABACT', paliers: '84:50, 156:55' }];
+    cond.offresSpec = [{ titre: 'Offre Vitabact volumes (permanente)', mots: 'VITABACT', seuils: '84, 156', remises: '50, 55' }];
   }
   var all = decGetCondData();
   all[labo] = cond;
@@ -7002,7 +7021,8 @@ function decRenderConditions(labo) {
     html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:6px">';
     html += '<div><label style="' + lbl + '">Titre</label><input type="text" value="' + esc(o.titre) + '" placeholder="ex: Offre Vitabact volumes" style="' + inp + ';width:180px" oninput="decUpdOffreSpec(' + i + ',\'titre\',this.value)"></div>';
     html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(o.mots) + '" placeholder="ex: VITABACT" style="' + inp + ';width:160px" oninput="decUpdOffreSpec(' + i + ',\'mots\',this.value)"></div>';
-    html += '<div><label style="' + lbl + '">Paliers (seuil:remise, ...)</label><input type="text" value="' + esc(o.paliers) + '" placeholder="84:50, 156:55" style="' + inp + ';width:160px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'paliers\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Paliers (unit\u00e9s/an, virgules)</label><input type="text" value="' + esc(o.seuils) + '" placeholder="84, 156" style="' + inp + ';width:130px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'seuils\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Remises (%, virgules)</label><input type="text" value="' + esc(o.remises) + '" placeholder="50, 55" style="' + inp + ';width:130px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'remises\',this.value)"></div>';
     html += '<button type="button" onclick="decDelOffreSpec(' + i + ')" title="Supprimer" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
     html += '</div>';
   });
@@ -8928,6 +8948,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.28</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.29</div>
 </body>
 </html>

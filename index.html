@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.25</div>
+  <div class="ver">v3.26</div>
 </header>
 <div class="main">
 
@@ -6604,6 +6604,8 @@ function decCarteOffreRender(OFFRE, TITRE) {
   var hz = payJ / 360;
   var prods = decOspharmProds[decCarteLabo];
   var matches = decCarteMatchTous(OFFRE, prods);
+  var aFdlDistinct = OFFRE.some(function(o){ return Math.abs(o[3] - o[4]) > 0.005; });
+  var gainLabel = aFdlDistinct ? 'Gain vs fil de l\u2019eau' : 'Remise (\u20ac)';
   var totBrut = 0, totFdl = 0, totNet = 0, caHz = 0, nbMatch = 0, sansVente = 0, multTropGrand = 0, lignes = '';
   OFFRE.forEach(function(o, oIdx) {
     var ean = o[0], lib = o[1], mult = o[2], brut = o[3], fdl = o[4], net = o[5];
@@ -6638,7 +6640,7 @@ function decCarteOffreRender(OFFRE, TITRE) {
   var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 ' + TITRE + ' — commande aujourd\u2019hui, <span style="color:var(--accent-text)">facture payable vers le ' + dateEch.toLocaleDateString('fr-FR') + '</span> (' + Math.round(payJ) + ' j)</div>'
     + '<div style="font-size:10px;color:var(--text-ter)">' + nbMatch + ' lignes avec ventes · ' + sansVente + ' réf. sans rotation ignorées' + (multTropGrand > 0 ? ' · ' + multTropGrand + ' réf. vendues mais multiple trop grand pour tout écouler avant l\u2019échéance (laisse-les au fil de l\u2019eau)' : '') + '</div>'
     + '<table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto;margin-top:4px">'
-    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">Produit (offre UPP)</td><td style="padding:3px 10px;text-align:right">Qté/an</td><td style="padding:3px 10px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:3px 10px;text-align:right">Mult.</td><td style="padding:3px 10px;text-align:right">Qté à commander</td><td style="padding:3px 10px;text-align:right">Écoulé en</td><td style="padding:3px 10px;text-align:right">Prix net</td><td style="padding:3px 10px;text-align:right">Montant net</td><td style="padding:3px 10px;text-align:right">Remise vs brut</td><td style="padding:3px 10px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">Produit (offre UPP)</td><td style="padding:3px 10px;text-align:right">Qté/an</td><td style="padding:3px 10px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:3px 10px;text-align:right">Mult.</td><td style="padding:3px 10px;text-align:right">Qté à commander</td><td style="padding:3px 10px;text-align:right">Écoulé en</td><td style="padding:3px 10px;text-align:right">Prix net</td><td style="padding:3px 10px;text-align:right">Montant net</td><td style="padding:3px 10px;text-align:right">Remise vs brut</td><td style="padding:3px 10px;text-align:right">' + gainLabel + '</td></tr>'
     + lignes
     + '<tr><td style="padding:5px 10px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td>'
     + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + totNet.toFixed(2).replace('.', ',') + ' €</td>'
@@ -6651,7 +6653,7 @@ function decCarteOffreRender(OFFRE, TITRE) {
   var coussin = caHz - totNet;
   html += '<div style="margin-top:6px;padding:10px 12px;background:' + (coussin >= 0 ? 'var(--accent-bg)' : '#fdecec') + ';border-radius:var(--radius-sm);font-size:12px">'
     + (coussin >= 0
-      ? '<strong>✅ Tu ne sors pas de cash — et tout est vendu avant l\u2019échéance</strong> (quantités arrondies au multiple inférieur, colonne « écoulé en » ≤ ' + Math.round(payJ) + ' j) : ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € avant que tu ne paies ' + Math.round(totNet).toLocaleString('fr') + ' € — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong>. Cash gagné vs fil de l\u2019eau : <strong>+' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong> sur cette commande, remise réelle ' + Math.round(remTot) + '% vs tarif brut.'
+      ? '<strong>✅ Tu ne sors pas de cash — et tout est vendu avant l\u2019échéance</strong> (quantités arrondies au multiple inférieur, colonne « écoulé en » ≤ ' + Math.round(payJ) + ' j) : ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € avant que tu ne paies ' + Math.round(totNet).toLocaleString('fr') + ' € — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong>.' + (aFdlDistinct ? 'Cash gagné vs fil de l\u2019eau : <strong>+' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong> , ' : 'Remise totale obtenue : <strong>' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong>, soit ') + 'remise réelle ' + Math.round(remTot) + '% vs tarif brut.'
       : '<strong>⚠️ Les arrondis aux multiples gonflent la commande au-delà de tes encaissements de l\u2019horizon</strong> (' + Math.round(caHz).toLocaleString('fr') + ' € encaissés pour ' + Math.round(totNet).toLocaleString('fr') + ' € à payer). Retire les lignes à faible rotation dont le multiple impose trop de stock.')
     + '</div>'
     + '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Rapprochement offre↔ventes par EAN quand ton export en a une colonne, sinon par nom (score ≥ 70%). Qtés arrondies au multiple de commande supérieur. « Gain vs fil de l\u2019eau » = (prix FDL − prix net SDAV) × qté.</div>';
@@ -8820,6 +8822,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.25</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.26</div>
 </body>
 </html>

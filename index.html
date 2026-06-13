@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.22</div>
+  <div class="ver">v3.23</div>
 </header>
 <div class="main">
 
@@ -7741,8 +7741,14 @@ var THEA_PALIERS_UPP = {
   'AUTRES':    [0, 0, 0]
 };
 function theaPaliersPourMarche(nom, mots) {
-  var key = (nom + ' ' + (mots || '')).toUpperCase();
-  for (var k in THEA_PALIERS_UPP) { if (key.indexOf(k) >= 0) return THEA_PALIERS_UPP[k]; }
+  var nomU = (nom || '').toUpperCase();
+  var motsU = (mots || '').toUpperCase();
+  // 1) Le NOM du marché prime (ex: "Autres RX 0%" ne doit pas matcher "BLEPHA" via BLEPHADEMODEX)
+  if (nomU.indexOf('AUTRES') >= 0 || nomU.indexOf('AUTRE RX') >= 0) return THEA_PALIERS_UPP['AUTRES'];
+  for (var k in THEA_PALIERS_UPP) { if (nomU.indexOf(k) >= 0) return THEA_PALIERS_UPP[k]; }
+  // 2) Repli sur les mots-clés, du plus spécifique au moins spécifique (BLEPHA après les noms de marques)
+  var ordre = ['THEALOSE','VITABACT','MONOPROST','NUTROF','CROMA','OTC','BLEPHA','AUTRES'];
+  for (var i = 0; i < ordre.length; i++) { if (motsU.indexOf(ordre[i]) >= 0) return THEA_PALIERS_UPP[ordre[i]]; }
   return null;
 }
 var MARCHES_THEA = [
@@ -8766,6 +8772,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.22</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.23</div>
 </body>
 </html>

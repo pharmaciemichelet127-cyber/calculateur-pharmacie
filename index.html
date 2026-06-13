@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.20</div>
+  <div class="ver">v3.21</div>
 </header>
 <div class="main">
 
@@ -7195,8 +7195,8 @@ function decAfficherTheaAnalyse(labo) {
   if (a.exclus && a.exclus.nb > 0) {
     html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">⚠ <strong>' + a.exclus.nb + ' réf. exclues</strong> du calcul (≈ ' + Math.round(a.exclus.qte) + ' u/an) : produits Théa hors offre UPP. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '…' : '') + '</div>';
   }
-  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">';
-  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Niveau</th><th style="padding:3px 6px">Seuil OTC</th><th style="padding:3px 6px">Absorption (ton rythme OTC)</th><th style="padding:3px 6px">Remise OTC</th><th style="padding:3px 6px">+ Bonus remboursés</th><th style="padding:3px 6px">Marge si tout vendu</th></tr>';
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:8px;table-layout:auto">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 10px;white-space:nowrap">Niveau</th><th style="padding:3px 10px;white-space:nowrap">Seuil OTC</th><th style="padding:3px 10px;white-space:nowrap">Absorption (ton rythme OTC)</th><th style="padding:3px 10px;white-space:nowrap">Remise OTC</th><th style="padding:3px 10px;white-space:nowrap">+ Bonus remboursés</th><th style="padding:3px 10px;white-space:nowrap">Marge si tout vendu</th></tr>';
   for (var i = 0; i < a.niveaux.length; i++) {
     var n = a.niveaux[i];
     var isAcquis = a.reco && n.nom === a.reco.nom;
@@ -7211,12 +7211,12 @@ function decAfficherTheaAnalyse(labo) {
     else if (isAcquis) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>';
     if (isObjectif) badge += ' <span style="font-size:9px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">OBJECTIF</span>';
     html += '<tr style="' + rowBg + '">';
-    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)">' + n.nom + badge + '</td>';
-    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)">' + n.seuil + ' u</td>';
-    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
-    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
-    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:var(--text-sec)">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
-    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)"><strong>≈ ' + Math.round(n.margePalier).toLocaleString('fr') + ' €/an</strong></td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap">' + n.nom + badge + '</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap">' + n.seuil + ' u</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:' + col + ';white-space:nowrap">' + fais + '</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:var(--text-sec);white-space:nowrap">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap"><strong>≈ ' + Math.round(n.margePalier).toLocaleString('fr') + ' €/an</strong></td>';
     html += '</tr>';
   }
   html += '</table>';
@@ -8741,6 +8741,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.20</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.21</div>
 </body>
 </html>

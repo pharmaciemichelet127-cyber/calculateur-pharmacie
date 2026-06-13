@@ -8225,7 +8225,7 @@ function catApercuPDF() {
     + '<style>body{font-family:Arial,sans-serif;font-size:10px;margin:20px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#222;color:#fff;font-size:9px;text-transform:uppercase}tr:nth-child(even){background:#f5f5f5}</style>'
     + '</head><body><h1>Catalogue ' + (labo.nom||'') + ' — ' + new Date().toLocaleDateString('fr-FR') + '</h1>'
     + '<table><thead><tr><th>Nom</th><th>EAN</th><th>Format</th><th>Famille</th><th>PU Cat.</th><th>TVA</th><th>Colisage</th><th>Cmd min</th><th>Paliers remises</th></tr></thead><tbody>' + rows + '</tbody></table>'
-    + '<script>window.onload=function(){window.print();}</script></body></html>';
+    + '<script>window.onload=function(){window.print();}<\/script></body></html>';
   var w = window.open('', '_blank');
   w.document.write(html);
   w.document.close();

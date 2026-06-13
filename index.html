@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.29</div>
+  <div class="ver">v3.30</div>
 </header>
 <div class="main">
 
@@ -6798,6 +6798,7 @@ function decNormaliserCond(c) {
     if (c.seuilCA === undefined) c.seuilCA = defS.caOui;
     if (c.seuilRem === undefined) c.seuilRem = defS.remOui;
   }
+  if (!c.marchesRetenus) c.marchesRetenus = [];
   if (!c.offresSpec) c.offresSpec = [];
   c.offresSpec.forEach(function(o) {
     if ((o.seuils === undefined || o.remises === undefined) && o.paliers) {
@@ -6897,6 +6898,24 @@ function decParsePaliersSR(seuils, remises) {
   return out;
 }
 // Compat ascendante (ancien format "seuil:remise, ...")
+function decAddMarcheRetenu() {
+  if (!decCondCurrent || !decCurrentStats) return;
+  var today = new Date().toISOString().slice(0,10);
+  decCondCurrent.marchesRetenus.push({ nom: '', dateDebut: today, dateFin: '', notes: '' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decUpdMarcheRetenu(i, key, val) {
+  if (!decCondCurrent || !decCondCurrent.marchesRetenus[i]) return;
+  decCondCurrent.marchesRetenus[i][key] = val;
+  decPersist();
+}
+function decDelMarcheRetenu(i) {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.marchesRetenus.splice(i, 1);
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
 function decParsePaliers(str) {
   var out = [];
   (str || '').split(',').forEach(function(part) {
@@ -6964,6 +6983,12 @@ function decTheaPrefillConditions(labo, force) {
   if (!cond.offresSpec || cond.offresSpec.length === 0) {
     cond.offresSpec = [{ titre: 'Offre Vitabact volumes (permanente)', mots: 'VITABACT', seuils: '84, 156', remises: '50, 55' }];
   }
+  if (!cond.marchesRetenus || cond.marchesRetenus.length === 0) {
+    cond.marchesRetenus = [
+      { nom: 'March\u00e9 2 OTC (156u, 50% OTC)', dateDebut: '2026-02-16', dateFin: '2026-12-31', notes: 'Vitabact 50%, Monoprost 4%, Cromadoses 7%, Nutrof 30%, Th\u00e9alose 16,5%' },
+      { nom: 'Offre Vitabact volumes (84/156u)', dateDebut: '2026-02-16', dateFin: '2026-12-31', notes: '' }
+    ];
+  }
   var all = decGetCondData();
   all[labo] = cond;
   decSaveCondData(all);
@@ -7027,6 +7052,17 @@ function decRenderConditions(labo) {
     html += '</div>';
   });
   html += '<button type="button" onclick="decAddOffreSpec()" style="margin-top:6px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ Offre volumes sp\u00e9cifique</button>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:14px;padding-top:8px;border-top:1px dashed var(--border)">\ud83d\udcc5 March\u00e9s retenus (historique \u2014 marche choisi, p\u00e9riode de validit\u00e9, pour s\u2019y retrouver plus tard)</div>';
+  (c.marchesRetenus || []).forEach(function(mr, i) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:6px">';
+    html += '<div><label style="' + lbl + '">March\u00e9 retenu</label><input type="text" value="' + esc(mr.nom) + '" placeholder="ex: March\u00e9 2 OTC (156u)" style="' + inp + ';width:200px" oninput="decUpdMarcheRetenu(' + i + ',\'nom\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">D\u00e9but</label><input type="date" value="' + esc(mr.dateDebut) + '" style="' + inp + ';width:140px" oninput="decUpdMarcheRetenu(' + i + ',\'dateDebut\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Fin</label><input type="date" value="' + esc(mr.dateFin) + '" style="' + inp + ';width:140px" oninput="decUpdMarcheRetenu(' + i + ',\'dateFin\',this.value)"></div>';
+    html += '<div style="flex:1;min-width:160px"><label style="' + lbl + '">Notes</label><input type="text" value="' + esc(mr.notes) + '" placeholder="ex: 4% Monoprost, 30% Nutrof..." style="' + inp + ';width:100%" oninput="decUpdMarcheRetenu(' + i + ',\'notes\',this.value)"></div>';
+    html += '<button type="button" onclick="decDelMarcheRetenu(' + i + ')" title="Supprimer" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
+    html += '</div>';
+  });
+  html += '<button type="button" onclick="decAddMarcheRetenu()" style="margin-top:6px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ March\u00e9 retenu</button>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
   html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + ';width:100px" oninput="decUpdCond(\'ug\',this.value)"></div>';
   html += '<div><label style="' + lbl + '">RFA (%)</label><input type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'rfa\',this.value)"></div>';
@@ -8948,6 +8984,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.29</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.30</div>
 </body>
 </html>

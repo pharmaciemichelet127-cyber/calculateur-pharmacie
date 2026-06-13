@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.41</div>
+  <div class="ver">v3.42</div>
 </header>
 <div class="main">
 
@@ -3591,7 +3591,7 @@ async function importMCPDF(input) {
 
 // ===== CONDITIONS COMMERCIALES =====
 var MOIS_LABELS_COND = ['Jun25','Jul25','Aou25','Sep25','Oct25','Nov25','Dec25','Jan26','Fev26','Mar26','Avr26','Mai26'];
-var condLabos = {};
+var condLabos = (function(){ try { var s=localStorage.getItem('cond_labos'); return s ? JSON.parse(s) : {}; } catch(e){ return {}; } })();
 var condInited = false;
 // Load condLabos immediately on page load - so cmd/cat tabs work without visiting cond first
 (function() {
@@ -9445,6 +9445,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.41</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.42</div>
 </body>
 </html>

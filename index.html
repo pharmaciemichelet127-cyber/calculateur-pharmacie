@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.36</div>
+  <div class="ver">v3.38</div>
 </header>
 <div class="main">
 
@@ -1494,6 +1494,8 @@ git push origin main</pre>
           <button type="button" onclick="catSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
           <button type="button" onclick="catExportXLSX()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">&#8595; Export Excel</button>
           <button type="button" onclick="catApercuPDF()" style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#128196; Aperçu PDF</button>
+          <label style="font-size:12px;padding:5px 12px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#8593; Importer catalogue officiel (PDF/Excel)<input type="file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="catImportOfficiel(this)"></label>
+          <span id="cat-officiel-info" style="font-size:11px;color:var(--text-sec)"></span>
         </div>
       </p>
       <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">
@@ -8195,7 +8197,90 @@ function catClassifierProduit(nom) {
   return { cat: 'Autre', scat: '', marche: 'Non classe' };
 }
 
-// ===== EXPORT / APERCU CATALOGUE LABO (XLSX + PDF imprimable) =====
+// ===== IMPORT CATALOGUE OFFICIEL LABO (PDF/Excel brut, fourni par le labo) — stocké sur GitHub pour accès multi-navigateurs =====
+async function condGitHubPutFile(token, path, b64, sha, message) {
+  var body = { message: message || ('Catalogue officiel ' + new Date().toISOString().slice(0,16).replace('T',' ')), content: b64, branch: GH_BRANCH };
+  if (sha) body.sha = sha;
+  return await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + path, {
+    method: 'PUT',
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+async function condGitHubGetSha(token, path) {
+  var r = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + path + '?t=' + Date.now(), {
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+  });
+  if (!r.ok) return null;
+  var j = await r.json();
+  return j.sha || null;
+}
+function catSafeName(name) {
+  return String(name || 'fichier').replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+async function catImportOfficiel(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
+  if (file.size > 20 * 1024 * 1024) { alert('Fichier trop volumineux (>20 Mo).'); return; }
+  var token = localStorage.getItem('gh_token') || '';
+  if (!token) { alert('Token GitHub requis (configure-le dans Labos configurés → Sauvegarder sur GitHub) pour que le catalogue soit accessible depuis tous tes appareils.'); return; }
+  var status = document.getElementById('cat-officiel-info');
+  if (status) status.textContent = 'Envoi vers GitHub...';
+  var b64full = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  var path = 'catalogues/' + catLaboActif + '_' + catSafeName(file.name);
+  try {
+    var sha = await condGitHubGetSha(token, path);
+    var put = await condGitHubPutFile(token, path, b64full, sha, 'Catalogue officiel ' + (condLabos[catLaboActif].nom || catLaboActif));
+    if (!put.ok) { var err = await put.json(); throw new Error(err.message || 'erreur GitHub'); }
+    condLabos[catLaboActif].catalogueOfficiel = { name: file.name, type: file.type, path: path, date: new Date().toISOString() };
+    try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+    await condSyncGitHubAuto();
+    catRenderOfficielInfo();
+  } catch(err) {
+    if (status) { status.textContent = '❌ ' + err.message; status.style.color = 'var(--danger)'; }
+  }
+}
+function catRenderOfficielInfo() {
+  var el = document.getElementById('cat-officiel-info');
+  if (!el) return;
+  var labo = catLaboActif ? condLabos[catLaboActif] : null;
+  var off = labo && labo.catalogueOfficiel;
+  if (!off) { el.innerHTML = ''; return; }
+  var d = new Date(off.date).toLocaleDateString('fr-FR');
+  var url = 'https://raw.githubusercontent.com/' + GH_OWNER + '/' + GH_REPO + '/' + GH_BRANCH + '/' + off.path;
+  el.innerHTML = '📎 <strong>' + off.name + '</strong> (' + d + ') — '
+    + '<a href="' + url + '" target="_blank" style="color:var(--accent-text)">Ouvrir</a> · '
+    + '<a href="#" onclick="catSupprimerOfficiel();return false" style="color:var(--danger)">Supprimer</a>';
+}
+async function catSupprimerOfficiel() {
+  if (!catLaboActif || !condLabos[catLaboActif] || !condLabos[catLaboActif].catalogueOfficiel) return;
+  if (!confirm('Supprimer le catalogue officiel importé ?')) return;
+  var off = condLabos[catLaboActif].catalogueOfficiel;
+  var token = localStorage.getItem('gh_token') || '';
+  if (token) {
+    try {
+      var sha = await condGitHubGetSha(token, off.path);
+      if (sha) {
+        await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + off.path, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Suppression catalogue officiel', sha: sha, branch: GH_BRANCH })
+        });
+      }
+    } catch(e) {}
+  }
+  delete condLabos[catLaboActif].catalogueOfficiel;
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  await condSyncGitHubAuto();
+  catRenderOfficielInfo();
+}
+
 function catExportXLSX() {
   if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
   var labo = condLabos[catLaboActif];
@@ -8257,11 +8342,12 @@ function catChargeLabo() {
   var rawId = sel ? sel.value : null;
   // Normaliser l'ID : essayer string puis number
   catLaboActif = rawId;
-  if (!catLaboActif) { catProduits = []; catRenderTable(); return; }
+  if (!catLaboActif) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
   var labo = condLabos[catLaboActif] || condLabos[parseInt(catLaboActif)];
-  if (!labo) { catProduits = []; catRenderTable(); return; }
+  if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
   // Forcer catLaboActif au bon type
   if (!condLabos[catLaboActif] && condLabos[parseInt(catLaboActif)]) catLaboActif = parseInt(catLaboActif);
+  catRenderOfficielInfo();
   var src = labo.produits || [];
   // Merge with existing catalogue if any
   var existing = labo.catalogue || {};
@@ -9163,6 +9249,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.36</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.38</div>
 </body>
 </html>

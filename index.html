@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.23</div>
+  <div class="ver">v3.24</div>
 </header>
 <div class="main">
 
@@ -7182,6 +7182,40 @@ function decTheaAnalyse(labo) {
            margeOTC: margeOTC, margeRx: margeRx,
            mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, nudge: nudge, exclus: exclus };
 }
+// ===== COMPARATIF DES 3 MARCHES THEA (bons SDAV 96 / 156 / 348 u) =====
+var THEA_MARCHES_DETAIL = {
+  m1: { engagement: '96 u', ouverture: '48 u', obli: '12 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 6 Blephasol + 24 Vitabact 10ml' },
+  m2: { engagement: '156 u', ouverture: '78 u', obli: '12 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 6 Blephasol + 36 Vitabact 10ml' },
+  m3: { engagement: '348 u', ouverture: '174 u', obli: '24 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 18 Blepha (dont 12 Blephasol) + 96 Vitabact 10ml + 12 Cromadoses' }
+};
+function decTheaComparatifMarches() {
+  var rows = [
+    ['Engagement annuel OTC', THEA_MARCHES_DETAIL.m1.engagement, THEA_MARCHES_DETAIL.m2.engagement, THEA_MARCHES_DETAIL.m3.engagement],
+    ['Commande d\u2019ouverture', THEA_MARCHES_DETAIL.m1.ouverture, THEA_MARCHES_DETAIL.m2.ouverture, THEA_MARCHES_DETAIL.m3.ouverture],
+    ['R\u00e9f\u00e9rences obligatoires', THEA_MARCHES_DETAIL.m1.obli, THEA_MARCHES_DETAIL.m2.obli, THEA_MARCHES_DETAIL.m3.obli],
+    ['Remise gamme OTC', '45%', '50%', '50%'],
+    ['Remise Blepha OTC', '30%', '30%', '35%'],
+    ['Th\u00e9alose 15ml', '16,5%', '16,5%', '16,5%'],
+    ['Vitabact Flacon 10ml', '45%', '50%', '55%'],
+    ['Monoprost 30 UD', '2%', '4%', '6%'],
+    ['Nutrof Total 180', '30%', '30%', '30%'],
+    ['Cromadoses', '7%', '7%', '10%'],
+    ['Franco / d\u00e9lai', '114 \u20ac \u00b7 45j fdm', '114 \u20ac \u00b7 45j fdm', '114 \u20ac \u00b7 45j fdm']
+  ];
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:10px">📊 Comparatif des 3 march\u00e9s (bons SDAV permanents)</div>';
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:4px;table-layout:auto">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 10px"></th><th style="padding:3px 10px">March\u00e9 1 (96 u)</th><th style="padding:3px 10px">March\u00e9 2 (156 u)</th><th style="padding:3px 10px">March\u00e9 3 (348 u)</th></tr>';
+  rows.forEach(function(r) {
+    html += '<tr><td style="padding:3px 10px;border-top:1px solid var(--border);color:var(--text-ter)">' + r[0] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + r[1] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + r[2] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + r[3] + '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Les paliers sup\u00e9rieurs incluent toujours les conditions des paliers inf\u00e9rieurs (Th\u00e9alose/Nutrof identiques sur les 3) \u2014 la commande d\u2019ouverture du palier vis\u00e9 remplace celle d\u2019un palier inf\u00e9rieur d\u00e9j\u00e0 pass\u00e9e.</div>';
+  return html;
+}
+
 function decAfficherTheaAnalyse(labo) {
   var el = document.getElementById('dec-thea');
   if (!el) return;
@@ -7276,6 +7310,7 @@ function decAfficherTheaAnalyse(labo) {
     }
   }
   html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Faisabilité jugée sur tes ventes OTC annualisées (Ospharm) — l\u2019engagement porte sur les achats : vérifier l\u2019écart de stock. Le bonus remboursés (' + Math.round(a.qteRx) + ' u/an : Théalose, Vitabact fl, Monoprost, Nutrof, Cromadoses) est estimé à conditions croisées Théa, hors critère de décision.</div>';
+  html += decTheaComparatifMarches();
   el.innerHTML = html;
   el.style.display = 'block';
 }
@@ -8772,6 +8807,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.23</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.24</div>
 </body>
 </html>

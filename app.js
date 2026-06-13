@@ -24,11 +24,6 @@ function showTab(t) {
     if (p) p.style.display = x===t ? 'block' : 'none';
     if (b) b.classList.toggle('active', x===t);
   });
-  // Masquer la fiche labo quand on quitte l'onglet Labos configurés
-  if (t !== 'cond') {
-    var form = document.getElementById('cond-labo-form');
-    if (form) form.style.display = 'none';
-  }
   if (mainEl) {
     if (WIDE.indexOf(t) >= 0) {
       mainEl.style.maxWidth = '100%';
@@ -47,7 +42,7 @@ function showTab(t) {
   if (t === 'cond')     try { if(!condInited){condInited=true;condInit();} } catch(e) {}
   if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
   if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
-  if (t === 'cat') { if(!catInited){catInited=true;} catInit(); }
+  if (t === 'cat') { if(!condInited){condInited=true;condInit();} if(!catInited){catInited=true;} catInit(); }
   if (t === 'sim') { if(!simInited){simInited=true;} simInit(); }
   if (t === 'workflow') { wfInit(); wfRender(); }
   if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
@@ -2149,11 +2144,7 @@ function condSelectionnerLabo(id) {
     labo = condLabos[id]; // refresh
   }
   if (!labo) return;
-  // N'afficher la fiche que si on est dans l'onglet Labos configurés
-  var panelCond = document.getElementById('panel-cond');
-  if (panelCond && panelCond.style.display === 'block') {
-    document.getElementById('cond-labo-form').style.display = 'block';
-  }
+  document.getElementById('cond-labo-form').style.display = 'block';
   document.getElementById('cond-labo-nom').value = labo.nom || '';
   document.getElementById('cond-date-eval').value = labo.dateEval || new Date().toISOString().slice(0,10);
   document.getElementById('cond-ca-annuel').value = labo.caAnnuel || '';

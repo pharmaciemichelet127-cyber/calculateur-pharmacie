@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.16</div>
+  <div class="ver">v3.17</div>
 </header>
 <div class="main">
 
@@ -6312,16 +6312,16 @@ function decCartePlan() {
     var netUnit = qteAn > 0 ? (brutAn * (1 - rem / 100)) / qteAn : 0;
     var mCmd = qteCmd * netUnit;
     totCmd += mCmd; caHz += caAn * hz;
-    lignes += '<tr><td style="padding:2px 6px;border-top:1px solid var(--border)">' + p.lib + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + mCmd.toFixed(2).replace('.', ',') + ' €</td></tr>';
+    lignes += '<tr><td style="padding:3px 10px;border-top:1px solid var(--border)">' + p.lib + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + mCmd.toFixed(2).replace('.', ',') + ' €</td></tr>';
   });
   var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📦 Plan de commande — horizon ' + Math.round(payJ) + ' jours (= ta consommation d\u2019ici l\u2019échéance)</div>'
     + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
-    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Montant net (à ' + rem + '%)</td></tr>'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">Produit</td><td style="padding:3px 10px;text-align:right">Qté/an</td><td style="padding:3px 10px;text-align:right">Qté à commander</td><td style="padding:3px 10px;text-align:right">Montant net (à ' + rem + '%)</td></tr>'
     + lignes
-    + '<tr><td style="padding:4px 6px;border-top:2px solid var(--border);font-weight:700">TOTAL commande</td><td></td><td></td><td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(totCmd).toLocaleString('fr') + ' €</td></tr>'
+    + '<tr><td style="padding:5px 10px;border-top:2px solid var(--border);font-weight:700">TOTAL commande</td><td></td><td></td><td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(totCmd).toLocaleString('fr') + ' €</td></tr>'
     + '</table>';
   // Verdicts : franco puis cash
   if (franco > 0) {
@@ -6552,15 +6552,15 @@ function decCarteValidationImport(parsed) {
     }
     if (pbs.length > 0) nbAnomalies++;
     lignes += '<tr style="' + (pbs.length > 0 ? 'background:#fdecec' : '') + '">'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);font-family:monospace;font-size:10px">' + o[0] + (decEan13Valide(o[0]) ? ' <span style="color:var(--accent-text)">✓</span>' : ' <span style="color:var(--danger)">✗</span>') + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border)">' + o[1] + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">×' + o[2] + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + o[3].toFixed(2).replace('.', ',') + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + o[4].toFixed(2).replace('.', ',') + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:600">' + o[5].toFixed(2).replace('.', ',') + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(remI * 100) + '%</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + catCell + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);font-size:10px;color:var(--danger)">' + pbs.join(' · ') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);font-family:monospace;font-size:10px">' + o[0] + (decEan13Valide(o[0]) ? ' <span style="color:var(--accent-text)">✓</span>' : ' <span style="color:var(--danger)">✗</span>') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + o[1] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">×' + o[2] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + o[3].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + o[4].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;font-weight:600">' + o[5].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(remI * 100) + '%</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + catCell + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);font-size:10px;color:var(--danger)">' + pbs.join(' · ') + '</td>'
       + '</tr>';
   });
   var eansExtraits = {};
@@ -6571,8 +6571,8 @@ function decCarteValidationImport(parsed) {
   if (manquants > 0) html += '<div style="margin-top:4px;padding:8px 10px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px;color:var(--danger);font-weight:600">⚠️ ' + manquants + ' code(s) EAN présent(s) dans le PDF n\u2019ont PAS été extraits en ligne produit — compare avec le bon avant de valider.</div>';
   if (nbAnomalies > 0) html += '<div style="margin-top:4px;padding:8px 10px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px;color:var(--danger);font-weight:600">⚠️ ' + nbAnomalies + ' ligne(s) en anomalie (surlignées en rouge) — vérifie-les sur le PDF.</div>';
   if (manquants === 0 && nbAnomalies === 0) html += '<div style="margin-top:4px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-text);font-weight:600">✓ Tous les contrôles passent : clés EAN valides, prix cohérents' + (Object.keys(tarifs).length > 0 ? ', tarifs conformes au catalogue' : '') + ', aucun EAN du PDF laissé de côté.</div>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px">'
-    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">EAN (clé)</td><td style="padding:2px 6px">Libellé</td><td style="padding:2px 6px;text-align:right">Mult.</td><td style="padding:2px 6px;text-align:right">Brut</td><td style="padding:2px 6px;text-align:right">FDL</td><td style="padding:2px 6px;text-align:right">Net</td><td style="padding:2px 6px;text-align:right">Remise</td><td style="padding:2px 6px;text-align:right">Tarif catalogue</td><td style="padding:2px 6px">Anomalies</td></tr>'
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto;margin-top:6px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">EAN (clé)</td><td style="padding:3px 10px">Libellé</td><td style="padding:3px 10px;text-align:right">Mult.</td><td style="padding:3px 10px;text-align:right">Brut</td><td style="padding:3px 10px;text-align:right">FDL</td><td style="padding:3px 10px;text-align:right">Net</td><td style="padding:3px 10px;text-align:right">Remise</td><td style="padding:3px 10px;text-align:right">Tarif catalogue</td><td style="padding:3px 10px">Anomalies</td></tr>'
     + lignes + '</table></div>'
     + '<div style="margin-top:8px"><button type="button" onclick="decCarteValiderImport()" style="font-size:12px;padding:8px 16px;background:' + (nbAnomalies > 0 || manquants > 0 ? 'var(--warn)' : 'var(--accent)') + ';color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:700">'
     + (nbAnomalies > 0 || manquants > 0 ? '⚠️ Valider malgré les alertes et calculer' : '✓ Valider et calculer les quantités') + '</button></div>';
@@ -6606,16 +6606,16 @@ function decCarteOffreRender(OFFRE, TITRE) {
     if (p) caHz += (p.caht * f) * hz;
     var remLigne = brut > 0 ? (1 - net / brut) * 100 : 0;
     lignes += '<tr>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border)">' + lib + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + q75.toFixed(1) + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">×' + mult + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">' + Math.round(qteCmd / Math.max(qteAn / 360, 0.001)) + ' j</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + net.toFixed(2).replace('.', ',') + ' €</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + mNet.toFixed(2).replace('.', ',') + ' €</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right">' + Math.round(remLigne) + '%</td>'
-      + '<td style="padding:2px 6px;border-top:1px solid var(--border);text-align:right;color:var(--accent-text);font-weight:600">+' + (mFdl - mNet).toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + lib + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + q75.toFixed(1) + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">×' + mult + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">' + Math.round(qteCmd / Math.max(qteAn / 360, 0.001)) + ' j</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + net.toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + mNet.toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(remLigne) + '%</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;color:var(--accent-text);font-weight:600">+' + (mFdl - mNet).toFixed(2).replace('.', ',') + ' €</td>'
       + '</tr>';
   });
   if (nbMatch === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucune ligne de l\u2019offre ne correspond à des ventes dans ton import. Si ton export Ospharm a une colonne EAN/CIP, réimporte le fichier (le rapprochement sera exact).</span>'; return; }
@@ -6624,13 +6624,13 @@ function decCarteOffreRender(OFFRE, TITRE) {
   var dateEch = new Date(Date.now() + payJ * 86400000);
   var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 ' + TITRE + ' — commande aujourd\u2019hui, <span style="color:var(--accent-text)">facture payable vers le ' + dateEch.toLocaleDateString('fr-FR') + '</span> (' + Math.round(payJ) + ' j)</div>'
     + '<div style="font-size:10px;color:var(--text-ter)">' + nbMatch + ' lignes avec ventes · ' + sansVente + ' réf. sans rotation ignorées' + (multTropGrand > 0 ? ' · ' + multTropGrand + ' réf. vendues mais multiple trop grand pour tout écouler avant l\u2019échéance (laisse-les au fil de l\u2019eau)' : '') + '</div>'
-    + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
-    + '<tr style="color:var(--text-ter)"><td style="padding:2px 6px">Produit (offre UPP)</td><td style="padding:2px 6px;text-align:right">Qté/an</td><td style="padding:2px 6px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:2px 6px;text-align:right">Mult.</td><td style="padding:2px 6px;text-align:right">Qté à commander</td><td style="padding:2px 6px;text-align:right">Écoulé en</td><td style="padding:2px 6px;text-align:right">Prix net</td><td style="padding:2px 6px;text-align:right">Montant net</td><td style="padding:2px 6px;text-align:right">Remise vs brut</td><td style="padding:2px 6px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
+    + '<table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto;margin-top:4px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">Produit (offre UPP)</td><td style="padding:3px 10px;text-align:right">Qté/an</td><td style="padding:3px 10px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:3px 10px;text-align:right">Mult.</td><td style="padding:3px 10px;text-align:right">Qté à commander</td><td style="padding:3px 10px;text-align:right">Écoulé en</td><td style="padding:3px 10px;text-align:right">Prix net</td><td style="padding:3px 10px;text-align:right">Montant net</td><td style="padding:3px 10px;text-align:right">Remise vs brut</td><td style="padding:3px 10px;text-align:right">Gain vs fil de l\u2019eau</td></tr>'
     + lignes
-    + '<tr><td style="padding:4px 6px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td>'
-    + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + totNet.toFixed(2).replace('.', ',') + ' €</td>'
-    + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(remTot) + '%</td>'
-    + '<td style="padding:4px 6px;border-top:2px solid var(--border);text-align:right;font-weight:700;color:var(--accent-text)">+' + gainFdl.toFixed(2).replace('.', ',') + ' €</td></tr>'
+    + '<tr><td style="padding:5px 10px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td>'
+    + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + totNet.toFixed(2).replace('.', ',') + ' €</td>'
+    + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(remTot) + '%</td>'
+    + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700;color:var(--accent-text)">+' + gainFdl.toFixed(2).replace('.', ',') + ' €</td></tr>'
     + '</table></div>';
   html += totNet >= franco
     ? '<div style="margin-top:6px;font-size:12px;color:var(--accent-text);font-weight:600">✓ Franco ' + Math.round(franco) + ' € atteint (' + Math.round(totNet) + ' €) — pas de frais de port.</div>'
@@ -7208,12 +7208,12 @@ function decAfficherTheaAnalyse(labo) {
     else if (isAcquis) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>';
     if (isObjectif) badge += ' <span style="font-size:9px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">OBJECTIF</span>';
     html += '<tr style="' + rowBg + '">';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.nom + badge + '</td>';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">' + n.seuil + ' u</td>';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border);color:var(--text-sec)">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
-    html += '<td style="padding:4px 6px;border-top:1px solid var(--border)"><strong>≈ ' + Math.round(n.margePalier).toLocaleString('fr') + ' €/an</strong></td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)">' + n.nom + badge + '</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)">' + n.seuil + ' u</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:' + col + '">' + fais + '</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:var(--text-sec)">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border)"><strong>≈ ' + Math.round(n.margePalier).toLocaleString('fr') + ' €/an</strong></td>';
     html += '</tr>';
   }
   html += '</table>';
@@ -7237,7 +7237,7 @@ function decAfficherTheaAnalyse(labo) {
         var L = plan.lignes[p];
         html += '<tr><td style="padding:3px 6px;border-top:1px solid var(--border)">' + L.lib + '</td><td style="padding:3px 6px;border-top:1px solid var(--border)">' + Math.round(L.ventes) + '</td><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>' + L.cmd + '</strong> <span style="color:var(--text-ter)">(\u00d7' + L.mult + ')</span></td></tr>';
       }
-      html += '<tr style="font-weight:600"><td style="padding:4px 6px;border-top:2px solid var(--border-med)">TOTAL</td><td style="padding:4px 6px;border-top:2px solid var(--border-med)">' + Math.round(a.volOTC) + '</td><td style="padding:4px 6px;border-top:2px solid var(--border-med)">' + plan.total + ' u (cible ' + plan.cible + ')</td></tr>';
+      html += '<tr style="font-weight:600"><td style="padding:5px 10px;border-top:2px solid var(--border-med)">TOTAL</td><td style="padding:5px 10px;border-top:2px solid var(--border-med)">' + Math.round(a.volOTC) + '</td><td style="padding:5px 10px;border-top:2px solid var(--border-med)">' + plan.total + ' u (cible ' + plan.cible + ')</td></tr>';
       html += '</table>';
       if (typeof DEC_THEA_OBLIGATOIRES !== 'undefined' && DEC_THEA_OBLIGATOIRES.length > 0) {
         for (var ob = 0; ob < DEC_THEA_OBLIGATOIRES.length; ob++) {
@@ -8738,6 +8738,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.16</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.17</div>
 </body>
 </html>

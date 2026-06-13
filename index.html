@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.24</div>
+  <div class="ver">v3.25</div>
 </header>
 <div class="main">
 
@@ -6445,15 +6445,28 @@ function decEan13Valide(ean) {
   return (10 - (s % 10)) % 10 === parseInt(ean[12], 10);
 }
 function decCarteParseBonSDAV(text) {
-  // Lignes type : 3401099222675 ABSO Compresses non-tissé 10x10 – Bt10 sachets de 2 40 0,82 € 0,71 € 0,39 €
-  var re = /(\d{13})\s+(.{3,140}?)\s+(\d{1,3})\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€/g;
+  var num = function(s){ return parseFloat(s.replace(',', '.')); };
+  // Format A (Marque Verte) : EAN Libellé Multiple Brut FDL Net (3 prix)
+  var reA = /(\d{13})\s+(.{3,140}?)\s+(\d{1,3})\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€/g;
+  // Format B (Théa) : EAN Libellé Multiple PrixCat PrixRemisé (2 prix, pas de fil de l'eau)
+  var reB = /(\d{13})\s+(.{3,140}?)\s+(\d{1,3})\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€/g;
   var out = [], vus = {}, m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = reA.exec(text)) !== null) {
     var ean = m[1];
     if (vus[ean]) continue;
     vus[ean] = true;
-    var num = function(s){ return parseFloat(s.replace(',', '.')); };
     out.push([ean, m[2].replace(/\s+/g, ' ').trim(), parseInt(m[3], 10) || 1, num(m[4]), num(m[5]), num(m[6])]);
+  }
+  if (out.length === 0) {
+    while ((m = reB.exec(text)) !== null) {
+      var ean2 = m[1];
+      if (vus[ean2]) continue;
+      vus[ean2] = true;
+      var brut = num(m[4]), net = num(m[5]);
+      if (net > brut + 0.005) continue; // garde-fou : remisé doit être ≤ catalogue
+      // Pas de prix « fil de l'eau » distinct pour Théa : FDL = brut (gain = remise SDAV pure)
+      out.push([ean2, m[2].replace(/\s+/g, ' ').trim(), parseInt(m[3], 10) || 1, brut, brut, net]);
+    }
   }
   var fr = text.match(/Franco de port\s*:\s*(\d+)/i);
   // Comptage croisé : tous les EAN-13 valides présents dans le texte (candidats produits)
@@ -8807,6 +8820,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.24</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.25</div>
 </body>
 </html>

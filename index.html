@@ -37,8 +37,6 @@
   .main:has(#panel-sim[style*="block"]),
   .main:has(#panel-cmd[style*="block"]),
   .main:has(#panel-prixnet[style*="block"]) { max-width: 100%; padding-left: 24px; padding-right: 24px; }
-  .main:has(#panel-decision[style*="block"]) { max-width: 1400px; padding-left: 24px; padding-right: 24px; }
-  .main:has(#panel-decision[style*="block"]) .card { max-width: none; }
   .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; overflow-y: hidden; margin-bottom: 18px; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
   .tab-btn { flex: 0 0 auto; padding: 10px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; border: none; background: transparent; color: var(--text-sec); cursor: pointer; border-right: 1px solid var(--border); transition: all 0.15s; white-space: nowrap; }
@@ -111,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.14</div>
+  <div class="ver">v3.15</div>
 </header>
 <div class="main">
 
@@ -1593,7 +1591,7 @@ function setSituation(s) {
 }
 
 function showTab(t) {
-  var WIDE = ['cat','sim','cmd','prixnet'];
+  var WIDE = ['cat','sim','cmd','prixnet','decision'];
   var mainEl = document.querySelector('.main');
   ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat','sim','workflow','decision'].forEach(function(x) {
     var p = document.getElementById('panel-'+x);
@@ -8740,6 +8738,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.14</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.15</div>
 </body>
 </html>

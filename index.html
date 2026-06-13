@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.38</div>
+  <div class="ver">v3.39</div>
 </header>
 <div class="main">
 
@@ -1495,6 +1495,7 @@ git push origin main</pre>
           <button type="button" onclick="catExportXLSX()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">&#8595; Export Excel</button>
           <button type="button" onclick="catApercuPDF()" style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#128196; Aperçu PDF</button>
           <label style="font-size:12px;padding:5px 12px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#8593; Importer catalogue officiel (PDF/Excel)<input type="file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="catImportOfficiel(this)"></label>
+          <label style="font-size:12px;padding:5px 12px;border:1px solid #f59e0b;border-radius:var(--radius-sm);background:#fffbeb;cursor:pointer;font-weight:500;color:#92400e;">&#129302; Extraire produits (IA)<input type="file" accept=".pdf" style="display:none" onchange="catExtrarePDF(this)"></label>
           <span id="cat-officiel-info" style="font-size:11px;color:var(--text-sec)"></span>
         </div>
       </p>
@@ -1502,6 +1503,8 @@ git push origin main</pre>
         Importez d abord l etat des ventes dans l onglet Cond. commerciales. Cliquez sur Auto-classifier pour que Claude analyse les noms et propose Categorie, Sous-categorie et Marche. Corrigez ensuite manuellement si besoin.
       </p>
       <div id="cat-status" style="font-size:12px;color:var(--text-sec);margin-bottom:10px;min-height:18px"></div>
+      <div id="cat-extract-status" style="display:none;font-size:12px;padding:10px 12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);margin-bottom:10px"></div>
+      <div id="cat-extract-preview" style="display:none;margin-bottom:12px"></div>
 
       <div style="overflow-x:auto;width:100%">
         <table id="cat-tbl" style="border-collapse:collapse;font-size:12px;table-layout:auto">
@@ -8315,6 +8318,162 @@ function catApercuPDF() {
   w.document.write(html);
   w.document.close();
 }
+// ===== EXTRACTION PRODUITS CATALOGUE PDF PAR IA =====
+var CAT_EXTRACT_PROMPT = 'Tu analyses un catalogue tarifaire pharmacie (format GSA Healthcare / IDES PHARMA ou similaire). ' +
+'Extrais TOUS les produits listés dans les tableaux. ' +
+'Pour chaque produit extrait : ' +
+'- nom : désignation complète du produit (string) ' +
+'- ean : code EAN/GTIN (13 chiffres si dispo, sinon vide) ' +
+'- acl : code ACL/CIP si présent (string, sinon vide) ' +
+'- uc : quantité minimum de commande / unité de colisage (entier, défaut 1) ' +
+'- tva : taux TVA % (nombre : 2.1, 5.5, 10, ou 20) ' +
+'- pu_ht : prix unitaire HT en euros (nombre décimal) ' +
+'- famille : nom de la section/gamme/marque du tableau où se trouve le produit (string) ' +
+'Ignore les pages de couverture, images, pages de notes vides, infos logistiques. ' +
+'Ne mets PAS les présentoirs/PLV sans EAN ni prix dans la liste principale, mais si EAN+prix présents, inclus-les. ' +
+'Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après. ' +
+'Format : {"produits":[{"nom":"...","ean":"...","acl":"...","uc":1,"tva":20,"pu_ht":0.00,"famille":"..."}]}';
+
+async function catExtrarePDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  // Reset input so same file can be re-imported
+  input.value = '';
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo dans la liste.'); return; }
+  if (file.size > 30 * 1024 * 1024) { alert('PDF trop volumineux (>30 Mo).'); return; }
+
+  var statusEl = document.getElementById('cat-extract-status');
+  var previewEl = document.getElementById('cat-extract-preview');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '⏳ Lecture du PDF...';
+  previewEl.style.display = 'none';
+
+  // Read as base64
+  var b64 = await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  // Strategy: send by chunks of pages (3 pages at a time) to avoid token limits
+  // We use a two-pass approach: first pass = full doc (if small enough), else chunked
+  var allProds = {};
+  var nbPages = 0;
+  var errors = [];
+
+  // Estimate: ~15 pages max per call to stay within limits
+  // We'll do 2 passes: pages 1-10, then 11+ (most catalogs are <20 pages)
+  var PAGE_GROUPS = [[1,8],[9,16],[17,24]];
+
+  for (var gi = 0; gi < PAGE_GROUPS.length; gi++) {
+    var pg = PAGE_GROUPS[gi];
+    statusEl.innerHTML = '⏳ Analyse pages ' + pg[0] + '–' + pg[1] + ' (passe ' + (gi+1) + '/' + PAGE_GROUPS.length + ')...';
+    try {
+      var resp = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+              { type: 'text', text: 'PAGES ' + pg[0] + ' à ' + pg[1] + ' UNIQUEMENT. ' + CAT_EXTRACT_PROMPT }
+            ]
+          }]
+        })
+      });
+      var data = await resp.json();
+      var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { errors.push('Passe ' + (gi+1) + ': pas de JSON'); continue; }
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); }
+      catch(e) {
+        var txt = jsonMatch[0].replace(/,\s*$/, '');
+        var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        for (var k=0;k<op;k++) txt+=']';
+        for (var k=0;k<ob;k++) txt+='}';
+        try { parsed = JSON.parse(txt); } catch(e2) { errors.push('Passe ' + (gi+1) + ': JSON invalide'); continue; }
+      }
+      (parsed.produits || []).forEach(function(p) {
+        if (!p.nom || !p.pu_ht || p.pu_ht <= 0) return;
+        var key = (p.ean && p.ean.length >= 8) ? p.ean : (p.acl || p.nom);
+        if (allProds[key]) return; // déjà vu
+        allProds[key] = {
+          nom: (p.nom || '').trim(),
+          ean: (p.ean || '').replace(/\s/g,''),
+          acl: (p.acl || '').replace(/\s/g,''),
+          uc: parseInt(p.uc) || 1,
+          tva: parseFloat(p.tva) || 20,
+          pu_catalogue: parseFloat(p.pu_ht) || 0,
+          famille: (p.famille || '').trim(),
+          // champs requis par le calculateur
+          format: '', marche_id: '', colisage: parseInt(p.uc) || 1,
+          min_cmd: parseInt(p.uc) || 1, panachage: true, nouveaute: false,
+          remises_paliers: [], lppr: 0,
+          moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0,
+          mois: [0,0,0,0,0,0,0,0,0,0,0,0]
+        };
+        nbPages++;
+      });
+    } catch(err) {
+      errors.push('Passe ' + (gi+1) + ': ' + err.message);
+    }
+  }
+
+  var prods = Object.values(allProds);
+  if (prods.length === 0) {
+    statusEl.innerHTML = '❌ Aucun produit extrait.' + (errors.length ? ' Erreurs: ' + errors.join(', ') : '');
+    return;
+  }
+
+  // Show preview before injecting
+  statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits extraits</strong>' + (errors.length ? ' ⚠ ' + errors.length + ' erreur(s) de passe' : '');
+
+  var familles = {};
+  prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
+  var famHtml = Object.keys(familles).sort().map(function(f){ return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>'; }).join('');
+
+  previewEl.style.display = 'block';
+  previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
+    + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées :</div>'
+    + '<div style="margin-bottom:10px">' + famHtml + '</div>'
+    + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">⚠ Les produits seront <strong>ajoutés</strong> au catalogue existant du labo (pas d\'écrasement). Les doublons EAN sont ignorés.</div>'
+    + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
+    + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
+    + '</div>';
+
+  window._catExtractedProds = prods;
+}
+
+function catInjecterProduits() {
+  var prods = window._catExtractedProds;
+  if (!prods || !prods.length || !catLaboActif || !condLabos[catLaboActif]) return;
+  var labo = condLabos[catLaboActif];
+  if (!labo.produits) labo.produits = [];
+  var eanExist = {};
+  labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
+  var added = 0;
+  prods.forEach(function(p) {
+    if (p.ean && p.ean.length >= 8 && eanExist[p.ean]) return; // doublon EAN
+    labo.produits.push(p);
+    if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true;
+    added++;
+  });
+  // Save to localStorage + trigger GitHub sync
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+  // Refresh catalogue table
+  catChargeLabo();
+  document.getElementById('cat-extract-preview').style.display = 'none';
+  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
+  window._catExtractedProds = null;
+}
+
 function catInit() {
   // Load condLabos if needed
   if (Object.keys(condLabos).length === 0) {
@@ -9249,6 +9408,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.38</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.39</div>
 </body>
 </html>

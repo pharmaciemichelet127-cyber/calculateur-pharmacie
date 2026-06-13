@@ -24,6 +24,11 @@ function showTab(t) {
     if (p) p.style.display = x===t ? 'block' : 'none';
     if (b) b.classList.toggle('active', x===t);
   });
+  // Masquer la fiche labo quand on quitte l'onglet Labos configurés
+  if (t !== 'cond') {
+    var form = document.getElementById('cond-labo-form');
+    if (form) form.style.display = 'none';
+  }
   if (mainEl) {
     if (WIDE.indexOf(t) >= 0) {
       mainEl.style.maxWidth = '100%';
@@ -2144,7 +2149,11 @@ function condSelectionnerLabo(id) {
     labo = condLabos[id]; // refresh
   }
   if (!labo) return;
-  document.getElementById('cond-labo-form').style.display = 'block';
+  // N'afficher la fiche que si on est dans l'onglet Labos configurés
+  var panelCond = document.getElementById('panel-cond');
+  if (panelCond && panelCond.style.display === 'block') {
+    document.getElementById('cond-labo-form').style.display = 'block';
+  }
   document.getElementById('cond-labo-nom').value = labo.nom || '';
   document.getElementById('cond-date-eval').value = labo.dateEval || new Date().toISOString().slice(0,10);
   document.getElementById('cond-ca-annuel').value = labo.caAnnuel || '';

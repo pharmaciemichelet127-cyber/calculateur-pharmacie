@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.17</div>
+  <div class="ver">v3.18</div>
 </header>
 <div class="main">
 
@@ -6676,7 +6676,7 @@ function decAfficherResume(labo) {
   html += '<div><span style="font-size:10px;color:var(--text-ter)">Stock (unités)</span><br><strong>' + Math.round(totStock).toLocaleString('fr') + '</strong></div>';
   html += '</div>';
   var th = 'padding:6px 8px;font-size:10px;font-weight:600;text-transform:uppercase;background:#e8f5f0;text-align:right;border-bottom:1px solid var(--border)';
-  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+  html += '<div style="overflow-x:auto"><table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto">';
   html += '<thead><tr>';
   html += '<th style="' + th + ';text-align:left">Produit</th>';
   html += '<th style="' + th + '">Qté</th>';
@@ -8738,6 +8738,6 @@ function decImportOspharm(input) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.17</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.18</div>
 </body>
 </html>

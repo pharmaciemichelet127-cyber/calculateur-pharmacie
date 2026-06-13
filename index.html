@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.42</div>
+  <div class="ver">v3.43</div>
 </header>
 <div class="main">
 
@@ -8336,8 +8336,17 @@ var CAT_EXTRACT_PROMPT = 'Tu analyses un catalogue tarifaire pharmacie (format G
 async function catExtrarePDF(input) {
   var file = input.files[0];
   if (!file) return;
+  // Reset input so same file can be re-imported
   input.value = '';
   if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo dans la liste.'); return; }
+
+  // Clé API Anthropic stockée localement
+  var apiKey = localStorage.getItem('anthropic_api_key') || '';
+  if (!apiKey) {
+    apiKey = prompt('Clé API Anthropic (sk-ant-...) — stockée localement, jamais partagée :');
+    if (!apiKey || !apiKey.startsWith('sk-')) { alert('Clé invalide.'); return; }
+    localStorage.setItem('anthropic_api_key', apiKey);
+  }
 
   var statusEl = document.getElementById('cat-extract-status');
   var previewEl = document.getElementById('cat-extract-preview');
@@ -8353,12 +8362,17 @@ async function catExtrarePDF(input) {
     r.readAsDataURL(file);
   });
 
-  statusEl.innerHTML = '⏳ Envoi à Claude pour extraction... (peut prendre 30-60 secondes selon la taille)';
+  statusEl.innerHTML = '⏳ Envoi à Claude... (30-60 secondes)';
 
   try {
-    var resp = await fetch('/api/claude', {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
@@ -8375,13 +8389,14 @@ async function catExtrarePDF(input) {
     var responseText = await resp.text();
 
     if (!resp.ok) {
-      statusEl.innerHTML = '❌ Erreur API (' + resp.status + ') : ' + responseText.slice(0, 200);
+      // Si clé invalide, l'effacer pour redemander
+      if (resp.status === 401) { localStorage.removeItem('anthropic_api_key'); }
+      statusEl.innerHTML = '❌ Erreur API (' + resp.status + ') : ' + responseText.slice(0, 300);
       return;
     }
 
     var data;
-    try { data = JSON.parse(responseText); }
-    catch(e) {
+    try { data = JSON.parse(responseText); } catch(e) {
       statusEl.innerHTML = '❌ Réponse non-JSON : ' + responseText.slice(0, 300);
       return;
     }
@@ -8394,21 +8409,18 @@ async function catExtrarePDF(input) {
     var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
     var jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      statusEl.innerHTML = '❌ Pas de JSON dans la réponse. Réponse brute : ' + raw.slice(0, 300);
+      statusEl.innerHTML = '❌ Pas de JSON dans la réponse : ' + raw.slice(0, 300);
       return;
     }
 
     var parsed;
-    try { parsed = JSON.parse(jsonMatch[0]); }
-    catch(e) {
-      // Try to repair
+    try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
       var txt = jsonMatch[0].replace(/,\s*$/, '');
       var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
       var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
       for (var k=0;k<op;k++) txt+=']';
       for (var k=0;k<ob;k++) txt+='}';
-      try { parsed = JSON.parse(txt); }
-      catch(e2) { statusEl.innerHTML = '❌ JSON invalide : ' + e2.message + '<br><small>' + jsonMatch[0].slice(0,200) + '</small>'; return; }
+      try { parsed = JSON.parse(txt); } catch(e2) { statusEl.innerHTML = '❌ JSON invalide : ' + e2.message; return; }
     }
 
     var allProds = {};
@@ -8434,7 +8446,7 @@ async function catExtrarePDF(input) {
 
     var prods = Object.values(allProds);
     if (prods.length === 0) {
-      statusEl.innerHTML = '❌ Aucun produit extrait (0 lignes valides avec nom+prix). Réponse brute : <br><small>' + raw.slice(0,400) + '</small>';
+      statusEl.innerHTML = '❌ Aucun produit extrait. Réponse : ' + raw.slice(0, 300);
       return;
     }
 
@@ -8450,7 +8462,7 @@ async function catExtrarePDF(input) {
     previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
       + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées :</div>'
       + '<div style="margin-bottom:10px">' + famHtml + '</div>'
-      + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Les produits seront <strong>ajoutés</strong> au catalogue existant. Les doublons EAN sont ignorés.</div>'
+      + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Les produits seront <strong>ajoutés</strong> au catalogue existant. Doublons EAN ignorés.</div>'
       + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
       + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
       + '</div>';
@@ -8460,35 +8472,6 @@ async function catExtrarePDF(input) {
   } catch(err) {
     statusEl.innerHTML = '❌ Erreur réseau : ' + err.message;
   }
-}
-'Extrais TOUS les produits listés dans les tableaux. ' +
-'Pour chaque produit extrait : ' +
-'- nom : désignation complète du produit (string) ' +
-'- ean : code EAN/GTIN (13 chiffres si dispo, sinon vide) ' +
-'- acl : code ACL/CIP si présent (string, sinon vide) ' +
-'- uc : quantité minimum de commande / unité de colisage (entier, défaut 1) ' +
-'- tva : taux TVA % (nombre : 2.1, 5.5, 10, ou 20) ' +
-'- pu_ht : prix unitaire HT en euros (nombre décimal) ' +
-'- famille : nom de la section/gamme/marque du tableau où se trouve le produit (string) ' +
-'Ignore les pages de couverture, images, pages de notes vides, infos logistiques. ' +
-'Ne mets PAS les présentoirs/PLV sans EAN ni prix dans la liste principale, mais si EAN+prix présents, inclus-les. ' +
-'Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après. ' +
-'Format : {"produits":[{"nom":"...","ean":"...","acl":"...","uc":1,"tva":20,"pu_ht":0.00,"famille":"..."}]}';
-
-async function catExtrarePDF(input) {
-  var file = input.files[0];
-  if (!file) return;
-  // Reset input so same file can be re-imported
-  input.value = '';
-  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo dans la liste.'); return; }
-  if (file.size > 30 * 1024 * 1024) { alert('PDF trop volumineux (>30 Mo).'); return; }
-
-  var statusEl = document.getElementById('cat-extract-status');
-  var previewEl = document.getElementById('cat-extract-preview');
-  statusEl.style.display = 'block';
-  statusEl.innerHTML = '⏳ Lecture du PDF...';
-  previewEl.style.display = 'none';
-  window._catExtractedProds = null;
 }
 
 function catInjecterProduits() {
@@ -9445,6 +9428,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.42</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.43</div>
 </body>
 </html>

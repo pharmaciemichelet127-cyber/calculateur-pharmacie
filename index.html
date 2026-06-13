@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.45</div>
+  <div class="ver">v3.46</div>
 </header>
 <div class="main">
 
@@ -1139,10 +1139,9 @@ git push origin main</pre>
         <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
           <span>Etat des ventes 12 mois</span>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <label style="font-size:11px;color:#fff;cursor:pointer;padding:4px 10px;border:none;border-radius:var(--radius-sm);background:var(--accent);font-weight:500;display:flex;align-items:center;gap:4px">
+            <button type="button" onclick="condImportCatalogueLabo()" style="font-size:11px;color:#fff;cursor:pointer;padding:4px 10px;border:none;border-radius:var(--radius-sm);background:var(--accent);font-weight:500;">
               Importer catalogue labo (PDF)
-              <input type="file" id="cond-cat-labo" accept=".pdf" style="display:none" onchange="condImportCatalogueLabo(this)">
-            </label>
+            </button>
             <label style="font-size:11px;color:var(--warn);cursor:pointer;padding:4px 10px;border:1px solid var(--warn);border-radius:var(--radius-sm);background:#fff8ee;font-weight:500;display:flex;align-items:center;gap:4px" title="Met à jour uniquement les prix des produits présents dans le PDF, sans toucher au reste du catalogue">
               Importer avenant tarifs (PDF)
               <input type="file" id="cond-avenant-labo" accept=".pdf" style="display:none" onchange="condImportAvenantLabo(this)">
@@ -4576,135 +4575,58 @@ function condCalc() {
 }
 
 // ===== IMPORT CATALOGUE LABO GENERIQUE (PDF) =====
-async function condImportCatalogueLabo(input) {
-  var file = input.files[0];
-  if (!file) return;
+function condImportCatalogueLabo() {
   var status = document.getElementById('cond-pdf-status');
   if (!condLaboActif || !condLabos[condLaboActif]) {
-    if (status) { status.textContent = 'Erreur : aucun labo sélectionné. Sélectionnez ou créez un labo d\'abord.'; status.style.color = 'var(--danger)'; }
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné.'; status.style.color = 'var(--danger)'; }
     return;
   }
-  if (status) { status.textContent = 'Lecture catalogue labo (passe 1/4)...'; status.style.color = 'var(--text-sec)'; }
+  var labo = condLabos[condLaboActif];
+  // Lire les produits déjà extraits via l'onglet Catalogue
+  var src = labo.produits || [];
+  if (src.length === 0) {
+    if (status) { status.textContent = 'Aucun produit dans le catalogue de ce labo — importez d\'abord via l\'onglet Catalogue → 🤖 Extraire produits (IA).'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  // Fusionner avec les produits existants (préserver les données de ventes)
+  var existing = labo.produits || [];
+  var eanMap = {};
+  existing.forEach(function(p){ if (p.ean) eanMap[p.ean] = p; });
 
-  var b64 = await new Promise(function(res, rej){
-    var r = new FileReader();
-    r.onload = function(){ res(r.result.split(',')[1]); };
-    r.onerror = rej;
-    r.readAsDataURL(file);
+  var nb = 0;
+  var produits = src.map(function(p) {
+    var prev = eanMap[p.ean] || {};
+    nb++;
+    return {
+      nom: p.nom || prev.nom || '',
+      ean: p.ean || '',
+      format: p.format || prev.format || '',
+      pu_catalogue: p.pu_catalogue || prev.pu_catalogue || 0,
+      lppr: p.lppr || prev.lppr || 0,
+      colisage: p.colisage || p.uc || prev.colisage || 1,
+      tva: p.tva || prev.tva || 20,
+      famille: p.famille || prev.famille || '',
+      moy: prev.moy || 0, pa_net: prev.pa_net || 0,
+      pv_ttc: prev.pv_ttc || 0, pv_ht: prev.pv_ht || 0,
+      mbu: prev.mbu || 0, mb_pct: prev.mb_pct || 0,
+      rem_cat: prev.rem_cat || 0,
+      mois: prev.mois || new Array(12).fill(0)
+    };
   });
 
-  var allRefs = {};
-  var allDateValidite = '';
-  var promptCatalogue = 'Tarif labo pharmacie. Extrais TOUS les produits du document avec : nom (désignation complète max 40 cars), ean (EAN/GTIN 13 chiffres uniquement — ignore les codes 7-8 chiffres), format (contenance ex: 40ml, 200ml), pu_catalogue (colonne PRIX CAT ou prix unitaire HT catalogue, nombre décimal), lppr (tarif remboursement LPPR TTC si présent — colonne "Tarif de remboursement LPPR TTC" — mettre 0 si absent ou "Non remboursé"), colisage (colonne UNITE DE COMMANDE si présente, sinon 1). Si tu vois une date de validité (ex: "au 1er Mars 2026"), inclus-la dans "date_validite" au format YYYY-MM-DD. Réponds UNIQUEMENT en JSON valide sans texte ni backticks. Format: {"date_validite":"2026-03-01","produits":[{"nom":"...","ean":"...","format":"...","pu_catalogue":0,"lppr":0,"colisage":1}]}';
-  var prompts = [
-    promptCatalogue + ' PAGES 1 ET 2.',
-    promptCatalogue + ' PAGES 3 ET 4.',
-    promptCatalogue + ' PAGES 5 ET 6 si présentes.',
-    promptCatalogue + ' PAGES 7 ET 8 si présentes.'
-  ];
+  labo.produits = produits;
+  labo.catalogueMaj = new Date().toISOString();
+  condSauvegarder();
 
-  try {
-    for (var pi = 0; pi < 4; pi++) {
-      if (status) status.textContent = 'Lecture catalogue labo (passe ' + (pi+1) + '/4)...';
-      var resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 16000,
-          messages: [{ role: 'user', content: [
-            { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
-            { type:'text', text: prompts[pi] }
-          ]}]
-        })
-      });
-      var data = await resp.json();
-      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
-      if (status) status.textContent = 'Passe ' + (pi+1) + '/4 — ' + raw.length + ' chars reçus...';
-      if (!raw || raw.length < 10) {
-        // Afficher l'erreur API si présente
-        if (data.error) { if (status) { status.textContent = 'Erreur API: ' + data.error.message; status.style.color = 'var(--danger)'; } return; }
-        continue;
-      }
-      var jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) { console.log('Passe ' + pi + ' raw:', raw.slice(0,200)); continue; }
-      var parsed;
-      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
-        var txt = jsonMatch[0].replace(/,\s*$/, '');
-        var opens = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
-        var openb = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
-        for (var k=0; k<opens; k++) txt += ']';
-        for (var k=0; k<openb; k++) txt += '}';
-        try { parsed = JSON.parse(txt); } catch(e2) { continue; }
-      }
-      (parsed.produits||[]).forEach(function(p) {
-        if (!p.nom) return;
-        var key = (p.ean && p.ean.length >= 10) ? p.ean : p.nom;
-        allRefs[key] = p;
-      });
-      if (parsed.date_validite && !allDateValidite) allDateValidite = parsed.date_validite;
-      if (parsed.total_ventes_pa_net && parsed.total_ventes_pa_net > 0) {
-        lgpiTotaux = { valPA: parsed.total_ventes_pa_net };
-      }
-    }
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
 
-    var refs = Object.values(allRefs);
-    if (refs.length === 0) throw new Error('Aucun produit extrait — vérifiez que le PDF est un listing produits/tarif labo lisible');
-
-    // Remplacer les produits existants (vider le catalogue avant d'importer)
-    var existing = [];
-    var eansDejaPresents = {};
-
-    var nb = 0;
-    refs.forEach(function(r) {
-      var ean = (r.ean && r.ean.length >= 10) ? r.ean : '';
-      if (ean && eansDejaPresents[ean]) return; // déjà présent avec données ventes
-      existing.push({
-        nom: r.nom, ean: ean, format: r.format || '',
-        pu_catalogue: r.pu_catalogue || 0,
-        lppr: r.lppr || 0,
-        colisage: r.colisage || 1,
-        moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0,
-        rem_cat: 0, mois: new Array(12).fill(0)
-      });
-      nb++;
-    });
-
-    condLabos[condLaboActif].produits = existing;
-    // Enregistrer date de MAJ catalogue et date de validité extraite
-    condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
-    if (allDateValidite) {
-      condLabos[condLaboActif].tarifValidite = allDateValidite;
-      var ve2 = document.getElementById('cond-tarif-validite');
-      if (ve2) { ve2.value = allDateValidite; condCheckValidite(); }
-    }
-    // Extraire date de validité depuis le texte du PDF si présente dans les refs
-    var validiteFound = '';
-    refs.forEach(function(r) {
-      if (!validiteFound && r.nom) {
-        var m = r.nom.match(/(\d{1,2})[\/\-\s](\d{4})/);
-        if (m) validiteFound = m[0];
-      }
-    });
-    // Aussi chercher dans la réponse brute (date "jusqu'au XX/XX/XXXX")
-    condSauvegarder();
-
-    // Mettre à jour l'affichage
-    var majEl = document.getElementById('cond-catalogue-maj');
-    if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
-
-    if (status) {
-      status.textContent = nb + ' refs ajoutées depuis catalogue labo (total : ' + existing.length + ' produits)';
-      status.style.color = 'var(--accent-text)';
-    }
-    condUpdateDiag();
-
-  } catch(err) {
-    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+  if (status) {
+    status.textContent = nb + ' refs chargées depuis le catalogue (' + produits.length + ' produits)';
+    status.style.color = 'var(--accent-text)';
   }
-  input.value = '';
+  condUpdateDiag();
 }
-
 // ===== IMPORT XLSX CATALOGUE LABO =====
 function condImportCatalogueLaboXLSX(input) {
   var file = input.files[0];
@@ -9416,6 +9338,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.45</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.46</div>
 </body>
 </html>

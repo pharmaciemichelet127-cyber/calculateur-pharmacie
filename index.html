@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.53</div>
+  <div class="ver">v3.48</div>
 </header>
 <div class="main">
 
@@ -973,45 +973,7 @@
       <details style="margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
         <summary style="cursor:pointer;padding:10px 12px;font-size:12px;font-weight:600;color:var(--accent-text)">📖 Workflow — Intégrer un nouveau catalogue labo</summary>
         <div style="padding:0 14px 14px;font-size:12px;line-height:1.55;color:var(--text)">
-
-          <p style="margin:8px 0 4px;font-size:13px;font-weight:700;color:var(--accent-text)">🚀 Nouveau workflow automatisé (v3.53+)</p>
-
-          <p style="margin:6px 0"><strong>1. Créer le labo</strong> — Onglet <strong>Labos configurés</strong> → "+ Nouveau labo" → saisir le nom (sans accent : IDES, THEA, pas THÉA) → Sauvegarder → ☁ Sauvegarder sur GitHub.</p>
-
-          <p style="margin:6px 0"><strong>2. Extraire les produits du catalogue PDF</strong> — Onglet <strong>Catalogue</strong> → sélectionner le labo → bouton <strong>🤖 Extraire produits (IA)</strong> → sélectionner le PDF catalogue du labo (tarif, bon de commande groupement, grille délégué). Claude analyse en <strong>4 passes automatiques</strong> (pages 1–5, 6–10, 11–15, 16–20) et extrait : nom, EAN, UC/colisage, TVA, PU HT, famille/marque. Vérifier le nombre de produits détectés → cliquer <strong>✓ Importer</strong>. <em>La clé API Anthropic est demandée une seule fois et mémorisée.</em></p>
-
-          <p style="margin:6px 0"><strong>3. Charger dans les Conditions</strong> — Onglet <strong>Labos configurés</strong> → sélectionner le labo → bouton <strong>"Importer catalogue labo"</strong> → les produits du Catalogue sont chargés en 1 clic (sans PDF, sans IA). ✓</p>
-
-          <p style="margin:6px 0"><strong>4. Saisir les conditions commerciales</strong> — Dans la fiche labo : marchés + remises, UG, franco, date de validité. Sources : CGV annuelles, grille délégué, bon de commande groupement. Si les conditions ne sont pas encore connues, les saisir après le RDV.</p>
-
-          <p style="margin:6px 0"><strong>5. Importer les ventes LGPI</strong> — Bouton <strong>"Importer PDF LGPI (diagnostic)"</strong> → diagnostic automatique des marges + verdict de rentabilité par produit.</p>
-
-          <p style="margin:6px 0"><strong>6. Décision RDV</strong> — Onglet <strong>⚡ Décision RDV</strong> → importer l'export Ospharm → sélectionner le labo → voir le palier atteignable, la remise gagnée, la marge résultante.</p>
-
-          <p style="margin:6px 0"><strong>7. Sauvegarder</strong> — ☁ Sauvegarder sur GitHub après chaque modification importante.</p>
-
-          <p style="margin:10px 0 6px;font-size:11px;font-weight:600;color:var(--text-sec)">DÉPLOIEMENT (deux fichiers depuis v3.53)</p>
-          <pre style="margin:4px 0 4px 0;padding:8px 10px;background:#1a1a18;color:#e8e6df;border-radius:var(--radius-sm);font-size:11px;overflow-x:auto">cd ~/calculateur-pharmacie
-git pull origin main --rebase
-cp ~/Downloads/index-vX.XX.html index.html
-cp ~/Downloads/app.js app.js          # uniquement si livré avec app.js
-git add index.html app.js
-git commit -m "feat: ..."
-git push origin main</pre>
-          <p style="margin:4px 0 4px 0;color:var(--text-sec);font-size:11px">Si push refusé : <code>git pull origin main --rebase</code> puis repusher. Attendre 1–2 min (Vercel) → Cmd+Shift+R.</p>
-
-          <p style="margin:10px 0 4px"><strong>Pièges connus</strong> :</p>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Symptôme</th><th style="padding:3px 6px">Solution</th></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Rien ne change après déploiement</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Cmd+Shift+R · vérifier badge version en bas à droite</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Extraction PDF bloquée</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Vérifier clé API Anthropic (console.anthropic.com) · PDF &lt; 20 Mo</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">"Importer catalogue labo" affiche 0 ref</td><td style="padding:3px 6px;border-top:1px solid var(--border)">D'abord extraire via 🤖 dans l'onglet Catalogue</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">git pull refusé (divergence)</td><td style="padding:3px 6px;border-top:1px solid var(--border)"><code>git pull origin main --rebase</code></td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">« Aucun labo » sur une machine</td><td style="padding:3px 6px;border-top:1px solid var(--border)">« Charger depuis GitHub » — jamais Sauvegarder avant</td></tr>
-          </table>
-
-          <p style="margin:10px 0 0;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)"><strong>Règle d'or multi-Mac</strong> : GitHub est la source de vérité. Toujours <strong>Charger</strong> avant de travailler, <strong>Sauvegarder</strong> après. Ne jamais sauvegarder depuis une machine qui affiche moins de labos que la réalité.</p>
-        </div> — PDF avec : références (EAN, désignation, prix HT, TVA si dispo), conditions de remise (marchés, paliers, UG), franco / minimum de commande. Sources : CGV annuelles, tarif général, bon de commande groupement, grille délégué.</p>
+          <p style="margin:6px 0"><strong>1. Préparer le document tarifaire</strong> — PDF avec : références (EAN, désignation, prix HT, TVA si dispo), conditions de remise (marchés, paliers, UG), franco / minimum de commande. Sources : CGV annuelles, tarif général, bon de commande groupement, grille délégué.</p>
           <p style="margin:6px 0"><strong>2. Demander l'intégration à Claude</strong> — uploader le PDF avec ce message :</p>
           <p style="margin:6px 0 6px 12px;padding:8px 10px;background:#fff;border-radius:var(--radius-sm);border:1px solid var(--border);font-style:italic">« Intègre le catalogue [NOM DU LABO] avec ce PDF, sur le même modèle que TOPICREM/BAYER/THEA : produits pré-chargés + marchés de remises. Récupère d'abord la version stable depuis GitHub et vérifie que les fixes précédents sont présents. Teste avec Node avant de me livrer. »</p>
           <p style="margin:6px 0 6px 12px;color:var(--text-sec)">Vérifier dans la réponse : nombre de références, marchés et paliers, anomalies signalées (TVA estimées, paliers ambigus, offres datées) → points à confirmer avec le délégué.</p>
@@ -1623,9 +1585,9 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app.js?v=3.53"></script>
+<script src="/app.js?v=3.48"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.53</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.48</div>
 </body>
 </html>

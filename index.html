@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.31</div>
+  <div class="ver">v3.32</div>
 </header>
 <div class="main">
 
@@ -6965,7 +6965,8 @@ function decAfficherOffresSpec(labo) {
     if (!o.mots || !o.titre) return;
     var paliers = decParsePaliersSR(o.seuils, o.remises);
     if (paliers.length === 0) return;
-    html += decTheaAnalyseOffreSpecifique(o.titre, o.mots, paliers, labo);
+    var obligatoires = decParseObligatoires(o.obligatoires);
+    html += decTheaAnalyseOffreSpecifique(o.titre, o.mots, paliers, labo, obligatoires);
   });
   el.innerHTML = html;
   el.style.display = html ? 'block' : 'none';
@@ -7081,6 +7082,7 @@ function decRenderConditions(labo) {
     html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(o.mots) + '" placeholder="ex: VITABACT" style="' + inp + ';width:160px" oninput="decUpdOffreSpec(' + i + ',\'mots\',this.value)"></div>';
     html += '<div><label style="' + lbl + '">Paliers (unit\u00e9s/an, virgules)</label><input type="text" value="' + esc(o.seuils) + '" placeholder="84, 156" style="' + inp + ';width:130px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'seuils\',this.value)"></div>';
     html += '<div><label style="' + lbl + '">Remises (%, virgules)</label><input type="text" value="' + esc(o.remises) + '" placeholder="50, 55" style="' + inp + ';width:130px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'remises\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Obligatoires (ex: 4:TOUT|1:HYDRA,CICA)</label><input type="text" value="' + esc(o.obligatoires) + '" placeholder="4:TOUT" style="' + inp + ';width:170px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'obligatoires\',this.value)"></div>';
     html += '<button type="button" onclick="decDelOffreSpec(' + i + ')" title="Supprimer" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
     html += '</div>';
   });
@@ -7348,7 +7350,49 @@ var THEA_MARCHES_DETAIL = {
   m3: { engagement: '348 u', ouverture: '174 u', obli: '24 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 18 Blepha (dont 12 Blephasol) + 96 Vitabact 10ml + 12 Cromadoses' }
 };
 // ===== OFFRES SPECIFIQUES PRODUIT (ex: Vitabact volumes 84u/156u) =====
-function decTheaAnalyseOffreSpecifique(titre, mots, paliers, labo) {
+// ===== REFERENCES OBLIGATOIRES (generique, tout labo) =====
+// Syntaxe: "4:TOUT|1:HYDRA,CICA" -> [{min:4,mots:['TOUT']},{min:1,mots:['HYDRA','CICA']}]
+// 'TOUT' = utiliser les mots-cles de l'offre elle-meme (toute reference de l'offre comptee)
+function decParseObligatoires(str) {
+  var out = [];
+  (str || '').split('|').forEach(function(part) {
+    var m = part.split(':');
+    if (m.length < 2) return;
+    var min = parseInt(m[0].trim(), 10);
+    var mots = m[1].split(',').map(function(s){ return s.trim().toUpperCase(); }).filter(Boolean);
+    if (!isNaN(min) && mots.length > 0) out.push({ min: min, mots: mots });
+  });
+  return out;
+}
+// Verifie chaque regle : compte les references distinctes (lib) vendues (qte>0) matchant les mots
+function decObligatoiresCheck(labo, regles, motsOffre) {
+  if (!decOspharmProds || !decOspharmProds[labo] || !regles.length) return [];
+  var prods = decOspharmProds[labo];
+  return regles.map(function(r) {
+    var mots = r.mots.indexOf('TOUT') >= 0 ? motsOffre : r.mots;
+    var matches = [];
+    prods.forEach(function(p) {
+      if ((p.qte || 0) <= 0) return;
+      var L = (p.lib || '').toUpperCase();
+      if (mots.some(function(k){ return L.indexOf(k) >= 0; })) matches.push(p.lib);
+    });
+    return { min: r.min, count: matches.length, ok: matches.length >= r.min, exemples: matches.slice(0, r.min + 2) };
+  });
+}
+function decObligatoiresRender(checks) {
+  if (!checks || !checks.length) return '';
+  var html = '';
+  checks.forEach(function(c) {
+    html += '<div style="font-size:11px;margin-top:5px;padding:6px 8px;border-radius:var(--radius-sm);background:' + (c.ok ? 'var(--accent-bg)' : 'var(--danger-bg)') + ';color:' + (c.ok ? 'var(--accent-text)' : 'var(--danger)') + '">'
+      + (c.ok ? '✓' : '⚠') + ' Réf. obligatoires : <strong>' + c.count + '/' + c.min + '</strong>'
+      + (c.exemples.length ? ' — ' + c.exemples.join(', ') : '')
+      + (c.ok ? '' : ' — manquant, à compléter sur le bon de commande')
+      + '</div>';
+  });
+  return html;
+}
+
+function decTheaAnalyseOffreSpecifique(titre, mots, paliers, labo, obligatoires) {
   // paliers: [{seuil:84, remise:50}, {seuil:156, remise:55}]
   if (!decOspharmProds || !decOspharmProds[labo]) return '';
   var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
@@ -7394,6 +7438,10 @@ function decTheaAnalyseOffreSpecifique(titre, mots, paliers, labo) {
   if (reco) html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">À ce rythme, Marché ' + (paliers.indexOf(reco)+1) + ' (' + reco.seuil + 'u, ' + reco.remise + '%) est ta position de repli sans effort.</div>';
   else if (nudge) html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Aucun palier encore acquis — Marché ' + (paliers.indexOf(nudge)+1) + ' est atteignable avec un effort raisonnable.</div>';
   else html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Aucun palier absorbé ni à portée à ce rythme.</div>';
+  if (obligatoires && obligatoires.length) {
+    var motsU = mots.toUpperCase().split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    html += decObligatoiresRender(decObligatoiresCheck(labo, obligatoires, motsU));
+  }
   return html;
 }
 
@@ -9078,6 +9126,6 @@ function decTrouverQteN1(p, prodsN1) {
 }
 </script>
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.31</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.32</div>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.65
+// Calculateur Pharmacie Michelet — app.js v3.66
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -6937,7 +6937,52 @@ async function catClassifierAuto(useLabo) {
 
   // For unclassified products, use Claude API
   if (nonClasses.length > 0) {
-    if (status) status.textContent += ' Envoi a Claude pour les ' + nonClasses.length + ' non reconnus...';
+    var BATCH = 40;
+    var totalClassified = 0;
+    for (var bi = 0; bi < nonClasses.length; bi += BATCH) {
+      var batch = nonClasses.slice(bi, bi + BATCH);
+      if (status) status.textContent = 'Envoi à Claude... lot ' + (Math.floor(bi/BATCH)+1) + '/' + Math.ceil(nonClasses.length/BATCH) + ' (' + batch.length + ' produits)';
+      try {
+        var noms = batch.map(function(p,i){ return (bi+i+1) + '. ' + p.nom; }).join('\n');
+        var resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 4000,
+            messages: [{role:'user', content:
+              'Classifie ces produits pharmaceutiques/dermo-cosmétiques. Pour chacun : cat (catégorie ex: Soin corps, Soin visage, Solaire, Capillaire, Complément alimentaire, Hygiène...), scat (sous-catégorie courte), marche (gamme ex: ATODERM, CRÉALINE, PHOTODERM, SÉBIUM, HYDRABIO, NODE, CICABIO, ABCDERM, PIGMENTBIO, NUTRI CO...).\nRéponds UNIQUEMENT en JSON : {"produits":[{"idx":1,"cat":"...","scat":"...","marche":"..."}]}\n\n' + noms
+            }]
+          })
+        });
+        var data = await resp.json();
+        var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+        var jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          var parsed;
+          try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+            // Try to repair truncated JSON
+            var txt = jsonMatch[0].replace(/,\s*$/, '');
+            var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+            var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+            for (var k=0;k<op;k++) txt+=']';
+            for (var k=0;k<ob;k++) txt+='}';
+            try { parsed = JSON.parse(txt); } catch(e2) { continue; }
+          }
+          (parsed.produits||[]).forEach(function(r) {
+            var p = nonClasses[r.idx-1];
+            if (p) { p.categorie = r.cat; p.sous_cat = r.scat; p.marche = r.marche; p.classified = true; totalClassified++; }
+          });
+        }
+      } catch(err) {
+        if (status) status.textContent += ' Erreur lot ' + (Math.floor(bi/BATCH)+1) + ': ' + err.message;
+      }
+    }
+    catRenderTable();
+    if (status) status.textContent = 'Classification complète : ' + totalClassified + '/' + nonClasses.length + ' classifiés. Corrigez si besoin puis Sauvegarder.';
+  } else {
+    if (status) status.textContent = 'Classification complète. Corrigez si besoin puis Sauvegarder.';
+  }
     try {
       var noms = nonClasses.map(function(p,i){ return (i+1) + '. ' + p.nom; }).join('\n');
       var resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -6966,13 +7011,6 @@ async function catClassifierAuto(useLabo) {
     } catch(err) {
       if (status) status.textContent += ' Erreur Claude : ' + err.message;
     }
-  } else if (nonClasses.length > 30) {
-    if (status) status.textContent += ' Trop de produits non reconnus (' + nonClasses.length + ') — verifiez les noms ou ajoutez des regles locales.';
-  } else {
-    if (status) status.textContent = 'Classification complete. Corrigez si besoin puis Sauvegarder.';
-  }
-}
-
 function catUpdateProduit(idx, key, val) {
   if (!catProduits[idx]) return;
   catProduits[idx][key] = val;

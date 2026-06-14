@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.73
+// Calculateur Pharmacie Michelet — app.js v3.74
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -7082,8 +7082,8 @@ function catRenderTable() {
       // Marche = dropdown des 5 marchés officiels
       html += '<td style="' + td + 'background:#e8f8f0;min-width:118px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
         marcheOpts.replace('value="' + (p.marche_id||'') + '"', 'value="' + (p.marche_id||'') + '" selected') + '</select></td>';
-      // Gamme labo (famille extraite par IA)
-      html += '<td style="' + td + 'text-align:center;font-size:9px;font-weight:600;color:#92400e;background:#fffbeb;white-space:nowrap;min-width:80px">' + (p.famille||'-') + '</td>';
+      // Gamme labo (famille extraite par IA) - éditable
+      html += '<td style="' + td + 'background:#fffbeb;min-width:80px"><input type="text" value="' + (p.famille||'') + '" placeholder="gamme" style="font-size:9px;padding:2px 3px;border:1px solid #f59e0b;border-radius:3px;background:#fffbeb;width:100%;box-sizing:border-box;font-weight:600;color:#92400e" oninput="catUpdateProduit(' + i + ',\'famille\',this.value)"></td>';
       // Palier: conditions auto depuis marche_id
       var palierTxt = '-';
       if (mDef && p.marche_id === marcheId) {

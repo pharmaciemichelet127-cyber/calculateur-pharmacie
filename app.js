@@ -2373,8 +2373,6 @@ window.addEventListener('DOMContentLoaded', function() {
   var savedToken = localStorage.getItem('gh_token');
   var tokenEl = document.getElementById('cond-gh-token');
   if (savedToken && tokenEl) tokenEl.value = savedToken;
-  // Afficher la liste des labos dès le démarrage (sans attendre condInit)
-  try { condRenderTabs(); } catch(e) {}
   setTimeout(function(){ showTab('workflow'); }, 100);
 });
 

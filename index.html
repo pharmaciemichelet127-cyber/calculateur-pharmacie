@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.54</div>
+  <div class="ver">v3.55</div>
 </header>
 <div class="main">
 
@@ -973,44 +973,44 @@
       <details style="margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
         <summary style="cursor:pointer;padding:10px 12px;font-size:12px;font-weight:600;color:var(--accent-text)">📖 Workflow — Intégrer un nouveau catalogue labo</summary>
         <div style="padding:0 14px 14px;font-size:12px;line-height:1.55;color:var(--text)">
-
-          <p style="margin:8px 0 4px;font-size:13px;font-weight:700;color:var(--accent-text)">🚀 Workflow automatisé (v3.54+)</p>
-
-          <p style="margin:6px 0"><strong>1. Créer le labo</strong> — Onglet <strong>Labos configurés</strong> → "+ Nouveau labo" → nom sans accent (IDES, THEA) → Sauvegarder → ☁ GitHub.</p>
-
-          <p style="margin:6px 0"><strong>2. Extraire les produits (IA)</strong> — Onglet <strong>Catalogue</strong> → sélectionner le labo → <strong>🤖 Extraire produits (IA)</strong> → sélectionner le PDF catalogue. Claude analyse en <strong>4 passes automatiques</strong> (pages 1–5, 6–10, 11–15, 16–20) et extrait nom, EAN, UC, TVA, PU HT, famille. Vérifier le nombre → <strong>✓ Importer</strong>. <em>Clé API demandée une seule fois, mémorisée.</em></p>
-
-          <p style="margin:6px 0"><strong>3. Charger dans Conditions</strong> — Onglet <strong>Labos configurés</strong> → sélectionner le labo → <strong>"Importer catalogue labo"</strong> → charge tous les produits du Catalogue en 1 clic, sans PDF ni IA.</p>
-
-          <p style="margin:6px 0"><strong>4. Saisir les conditions commerciales</strong> — Remises par gamme, UG, franco, date validité. Sources : CGV annuelles, grille délégué. Si pas encore connues → saisir après le RDV.</p>
-
-          <p style="margin:6px 0"><strong>5. Importer les ventes LGPI</strong> — Bouton <strong>"Importer PDF LGPI (diagnostic)"</strong> → diagnostic automatique des marges.</p>
-
-          <p style="margin:6px 0"><strong>6. Décision RDV</strong> — Onglet <strong>⚡ Décision RDV</strong> → import Ospharm → palier atteignable, remise gagnée, marge résultante.</p>
-
-          <p style="margin:6px 0"><strong>7. Sauvegarder</strong> — ☁ GitHub après chaque modification.</p>
-
-          <p style="margin:10px 0 4px;font-size:11px;font-weight:600;color:var(--text-sec)">DÉPLOIEMENT (deux fichiers depuis v3.54)</p>
-          <pre style="margin:4px 0;padding:8px 10px;background:#1a1a18;color:#e8e6df;border-radius:var(--radius-sm);font-size:11px;overflow-x:auto">cd ~/calculateur-pharmacie
-git pull origin main --rebase
-cp ~/Downloads/index-vX.XX.html index.html
-cp ~/Downloads/app.js app.js
-git add index.html app.js
-git commit -m "feat: ..."
+          <p style="margin:6px 0"><strong>1. Préparer le document tarifaire</strong> — PDF avec : références (EAN, désignation, prix HT, TVA si dispo), conditions de remise (marchés, paliers, UG), franco / minimum de commande. Sources : CGV annuelles, tarif général, bon de commande groupement, grille délégué.</p>
+          <p style="margin:6px 0"><strong>2. Demander l'intégration à Claude</strong> — uploader le PDF avec ce message :</p>
+          <p style="margin:6px 0 6px 12px;padding:8px 10px;background:#fff;border-radius:var(--radius-sm);border:1px solid var(--border);font-style:italic">« Intègre le catalogue [NOM DU LABO] avec ce PDF, sur le même modèle que TOPICREM/BAYER/THEA : produits pré-chargés + marchés de remises. Récupère d'abord la version stable depuis GitHub et vérifie que les fixes précédents sont présents. Teste avec Node avant de me livrer. »</p>
+          <p style="margin:6px 0 6px 12px;color:var(--text-sec)">Vérifier dans la réponse : nombre de références, marchés et paliers, anomalies signalées (TVA estimées, paliers ambigus, offres datées) → points à confirmer avec le délégué.</p>
+          <p style="margin:6px 0"><strong>3. Télécharger le fichier</strong> — l'index.html livré, <u>sur le Mac de déploiement</u>. Vérifier le nom : <code>ls -lt ~/Downloads/index*.html</code> (prendre le plus récent ; si « index (1).html », adapter le cp).</p>
+          <p style="margin:6px 0"><strong>4. Déployer</strong> :</p>
+          <pre style="margin:4px 0 4px 12px;padding:8px 10px;background:#1a1a18;color:#e8e6df;border-radius:var(--radius-sm);font-size:11px;overflow-x:auto">cd ~/calculateur-pharmacie
+git pull origin main
+cp ~/Downloads/index.html index.html
+git add index.html
+git commit -m "feat: catalogue [LABO] XX refs"
 git push origin main</pre>
-
-          <p style="margin:10px 0 4px"><strong>Pièges connus</strong></p>
+          <p style="margin:4px 0 4px 12px;color:var(--text-sec)">Si pull refusé (divergence) : <code>git fetch origin &amp;&amp; git reset --hard origin/main</code> puis cp / add / commit / push. Machine sans repo : <code>git clone https://github.com/pharmaciemichelet127-cyber/calculateur-pharmacie.git</code> d'abord. Attendre 1-2 min (Vercel).</p>
+          <p style="margin:6px 0"><strong>5. Activer dans l'app</strong> — ① <strong>Cmd+Shift+R</strong> (obligatoire, sinon ancien code en cache) · ② si machine vierge : « Charger depuis GitHub » d'abord · ③ « + Nouveau labo », nom <u>exact et sans accent</u> (THEA, pas THÉA) · ④ <strong>cliquer la pastille du labo</strong> — c'est ce clic qui charge le catalogue · ⑤ onglet Catalogue : vérifier les références · ⑥ « Sauvegarder sur GitHub » → ✓.</p>
+          <p style="margin:6px 0"><strong>6. Contrôles avant le RDV</strong> — pointer 2-3 prix contre le PDF · vérifier les TVA si estimées · confirmer les points flaggés avec le délégué · saisir les conditions négociées dans ⚡ Décision RDV.</p>
+          <p style="margin:10px 0 4px"><strong>Lexique</strong> :</p>
           <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <tr style="color:var(--text-ter)"><th style="padding:3px 6px;text-align:left">Symptôme</th><th style="padding:3px 6px;text-align:left">Solution</th></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Rien ne change après déploiement</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Cmd+Shift+R · vérifier badge version</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Extraction PDF bloquée</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Vérifier clé API sur console.anthropic.com</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">"Importer catalogue labo" = 0 ref</td><td style="padding:3px 6px;border-top:1px solid var(--border)">D'abord extraire via 🤖 dans Catalogue</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">git push refusé</td><td style="padding:3px 6px;border-top:1px solid var(--border)">git pull origin main --rebase puis repusher</td></tr>
-            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Aucun labo sur une machine</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Charger depuis GitHub — jamais Sauvegarder avant</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border);white-space:nowrap"><strong>↺ Pré-remplir (offre UPP)</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Recopie dans les Conditions tout ce que contient l'offre du labo (marchés, mots-clés, taux, franco), avec les taux du <em>palier objectif</em>. C'est un « retour à l'offre » : si les cases contiennent déjà l'offre, cliquer ne change rien ; si tu as modifié des valeurs à la main, cliquer les efface pour revenir à l'offre officielle (confirmation demandée). Jamais de cumul : 10 clics = 1 clic.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>✓ ACQUIS</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Le plus haut palier d'engagement que ton rythme de vente OTC couvre déjà, sans aucun effort. C'est ta position de repli en négociation.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>🎯 OBJECTIF</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Le palier supérieur quand il est à moins de 20% d'effort de ton rythme. Le plan de commande et le pré-remplissage des conditions visent ce palier. L'écart entre ACQUIS et OBJECTIF = ce que le délégué doit t'aider à financer.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Périmètre offre</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Les seuls produits cités dans l'offre du labo. Le verdict, le volume d'engagement et les remises se calculent dessus — jamais sur tout ton CA labo (les remboursés hors offre à 0% dilueraient tout).</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Bonus remboursés</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">Remises croisées sur les remboursés cités (ex. Théa : Monoprost, Théalose…). De l'argent réel, mais jamais le critère de choix du marché — le choix se fait sur l'absorption du volume OTC.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Badge version</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">La pastille en bas à droite. Si elle diffère du numéro annoncé par Claude : Cmd+Shift+R, ou attendre 1-2 min que Vercel déploie.</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>Charger / Sauvegarder</strong></td><td style="padding:3px 6px;border-top:1px solid var(--border)">GitHub est la source de vérité des données. Sur chaque Mac : Charger avant de travailler, Sauvegarder après. Jamais Sauvegarder depuis une machine qui affiche moins de labos que la réalité.</td></tr>
           </table>
-
-          <p style="margin:10px 0 0;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)"><strong>Règle d'or multi-Mac</strong> : GitHub = source de vérité. Toujours <strong>Charger</strong> avant de travailler, <strong>Sauvegarder</strong> après.</p>
+          <p style="margin:10px 0 4px"><strong>Pièges connus</strong> :</p>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Symptôme</th><th style="padding:3px 6px">Solution</th></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Rien ne change après déploiement</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Cmd+Shift+R (cache Firefox)</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Produits ne se chargent pas</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Re-cliquer la pastille · nom sans accent</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">git pull refusé (divergence)</td><td style="padding:3px 6px;border-top:1px solid var(--border)"><code>git fetch origin &amp;&amp; git reset --hard origin/main</code></td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">« Aucun labo » sur une machine</td><td style="padding:3px 6px;border-top:1px solid var(--border)">« Charger depuis GitHub » — jamais Sauvegarder avant</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Erreur sauvegarde/chargement</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Console (Cmd+Option+K) → capture des lignes rouges → Claude</td></tr>
+            <tr><td style="padding:3px 6px;border-top:1px solid var(--border)">Un ancien fix a disparu</td><td style="padding:3px 6px;border-top:1px solid var(--border)">Déployer chaque livraison avant le chantier suivant</td></tr>
+          </table>
+          <p style="margin:10px 0 0;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)"><strong>Règle d'or multi-Mac</strong> : GitHub est la source de vérité. Toujours <strong>Charger</strong> avant de travailler, <strong>Sauvegarder</strong> après. Ne jamais sauvegarder depuis une machine qui affiche moins de labos que la réalité.</p>
         </div>
+      </details>
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Labos configurés</span>
         <div style="display:flex;gap:8px">
@@ -1585,9 +1585,9 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app.js?v=3.54"></script>
+<script src="/app.js?v=3.55"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.54</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.55</div>
 </body>
 </html>

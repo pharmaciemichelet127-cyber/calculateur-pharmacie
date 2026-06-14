@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.63
+// Calculateur Pharmacie Michelet — app.js v3.65
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -2995,54 +2995,9 @@ function condImportCatalogueLabo() {
     return;
   }
   var labo = condLabos[condLaboActif];
-
-  // Source UNIQUE : labo.produits extraits via 🤖 (array avec nom+ean+pu_catalogue)
-  // On filtre strictement les produits avec nom ET ean valides
-  var src = (labo.produits || []).filter(function(p) {
-    return p.nom && p.nom.trim() !== '' && p.ean && p.ean.length >= 8;
-  });
-
-  if (src.length === 0) {
-    if (status) { status.textContent = 'Aucun produit valide — importez d\'abord via Catalogue → 🤖 Extraire produits (IA).'; status.style.color = 'var(--danger)'; }
-    return;
-  }
-
-  // Dédupliquer par EAN
-  var seen = {};
-  var produits = [];
-  src.forEach(function(p) {
-    if (seen[p.ean]) return;
-    seen[p.ean] = true;
-    produits.push({
-      nom: p.nom.trim(),
-      ean: p.ean.trim(),
-      format: p.format || '',
-      pu_catalogue: p.pu_catalogue || 0,
-      lppr: p.lppr || 0,
-      colisage: p.colisage || p.uc || 1,
-      tva: p.tva || 20,
-      famille: p.famille || '',
-      moy: p.moy || 0, pa_net: p.pa_net || 0,
-      pv_ttc: p.pv_ttc || 0, pv_ht: p.pv_ht || 0,
-      mbu: p.mbu || 0, mb_pct: p.mb_pct || 0,
-      rem_cat: p.rem_cat || 0,
-      mois: p.mois || new Array(12).fill(0)
-    });
-  });
-
-  labo.produits = produits;
-  labo.catalogueMaj = new Date().toISOString();
-  condSauvegarder();
-
-  var majEl = document.getElementById('cond-catalogue-maj');
-  if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
-
-  if (status) {
-    status.textContent = produits.length + ' refs chargées depuis le catalogue.';
-    status.style.color = 'var(--accent-text)';
-  }
-  condUpdateDiag();
-}
+  // Fusionner produits (array) + catalogue (object clé→produit de l'onglet Catalogue)
+  var prodsFromProduits = labo.produits || [];
+  var prodsFromCatalogue = Object.values(labo.catalogue || {});
   var merged = {};
   prodsFromProduits.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k) merged[k]=p; });
   prodsFromCatalogue.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k&&!merged[k]) merged[k]=p; });
@@ -3954,67 +3909,6 @@ var cmdPaliers = [];
 var cmdPalierId = 1;
 var cmdProduitsSource = []; // produits charges depuis condLabos
 
-// ===== IMPORT RDV LABO UNIQUE =====
-window._cmdRDVData = {};
-
-function cmdImporterRDV(input) {
-  var file = input.files[0];
-  if (!file) return;
-  input.value = '';
-  var status = document.getElementById('cmd-rdv-status');
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var text = e.target.result.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-    // Parser CSV gérant champs entre guillemets avec retours à la ligne internes
-    var rows = [];
-    var row = [], cell = '', inQ = false;
-    for (var ci = 0; ci < text.length; ci++) {
-      var ch = text[ci];
-      if (ch === '"') { if (inQ && text[ci+1]==='"'){cell+='"';ci++;} else inQ=!inQ; }
-      else if (ch === ',' && !inQ) { row.push(cell.trim()); cell=''; }
-      else if (ch === '\n' && !inQ) { row.push(cell.trim()); cell=''; rows.push(row); row=[]; }
-      else { cell += ch; }
-    }
-    if (cell || row.length) { row.push(cell.trim()); rows.push(row); }
-
-    // Trouver première ligne de données avec EAN valide en colonne 1
-    var dataStart = -1;
-    for (var si = 0; si < rows.length; si++) {
-      if (/^\d{8,13}$/.test((rows[si][1]||'').replace(/\s/g,''))) { dataStart = si; break; }
-    }
-    if (dataStart < 0) {
-      if (status) { status.textContent = '❌ EAN introuvable dans le CSV'; status.style.color='var(--danger)'; }
-      return;
-    }
-    // Colonnes fixes format RDV LABO UNIQUE :
-    // 0=✓ 1=EAN 2=LIB 3=MARCHÉ 4=ROLE 5=REF 6=DN% 7=RANG 8=ALERTE 9=STOCK 10=QTÉ MOTEUR 11=QTÉ ZONE 12=ÉCART 13=QTÉ FINALE
-    window._cmdRDVData = {};
-    var nb = 0;
-    for (var di = dataStart; di < rows.length; di++) {
-      var r = rows[di];
-      if (!r || r.length < 10) continue;
-      var ean = (r[1]||'').replace(/\s/g,'');
-      if (!/^\d{8,13}$/.test(ean)) continue;
-      var qteMot  = parseInt((r[10]||'').replace(/[^\d]/g,'')) || null;
-      var qteZone = parseInt((r[11]||'').replace(/[^\d]/g,'')) || null;
-      var qteFin  = parseInt((r[13]||'').replace(/[^\d]/g,'')) || null;
-      if (!qteFin) qteFin = qteZone || qteMot;
-      window._cmdRDVData[ean] = { ean:ean, lib:r[2]||'', role:r[4]||'', qteMot:qteMot, qteZone:qteZone, qteFin:qteFin };
-      nb++;
-    }
-    if (status) { status.textContent = '✅ '+nb+' refs RDV importées'; status.style.color='var(--accent-text)'; }
-    if (document.getElementById('cmd-table') && document.getElementById('cmd-table').innerHTML.length > 100) cmdGenerer();
-  };
-  reader.readAsText(file);
-}
-
-function cmdEffacerRDV() {
-  window._cmdRDVData = {};
-  var status = document.getElementById('cmd-rdv-status');
-  if (status) status.textContent = '';
-  if (document.getElementById('cmd-table') && document.getElementById('cmd-table').innerHTML.length > 100) cmdGenerer();
-}
-
 function cmdInit() {
   // Ensure condLabos is loaded from localStorage
   if (Object.keys(condLabos).length === 0) {
@@ -4324,10 +4218,8 @@ function cmdGenerer() {
 
   var thS = 'padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;text-align:left';
   var thSR = thS+';text-align:right';
-  var hasRDV = window._cmdRDVData && Object.keys(window._cmdRDVData).length > 0;
   var html = '<thead><tr>'+
     '<th style="'+thS+'">Produit</th>'+
-    '<th style="'+thS+';font-family:monospace;font-size:9px">EAN</th>'+
     '<th style="'+thS+'">Marché</th>'+
     '<th style="'+thSR+'">Rot./mois</th>'+
     '<th style="'+thSR+'">Besoin '+moisCible+'m</th>'+
@@ -4343,7 +4235,6 @@ function cmdGenerer() {
     '<th style="'+thSR+'">PV TTC</th>'+
     '<th style="'+thSR+'">CA cde</th>'+
     '<th style="'+thSR+'">MB%</th>'+
-    (hasRDV ? '<th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Moteur</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Zone</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Écart</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Finale</th><th style="'+thS+';background:#fef3c7;color:#92400e">Rôle</th>' : '')+
     '</tr></thead><tbody>';
 
   lignes.forEach(function(l,i){
@@ -4354,12 +4245,8 @@ function cmdGenerer() {
     var ugBadge = l.ugObtenues>0
       ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+'+l.ugObtenues+'</span><br><span style="font-size:9px;color:var(--text-ter)">'+l.ugLabel+'</span>'
       : '-';
-    var rdvRow = hasRDV ? (window._cmdRDVData[l.ean] || null) : null;
-    var ecartVal = rdvRow ? (l.qte - (rdvRow.qteFin || rdvRow.qteMot || 0)) : null;
-    var ecartStr = ecartVal === null ? '' : ecartVal > 0 ? '<span style="color:var(--warn)">▲+'+ecartVal+'</span>' : ecartVal < 0 ? '<span style="color:var(--accent-text)">▼'+ecartVal+'</span>' : '<span style="color:var(--text-ter)">✅</span>';
     html += '<tr>'+
       '<td style="'+td+';max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+l.nom+'">'+l.nom+'</td>'+
-      '<td style="'+td+';font-family:monospace;font-size:10px;color:var(--text-ter)">'+l.ean+'</td>'+
       '<td style="'+td+';font-size:10px;color:var(--text-sec)">'+(l.marche||'-')+'</td>'+
       '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
       '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
@@ -4375,13 +4262,6 @@ function cmdGenerer() {
       '<td style="'+tdR+';color:var(--text-sec)">'+( l.pvTTC>0?f2(l.pvTTC):'-')+'</td>'+
       '<td style="'+tdR+';font-weight:600">'+( l.caCde>0?fE(l.caCde):'-')+'</td>'+
       '<td style="'+tdR+mbClr+'">'+( l.mb!==null?f1(l.mb)+'%':'-')+'</td>'+
-      (hasRDV ? (
-        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow&&rdvRow.qteMot!==null?rdvRow.qteMot:'-')+'</td>'+
-        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow&&rdvRow.qteZone!==null?rdvRow.qteZone:'-')+'</td>'+
-        '<td style="'+tdR+';background:#fffbeb">'+ecartStr+'</td>'+
-        '<td style="'+tdR+';background:#fffbeb;font-weight:700;color:var(--accent-text)">'+(rdvRow&&rdvRow.qteFin!==null?rdvRow.qteFin:l.qte)+'</td>'+
-        '<td style="'+td+';background:#fffbeb;font-size:10px;font-weight:600">'+(rdvRow&&rdvRow.role?rdvRow.role:'-')+'</td>'
-      ) : '')+
       '</tr>';
   });
   html += '</tbody>';
@@ -4392,14 +4272,11 @@ function cmdGenerer() {
   var totRotation = lignes.reduce(function(s,l){ return s + (l.moy||0); }, 0);
   var totQteCmd = lignes.reduce(function(s,l){ return s + (l.qte||0); }, 0);
   var couvertureCommande = totRotation > 0 ? totQteCmd / totRotation : moisCible;
-  var totQteRDV = hasRDV ? Object.values(window._cmdRDVData).reduce(function(s,r){ return s + (r.qteFin||0); }, 0) : 0;
 
   conEl.innerHTML = '<p class="nego-title">Synthèse commande</p><div class="nego-body">'+
     'Couverture <b>'+couvertureCommande.toFixed(1).replace('.',',')+' mois</b> sur <b>'+lignes.length+' références</b> | '+
-    'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b> | '+
-    'Unités payantes : <b>'+totQteCde+' u</b>'+
-    (hasRDV ? ' | <span style="color:#92400e;font-weight:600">Qté Finale RDV : '+totQteRDV+' u</span>' : '')+
-    '<br><br>'+summaryHtml+'</div>';
+    'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b><br><br>'+
+    summaryHtml+'</div>';
   conEl.style.display = 'block';
   document.getElementById('cmd-result-card').style.display = 'block';
 
@@ -4492,19 +4369,19 @@ function wfRender() {
   var steps = [
     {
       num: 1,
-      titre: 'Créer le labo dans Labos configurés',
-      desc: 'Labos configurés → + Nouveau labo → nom sans accent (IDES, THEA) → Sauvegarder → ☁ GitHub.',
+      titre: 'Créer le labo dans Cond. commerciales',
+      desc: 'Aller dans Cond. commerciales → + Nouveau labo → saisir le nom.',
       action: "showTab('cond')",
-      actionLabel: 'Aller à Labos configurés',
+      actionLabel: 'Aller à Cond. commerciales',
       check: function() { return !!labo && !!labo.nom; },
       checkLabel: function() { return labo && labo.nom ? labo.nom + ' — créé le ' + (labo.dateEval||'') : 'Labo non créé'; }
     },
     {
       num: 2,
-      titre: 'Extraire les produits du catalogue (IA)',
-      desc: 'Onglet Catalogue → sélectionner le labo → 🤖 Extraire produits (IA) → PDF catalogue → 4 passes automatiques. Puis Labos configurés → "Importer catalogue labo" → charge les produits en 1 clic.',
-      action: "showTab('cat')",
-      actionLabel: 'Aller au Catalogue',
+      titre: 'Importer le catalogue labo (PDF)',
+      desc: 'Dans Cond. commerciales → bouton "Importer catalogue labo (PDF)" → uploader le listing produits du labo. Claude extrait EAN, nom, format, PU catalogue.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
       check: function() { return labo && labo.produits && labo.produits.length > 0; },
       checkLabel: function() { return labo && labo.produits ? labo.produits.length + ' produits chargés' : 'Aucun produit'; }
     },
@@ -6924,12 +6801,6 @@ function catInjecterProduits() {
   var prods = window._catExtractedProds;
   if (!prods || !prods.length || !catLaboActif || !condLabos[catLaboActif]) return;
   var labo = condLabos[catLaboActif];
-  // Sécurité : vérifier que le labo affiché dans le select correspond bien
-  var selVal = document.getElementById('cat-labo-sel') ? document.getElementById('cat-labo-sel').value : null;
-  if (selVal && String(selVal) !== String(catLaboActif)) {
-    alert('Erreur : le labo actif ne correspond pas au select. Rechargez la page.');
-    return;
-  }
   if (!labo.produits) labo.produits = [];
   var eanExist = {};
   labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
@@ -6944,7 +6815,7 @@ function catInjecterProduits() {
   condSyncGitHubAuto();
   catChargeLabo();
   document.getElementById('cat-extract-preview').style.display = 'none';
-  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de <strong>' + (labo.nom || 'ce labo') + '</strong>. (' + (prods.length - added) + ' doublons ignorés)';
+  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
   window._catExtractedProds = null;
 }
 

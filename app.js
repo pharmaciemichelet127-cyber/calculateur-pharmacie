@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.56
+// Calculateur Pharmacie Michelet — app.js v3.57
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -3919,9 +3919,92 @@ function cmdImporterRDV(input) {
   var status = document.getElementById('cmd-rdv-status');
   var reader = new FileReader();
   reader.onload = function(e) {
-    var text = e.target.result;
-    // Détecte séparateur (tab ou virgule)
-    var sep = text.indexOf('\t') >= 0 ? '\t' : ',';
+    var text = e.target.result.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+
+    // Parser CSV simple qui gère les champs entre guillemets avec retours à la ligne
+    function parseCSV(txt) {
+      var rows = [];
+      var row = [];
+      var inQuote = false;
+      var cell = '';
+      for (var i = 0; i < txt.length; i++) {
+        var c = txt[i];
+        if (c === '"') {
+          if (inQuote && txt[i+1] === '"') { cell += '"'; i++; }
+          else inQuote = !inQuote;
+        } else if (c === ',' && !inQuote) {
+          row.push(cell.trim()); cell = '';
+        } else if (c === '\n' && !inQuote) {
+          row.push(cell.trim()); cell = '';
+          rows.push(row); row = [];
+        } else {
+          cell += c;
+        }
+      }
+      if (cell || row.length) { row.push(cell.trim()); rows.push(row); }
+      return rows;
+    }
+
+    var rows = parseCSV(text);
+
+    // Cherche la ligne d'en-tête contenant EAN (col 1)
+    // Format connu: ✓, EAN, LIBELLÉ, MARCHÉ, ROLE, RÉFÉRENCÉ, DN%ZONE, RANGZONE, ALERTEMOTEUR, STOCKACTUEL, QTÉMOTEUR(10), QTÉZONE(11), ÉCART(12), QTÉFINALE(13)
+    var dataStart = -1;
+    for (var ri = 0; ri < rows.length; ri++) {
+      var r = rows[ri];
+      if (r.length > 5 && r[1] && r[1].toUpperCase().replace(/\s/g,'').indexOf('EAN') >= 0) {
+        dataStart = ri + 1;
+        break;
+      }
+    }
+
+    if (dataStart < 0) {
+      for (var ri = 0; ri < rows.length; ri++) {
+        var ean = (rows[ri][1]||'').replace(/\s/g,'');
+        if (/^\d{8,13}$/.test(ean)) { dataStart = ri; break; }
+      }
+    }
+
+    if (dataStart < 0) {
+      if (status) { status.textContent = '❌ Format non reconnu'; status.style.color = 'var(--danger)'; }
+      return;
+    }
+
+    window._cmdRDVData = {};
+    var nb = 0;
+
+    for (var ri = dataStart; ri < rows.length; ri++) {
+      var r = rows[ri];
+      if (!r || r.length < 10) continue;
+      var ean = (r[1]||'').replace(/\s/g,'');
+      if (!/^\d{8,13}$/.test(ean)) continue;
+
+      // Colonnes fixes : 10=QTÉ MOTEUR, 11=QTÉ ZONE, 12=ÉCART, 13=QTÉ FINALE
+      var qteMot  = parseInt((r[10]||'').replace(/[^\d]/g,'')) || 0;
+      var qteZone = parseInt((r[11]||'').replace(/[^\d]/g,'')) || 0;
+      var qteFin  = parseInt((r[13]||'').replace(/[^\d]/g,'')) || 0;
+      if (qteFin === 0) qteFin = qteZone || qteMot;
+
+      window._cmdRDVData[ean] = {
+        ean: ean,
+        lib: r[2] || '',
+        qteMot: qteMot || null,
+        qteZone: qteZone || null,
+        qteFin: qteFin || null
+      };
+      nb++;
+    }
+
+    if (status) {
+      status.textContent = '✅ ' + nb + ' refs RDV importées';
+      status.style.color = 'var(--accent-text)';
+    }
+    if (document.getElementById('cmd-table') && document.getElementById('cmd-table').innerHTML.length > 100) {
+      cmdGenerer();
+    }
+  };
+  reader.readAsText(file);
+}
     var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
 
     // Cherche la ligne d'en-tête avec EAN
@@ -4344,10 +4427,10 @@ function cmdGenerer() {
       '<td style="'+tdR+';font-weight:600">'+( l.caCde>0?fE(l.caCde):'-')+'</td>'+
       '<td style="'+tdR+mbClr+'">'+( l.mb!==null?f1(l.mb)+'%':'-')+'</td>'+
       (hasRDV ? (
-        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow?(rdvRow.qteMot||'-'):'-')+'</td>'+
-        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow?(rdvRow.qteZone||'-'):'-')+'</td>'+
+        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow?(rdvRow.qteMot!==null?rdvRow.qteMot:'-'):'-')+'</td>'+
+        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow?(rdvRow.qteZone!==null?rdvRow.qteZone:'-'):'-')+'</td>'+
         '<td style="'+tdR+';background:#fffbeb">'+ecartStr+'</td>'+
-        '<td style="'+tdR+';background:#fffbeb;font-weight:700;color:var(--accent-text)">'+(rdvRow?(rdvRow.qteFin||rdvRow.qteMot||'-'):l.qte)+'</td>'
+        '<td style="'+tdR+';background:#fffbeb;font-weight:700;color:var(--accent-text)">'+(rdvRow?(rdvRow.qteFin!==null?rdvRow.qteFin:l.qte):l.qte)+'</td>'
       ) : '')+
       '</tr>';
   });

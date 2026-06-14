@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.60
+// Calculateur Pharmacie Michelet — app.js v3.61
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -4447,19 +4447,19 @@ function wfRender() {
   var steps = [
     {
       num: 1,
-      titre: 'Créer le labo dans Cond. commerciales',
-      desc: 'Aller dans Cond. commerciales → + Nouveau labo → saisir le nom.',
+      titre: 'Créer le labo dans Labos configurés',
+      desc: 'Labos configurés → + Nouveau labo → nom sans accent (IDES, THEA) → Sauvegarder → ☁ GitHub.',
       action: "showTab('cond')",
-      actionLabel: 'Aller à Cond. commerciales',
+      actionLabel: 'Aller à Labos configurés',
       check: function() { return !!labo && !!labo.nom; },
       checkLabel: function() { return labo && labo.nom ? labo.nom + ' — créé le ' + (labo.dateEval||'') : 'Labo non créé'; }
     },
     {
       num: 2,
-      titre: 'Importer le catalogue labo (PDF)',
-      desc: 'Dans Cond. commerciales → bouton "Importer catalogue labo (PDF)" → uploader le listing produits du labo. Claude extrait EAN, nom, format, PU catalogue.',
-      action: "showTab('cond')",
-      actionLabel: 'Aller à Cond. commerciales',
+      titre: 'Extraire les produits du catalogue (IA)',
+      desc: 'Onglet Catalogue → sélectionner le labo → 🤖 Extraire produits (IA) → PDF catalogue → 4 passes automatiques. Puis Labos configurés → "Importer catalogue labo" → charge les produits en 1 clic.',
+      action: "showTab('cat')",
+      actionLabel: 'Aller au Catalogue',
       check: function() { return labo && labo.produits && labo.produits.length > 0; },
       checkLabel: function() { return labo && labo.produits ? labo.produits.length + ' produits chargés' : 'Aucun produit'; }
     },

@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.62
+// Calculateur Pharmacie Michelet — app.js v3.63
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -2995,9 +2995,54 @@ function condImportCatalogueLabo() {
     return;
   }
   var labo = condLabos[condLaboActif];
-  // Fusionner produits (array) + catalogue (object clé→produit de l'onglet Catalogue)
-  var prodsFromProduits = labo.produits || [];
-  var prodsFromCatalogue = Object.values(labo.catalogue || {});
+
+  // Source UNIQUE : labo.produits extraits via 🤖 (array avec nom+ean+pu_catalogue)
+  // On filtre strictement les produits avec nom ET ean valides
+  var src = (labo.produits || []).filter(function(p) {
+    return p.nom && p.nom.trim() !== '' && p.ean && p.ean.length >= 8;
+  });
+
+  if (src.length === 0) {
+    if (status) { status.textContent = 'Aucun produit valide — importez d\'abord via Catalogue → 🤖 Extraire produits (IA).'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+
+  // Dédupliquer par EAN
+  var seen = {};
+  var produits = [];
+  src.forEach(function(p) {
+    if (seen[p.ean]) return;
+    seen[p.ean] = true;
+    produits.push({
+      nom: p.nom.trim(),
+      ean: p.ean.trim(),
+      format: p.format || '',
+      pu_catalogue: p.pu_catalogue || 0,
+      lppr: p.lppr || 0,
+      colisage: p.colisage || p.uc || 1,
+      tva: p.tva || 20,
+      famille: p.famille || '',
+      moy: p.moy || 0, pa_net: p.pa_net || 0,
+      pv_ttc: p.pv_ttc || 0, pv_ht: p.pv_ht || 0,
+      mbu: p.mbu || 0, mb_pct: p.mb_pct || 0,
+      rem_cat: p.rem_cat || 0,
+      mois: p.mois || new Array(12).fill(0)
+    });
+  });
+
+  labo.produits = produits;
+  labo.catalogueMaj = new Date().toISOString();
+  condSauvegarder();
+
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
+
+  if (status) {
+    status.textContent = produits.length + ' refs chargées depuis le catalogue.';
+    status.style.color = 'var(--accent-text)';
+  }
+  condUpdateDiag();
+}
   var merged = {};
   prodsFromProduits.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k) merged[k]=p; });
   prodsFromCatalogue.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k&&!merged[k]) merged[k]=p; });
@@ -6879,6 +6924,12 @@ function catInjecterProduits() {
   var prods = window._catExtractedProds;
   if (!prods || !prods.length || !catLaboActif || !condLabos[catLaboActif]) return;
   var labo = condLabos[catLaboActif];
+  // Sécurité : vérifier que le labo affiché dans le select correspond bien
+  var selVal = document.getElementById('cat-labo-sel') ? document.getElementById('cat-labo-sel').value : null;
+  if (selVal && String(selVal) !== String(catLaboActif)) {
+    alert('Erreur : le labo actif ne correspond pas au select. Rechargez la page.');
+    return;
+  }
   if (!labo.produits) labo.produits = [];
   var eanExist = {};
   labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
@@ -6893,7 +6944,7 @@ function catInjecterProduits() {
   condSyncGitHubAuto();
   catChargeLabo();
   document.getElementById('cat-extract-preview').style.display = 'none';
-  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
+  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de <strong>' + (labo.nom || 'ce labo') + '</strong>. (' + (prods.length - added) + ' doublons ignorés)';
   window._catExtractedProds = null;
 }
 

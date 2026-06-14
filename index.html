@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.55</div>
+  <div class="ver">v3.56</div>
 </header>
 <div class="main">
 
@@ -1423,6 +1423,12 @@ git push origin main</pre>
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Simulateur de commande</span>
         <button type="button" onclick="cmdGenerer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Calculer la commande</button>
+        <label style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">
+          📊 Importer RDV LABO (CSV)
+          <input type="file" accept=".csv,.tsv" style="display:none" onchange="cmdImporterRDV(this)">
+        </label>
+        <button type="button" onclick="cmdEffacerRDV()" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-sec);cursor:pointer" title="Effacer les données RDV importées">✕ RDV</button>
+        <span id="cmd-rdv-status" style="font-size:11px;color:var(--accent-text)"></span>
       </p>
 
       <div style="display:flex;flex-direction:column;gap:0;margin-bottom:0">
@@ -1585,9 +1591,9 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app.js?v=3.55"></script>
+<script src="/app.js?v=3.56"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.55</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.56</div>
 </body>
 </html>

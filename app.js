@@ -1,3 +1,4 @@
+// Calculateur Pharmacie Michelet — app.js v3.56
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -3908,6 +3909,80 @@ var cmdPaliers = [];
 var cmdPalierId = 1;
 var cmdProduitsSource = []; // produits charges depuis condLabos
 
+// ===== IMPORT RDV LABO UNIQUE (CSV depuis ANALYSE_ZONE) =====
+window._cmdRDVData = {};
+
+function cmdImporterRDV(input) {
+  var file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  var status = document.getElementById('cmd-rdv-status');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    // Détecte séparateur (tab ou virgule)
+    var sep = text.indexOf('\t') >= 0 ? '\t' : ',';
+    var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+
+    // Cherche la ligne d'en-tête avec EAN
+    var headerIdx = -1;
+    var cols = {};
+    for (var i = 0; i < Math.min(lines.length, 10); i++) {
+      var parts = lines[i].split(sep);
+      var eanCol = parts.findIndex(function(h){ return h.replace(/"/g,'').toUpperCase().indexOf('EAN') >= 0; });
+      if (eanCol >= 0) {
+        headerIdx = i;
+        parts.forEach(function(h, j) {
+          var hh = h.replace(/"/g,'').trim().toUpperCase();
+          if (hh.indexOf('EAN') >= 0) cols.ean = j;
+          else if (hh.indexOf('QT') >= 0 && hh.indexOf('MOTEUR') >= 0) cols.qteMot = j;
+          else if (hh.indexOf('QT') >= 0 && hh.indexOf('ZONE') >= 0) cols.qteZone = j;
+          else if (hh.indexOf('QT') >= 0 && hh.indexOf('FINALE') >= 0) cols.qteFin = j;
+          else if (hh.indexOf('LIB') >= 0 || hh.indexOf('DESIGNATION') >= 0) cols.lib = j;
+        });
+        break;
+      }
+    }
+
+    if (headerIdx < 0 || cols.ean === undefined) {
+      if (status) { status.textContent = '❌ Format non reconnu — colonne EAN introuvable'; status.style.color = 'var(--danger)'; }
+      return;
+    }
+
+    window._cmdRDVData = {};
+    var nb = 0;
+    for (var i = headerIdx + 1; i < lines.length; i++) {
+      var parts = lines[i].split(sep).map(function(v){ return v.replace(/"/g,'').trim(); });
+      var ean = parts[cols.ean] || '';
+      if (!ean || ean.length < 8) continue;
+      var qteMot = parseInt(parts[cols.qteMot]) || 0;
+      var qteZone = cols.qteZone !== undefined ? (parseInt(parts[cols.qteZone]) || 0) : 0;
+      var qteFin = cols.qteFin !== undefined ? (parseInt(parts[cols.qteFin]) || 0) : (qteZone || qteMot);
+      window._cmdRDVData[ean] = { ean: ean, lib: cols.lib !== undefined ? parts[cols.lib] : '', qteMot: qteMot, qteZone: qteZone, qteFin: qteFin };
+      nb++;
+    }
+
+    if (status) {
+      status.textContent = '✅ ' + nb + ' refs RDV importées — recalculer la commande pour voir la comparaison';
+      status.style.color = 'var(--accent-text)';
+    }
+    // Regénérer si déjà calculé
+    if (document.getElementById('cmd-table') && document.getElementById('cmd-table').innerHTML.length > 100) {
+      cmdGenerer();
+    }
+  };
+  reader.readAsText(file);
+}
+
+function cmdEffacerRDV() {
+  window._cmdRDVData = {};
+  var status = document.getElementById('cmd-rdv-status');
+  if (status) { status.textContent = ''; }
+  if (document.getElementById('cmd-table') && document.getElementById('cmd-table').innerHTML.length > 100) {
+    cmdGenerer();
+  }
+}
+
 function cmdInit() {
   // Ensure condLabos is loaded from localStorage
   if (Object.keys(condLabos).length === 0) {
@@ -4217,8 +4292,10 @@ function cmdGenerer() {
 
   var thS = 'padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;text-align:left';
   var thSR = thS+';text-align:right';
+  var hasRDV = window._cmdRDVData && Object.keys(window._cmdRDVData).length > 0;
   var html = '<thead><tr>'+
     '<th style="'+thS+'">Produit</th>'+
+    '<th style="'+thS+';font-family:monospace;font-size:9px">EAN</th>'+
     '<th style="'+thS+'">Marché</th>'+
     '<th style="'+thSR+'">Rot./mois</th>'+
     '<th style="'+thSR+'">Besoin '+moisCible+'m</th>'+
@@ -4234,6 +4311,7 @@ function cmdGenerer() {
     '<th style="'+thSR+'">PV TTC</th>'+
     '<th style="'+thSR+'">CA cde</th>'+
     '<th style="'+thSR+'">MB%</th>'+
+    (hasRDV ? '<th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Moteur</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Zone</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Écart</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Finale</th>' : '')+
     '</tr></thead><tbody>';
 
   lignes.forEach(function(l,i){
@@ -4244,8 +4322,12 @@ function cmdGenerer() {
     var ugBadge = l.ugObtenues>0
       ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+'+l.ugObtenues+'</span><br><span style="font-size:9px;color:var(--text-ter)">'+l.ugLabel+'</span>'
       : '-';
+    var rdvRow = hasRDV ? (window._cmdRDVData[l.ean] || null) : null;
+    var ecart = rdvRow ? (l.qte - (rdvRow.qteFin || rdvRow.qteMot || 0)) : null;
+    var ecartStr = ecart === null ? '' : (ecart > 0 ? '<span style="color:var(--warn)">▲+'+ecart+'</span>' : ecart < 0 ? '<span style="color:var(--accent-text)">▼'+ecart+'</span>' : '<span style="color:var(--text-ter)">✅</span>');
     html += '<tr>'+
       '<td style="'+td+';max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+l.nom+'">'+l.nom+'</td>'+
+      '<td style="'+td+';font-family:monospace;font-size:10px;color:var(--text-ter)">'+l.ean+'</td>'+
       '<td style="'+td+';font-size:10px;color:var(--text-sec)">'+(l.marche||'-')+'</td>'+
       '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
       '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
@@ -4261,6 +4343,12 @@ function cmdGenerer() {
       '<td style="'+tdR+';color:var(--text-sec)">'+( l.pvTTC>0?f2(l.pvTTC):'-')+'</td>'+
       '<td style="'+tdR+';font-weight:600">'+( l.caCde>0?fE(l.caCde):'-')+'</td>'+
       '<td style="'+tdR+mbClr+'">'+( l.mb!==null?f1(l.mb)+'%':'-')+'</td>'+
+      (hasRDV ? (
+        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow?(rdvRow.qteMot||'-'):'-')+'</td>'+
+        '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow?(rdvRow.qteZone||'-'):'-')+'</td>'+
+        '<td style="'+tdR+';background:#fffbeb">'+ecartStr+'</td>'+
+        '<td style="'+tdR+';background:#fffbeb;font-weight:700;color:var(--accent-text)">'+(rdvRow?(rdvRow.qteFin||rdvRow.qteMot||'-'):l.qte)+'</td>'
+      ) : '')+
       '</tr>';
   });
   html += '</tbody>';

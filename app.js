@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.67
+// Calculateur Pharmacie Michelet — app.js v3.72
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -6801,21 +6801,22 @@ function catInjecterProduits() {
   var prods = window._catExtractedProds;
   if (!prods || !prods.length || !catLaboActif || !condLabos[catLaboActif]) return;
   var labo = condLabos[catLaboActif];
-  if (!labo.produits) labo.produits = [];
-  var eanExist = {};
-  labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
-  var added = 0;
-  prods.forEach(function(p) {
-    if (p.ean && p.ean.length >= 8 && eanExist[p.ean]) return;
-    labo.produits.push(p);
-    if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true;
-    added++;
+  // REMPLACEMENT TOTAL : on vide d'abord, puis on injecte uniquement les produits du PDF actuel
+  // Filtre strict : EAN valide + nom non vide
+  var valid = prods.filter(function(p){ return p.nom && p.nom.trim() && p.ean && p.ean.length >= 8; });
+  // Dédupliquer par EAN
+  var seen = {};
+  var dedup = [];
+  valid.forEach(function(p){
+    if (!seen[p.ean]) { seen[p.ean] = true; dedup.push(p); }
   });
+  labo.produits = dedup;
+  labo.catalogue = {};
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
   condSyncGitHubAuto();
   catChargeLabo();
   document.getElementById('cat-extract-preview').style.display = 'none';
-  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
+  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + dedup.length + ' produits importés</strong> dans <strong>' + (labo.nom || 'ce labo') + '</strong> (catalogue précédent remplacé)';
   window._catExtractedProds = null;
 }
 

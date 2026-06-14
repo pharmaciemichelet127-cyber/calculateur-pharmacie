@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.61
+// Calculateur Pharmacie Michelet — app.js v3.62
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -771,7 +771,7 @@ Les ventes sont des entiers. Si une valeur est illisible mets 0.`;
       method: `POST`,
       headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body: JSON.stringify({
-        model: `claude-sonnet-4-20250514`,
+        model: `claude-sonnet-4-6`,
         max_tokens: 500,
         messages: [{
           role: `user`,
@@ -844,7 +844,7 @@ async function importCaptureLGPI(file, statusId, callback) {
       method: `POST`,
       headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body: JSON.stringify({
-        model: `claude-sonnet-4-20250514`,
+        model: `claude-sonnet-4-6`,
         max_tokens: 500,
         messages: [{
           role: `user`,
@@ -1724,7 +1724,7 @@ async function importMCCapture(input) {
       method: 'POST',
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2000,
         messages: [{
           role: 'user',
@@ -1938,7 +1938,7 @@ async function importMCPDF(input) {
         method: 'POST',
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 8000,
           messages: [{
             role: 'user',
@@ -3195,7 +3195,7 @@ async function condImportAvenantLabo(input) {
         method: 'POST',
         headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 16000,
           messages: [{ role: 'user', content: [
             { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
@@ -3290,7 +3290,7 @@ async function condImportPDF(input) {
       method: 'POST',
       headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1000,
         messages: [{
           role: 'user',
@@ -3475,7 +3475,7 @@ async function condImportPDFDiag(input) {
         method: 'POST',
         headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 8000,
           messages: [{
             role: 'user',
@@ -7014,7 +7014,7 @@ async function catClassifierAuto(useLabo) {
   if (status) status.textContent = 'Classification locale : ' + (catProduits.length - nonClasses.length) + ' classes, ' + nonClasses.length + ' non reconnus.';
 
   // For unclassified products, use Claude API
-  if (nonClasses.length > 0 && nonClasses.length <= 30) {
+  if (nonClasses.length > 0) {
     if (status) status.textContent += ' Envoi a Claude pour les ' + nonClasses.length + ' non reconnus...';
     try {
       var noms = nonClasses.map(function(p,i){ return (i+1) + '. ' + p.nom; }).join('\n');
@@ -7022,7 +7022,7 @@ async function catClassifierAuto(useLabo) {
         method: 'POST',
         headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 2000,
           messages: [{role:'user', content:
             'Classifie ces produits de complement alimentaire. Pour chacun donne : categorie (ex: Vitamines, Mineraux, Proteines, Acides amines, Microbiote, Beaute, Articulations, Bien-etre, Superaliments...), sous_categorie courte, marche (groupe de produits concurrents).\nReponds UNIQUEMENT en JSON : {"produits":[{"idx":1,"cat":"...","scat":"...","marche":"..."}]}\n\n' + noms

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.69</div>
+  <div class="ver">v3.70</div>
 </header>
 <div class="main">
 
@@ -1032,7 +1032,7 @@ git push origin main</pre>
         <input type="password" id="cond-gh-token" placeholder="GitHub Personal Access Token (ghp_...)" style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);flex:1;max-width:340px" oninput="localStorage.setItem('gh_token', this.value)">
         <span id="cond-backup-status" style="font-size:11px;color:var(--accent-text)"></span>
       </div>
-      <div id="cond-labo-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px"><span style="font-size:11px;color:var(--text-ter);font-style:italic">Cliquez ici pour charger les labos...</span></div>
+      <div id="cond-labo-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px"></div>
     </div>
 
     <div id="cond-labo-form" style="display:none">
@@ -1255,10 +1255,7 @@ git push origin main</pre>
   <div id="panel-workflow">
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;gap:8px;align-items:center">
-          <button type="button" id="wf-tab-cmd" onclick="wfShowTab('cmd')" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Préparer une commande</button>
-          <button type="button" id="wf-tab-new" onclick="wfShowTab('new')" style="font-size:12px;padding:5px 12px;background:transparent;color:var(--accent-text);border:1px solid var(--accent);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Intégrer un nouveau labo</button>
-        </div>
+        <span>Workflow — <button type="button" onclick="document.getElementById('wf-panel-new').style.display='none';document.getElementById('wf-steps').style.display='';document.getElementById('wf-calendrier').style.display=''" style="font-size:11px;padding:3px 8px;background:var(--accent);color:#fff;border:none;border-radius:3px;cursor:pointer;margin-right:4px">Commande</button><button type="button" onclick="document.getElementById('wf-panel-new').style.display='block';document.getElementById('wf-steps').style.display='none';document.getElementById('wf-calendrier').style.display='none'" style="font-size:11px;padding:3px 8px;background:transparent;color:var(--accent-text);border:1px solid var(--accent);border-radius:3px;cursor:pointer">Nouveau labo</button></span>
         <select id="wf-labo-sel" onchange="wfChargeLabo()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
           <option value="">-- Choisir un labo --</option>
         </select>
@@ -1266,26 +1263,7 @@ git push origin main</pre>
       <p style="font-size:11px;color:var(--text-ter);margin-bottom:16px">Suivez ces étapes dans l'ordre pour préparer une commande optimale avec remises et UG corrects.</p>
       <div id="wf-steps"></div>
     <div id="wf-calendrier" style="margin-top:16px"></div>
-    </div>
-    <div id="wf-panel-new" style="display:none;padding:4px 0">
-      <ol style="font-size:12px;line-height:1.9;padding-left:18px;color:var(--text)">
-        <li><strong>Labos configurés</strong> → "+ Nouveau labo" → nom sans accent → Sauvegarder</li>
-        <li><strong>Catalogue</strong> → sélectionner le labo → <strong>🤖 Extraire produits (IA)</strong> → PDF catalogue → 4 passes</li>
-        <li><strong>✓ Importer</strong> les produits</li>
-        <li><strong>☁ Sauvegarder sur GitHub</strong> immédiatement</li>
-        <li><strong>Auto-classifier</strong> → classification automatique par gamme</li>
-        <li><strong>Sauvegarder</strong> dans Catalogue</li>
-        <li><strong>Labos configurés</strong> → labo → <strong>"Importer catalogue labo"</strong></li>
-        <li>Saisir conditions (remises, franco, paliers) → <strong>☁ Sauvegarder sur GitHub</strong></li>
-      </ol>
-      <div style="margin-top:10px;padding:10px 14px;background:var(--accent-bg);border-radius:var(--radius-sm);font-size:11px;color:var(--accent-text)">
-        <strong>Règle d'or</strong> : ☁ Sauvegarder sur GitHub après chaque import. GitHub = source de vérité.
-      </div>
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <button type="button" onclick="showTab('cond')" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500">→ Labos configurés</button>
-        <button type="button" onclick="showTab('cat')" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500">→ Catalogue</button>
-      </div>
-    <div
+    <div id="wf-panel-new" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"><ol style="font-size:12px;line-height:1.9;padding-left:18px;margin:0"><li><strong>Labos configurés</strong> → +Nouveau labo → nom sans accent → Sauvegarder</li><li><strong>Catalogue</strong> → labo → 🤖 Extraire produits (IA) → PDF → 4 passes</li><li>✓ Importer les produits</li><li><strong>☁ Sauvegarder sur GitHub</strong> immédiatement</li><li>Auto-classifier → Sauvegarder dans Catalogue</li><li><strong>Labos configurés</strong> → labo → Importer catalogue labo</li><li>Saisir conditions → <strong>☁ Sauvegarder sur GitHub</strong></li></ol><div style="margin-top:8px;font-size:11px;color:var(--accent-text);padding:8px;background:var(--accent-bg);border-radius:4px"><strong>Règle d'or</strong> : ☁ GitHub après chaque import important.</div><div style="margin-top:8px;display:flex;gap:8px"><button onclick="showTab('cond')" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">→ Labos configurés</button><button onclick="showTab('cat')" style="font-size:11px;padding:5px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">→ Catalogue</button></div></div>
     </div>
     <div id="wf-launch" style="display:none">
       <div class="card" style="background:var(--accent-bg);border-color:var(--accent)">
@@ -1611,25 +1589,6 @@ git push origin main</pre>
 <script src="/app.js?v=3.67"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.69</div>
-<script>
-function wfShowTab(t) {
-  var cmdPanels = ['wf-steps','wf-calendrier'];
-  var newPanel = document.getElementById('wf-panel-new');
-  var btnCmd = document.getElementById('wf-tab-cmd');
-  var btnNew = document.getElementById('wf-tab-new');
-  if (t === 'new') {
-    cmdPanels.forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
-    if(newPanel) newPanel.style.display='block';
-    if(btnCmd) { btnCmd.style.background='transparent'; btnCmd.style.color='var(--accent-text)'; btnCmd.style.border='1px solid var(--accent)'; }
-    if(btnNew) { btnNew.style.background='var(--accent)'; btnNew.style.color='#fff'; btnNew.style.border='none'; }
-  } else {
-    cmdPanels.forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display=''; });
-    if(newPanel) newPanel.style.display='none';
-    if(btnCmd) { btnCmd.style.background='var(--accent)'; btnCmd.style.color='#fff'; btnCmd.style.border='none'; }
-    if(btnNew) { btnNew.style.background='transparent'; btnNew.style.color='var(--accent-text)'; btnNew.style.border='1px solid var(--accent)'; }
-  }
-}
-</script>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.70</div>
 </body>
 </html>

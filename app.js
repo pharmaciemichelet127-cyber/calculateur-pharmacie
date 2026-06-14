@@ -7002,6 +7002,7 @@ function catChargeLabo() {
       colisage:     saved.colisage     || nutroCat.colisage  || p.colisage || 1,
       tva:          saved.tva !== undefined ? saved.tva : (p.tva !== undefined ? p.tva : undefined),
       lppr:         p.lppr || 0,
+      famille:      saved.famille || p.famille || '',
       classified:   !!(saved.categorie || nutroCat.categorie)
     };
   });
@@ -7125,11 +7126,11 @@ function catSauvegarder() {
   var catalogue = {};
   catProduits.forEach(function(p) {
     var key = p.ean || p.nom;
-    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id, colisage:p.colisage||1, tva:p.tva };
+    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id, colisage:p.colisage||1, tva:p.tva, famille:p.famille||'' };
     // Also update the produit in condLabos
     var prods = condLabos[catLaboActif].produits || [];
     var orig = prods.find(function(x){ return (x.ean||x.nom) === key; });
-    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; orig.colisage = p.colisage||1; if (p.tva !== undefined) orig.tva = p.tva; }
+    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; orig.colisage = p.colisage||1; if (p.tva !== undefined) orig.tva = p.tva; orig.famille = p.famille||''; }
   });
   condLabos[catLaboActif].catalogue = catalogue;
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}

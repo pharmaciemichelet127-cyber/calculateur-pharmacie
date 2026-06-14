@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.58
+// Calculateur Pharmacie Michelet — app.js v3.59
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -4346,11 +4346,14 @@ function cmdGenerer() {
   var totRotation = lignes.reduce(function(s,l){ return s + (l.moy||0); }, 0);
   var totQteCmd = lignes.reduce(function(s,l){ return s + (l.qte||0); }, 0);
   var couvertureCommande = totRotation > 0 ? totQteCmd / totRotation : moisCible;
+  var totQteRDV = hasRDV ? Object.values(window._cmdRDVData).reduce(function(s,r){ return s + (r.qteFin||0); }, 0) : 0;
 
   conEl.innerHTML = '<p class="nego-title">Synthèse commande</p><div class="nego-body">'+
     'Couverture <b>'+couvertureCommande.toFixed(1).replace('.',',')+' mois</b> sur <b>'+lignes.length+' références</b> | '+
-    'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b><br><br>'+
-    summaryHtml+'</div>';
+    'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b> | '+
+    'Unités payantes : <b>'+totQteCde+' u</b>'+
+    (hasRDV ? ' | <span style="color:#92400e;font-weight:600">Qté Finale RDV : '+totQteRDV+' u</span>' : '')+
+    '<br><br>'+summaryHtml+'</div>';
   conEl.style.display = 'block';
   document.getElementById('cmd-result-card').style.display = 'block';
 

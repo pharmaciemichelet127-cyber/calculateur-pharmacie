@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.66
+// Calculateur Pharmacie Michelet — app.js v3.67
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -6938,10 +6938,10 @@ async function catClassifierAuto(useLabo) {
   // For unclassified products, use Claude API
   if (nonClasses.length > 0) {
     var BATCH = 40;
-    var totalClassified = 0;
+    var totalOk = 0;
     for (var bi = 0; bi < nonClasses.length; bi += BATCH) {
       var batch = nonClasses.slice(bi, bi + BATCH);
-      if (status) status.textContent = 'Envoi à Claude... lot ' + (Math.floor(bi/BATCH)+1) + '/' + Math.ceil(nonClasses.length/BATCH) + ' (' + batch.length + ' produits)';
+      if (status) status.textContent = 'Classification... lot ' + (Math.floor(bi/BATCH)+1) + '/' + Math.ceil(nonClasses.length/BATCH);
       try {
         var noms = batch.map(function(p,i){ return (bi+i+1) + '. ' + p.nom; }).join('\n');
         var resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -6951,66 +6951,38 @@ async function catClassifierAuto(useLabo) {
             model: 'claude-sonnet-4-6',
             max_tokens: 4000,
             messages: [{role:'user', content:
-              'Classifie ces produits pharmaceutiques/dermo-cosmétiques. Pour chacun : cat (catégorie ex: Soin corps, Soin visage, Solaire, Capillaire, Complément alimentaire, Hygiène...), scat (sous-catégorie courte), marche (gamme ex: ATODERM, CRÉALINE, PHOTODERM, SÉBIUM, HYDRABIO, NODE, CICABIO, ABCDERM, PIGMENTBIO, NUTRI CO...).\nRéponds UNIQUEMENT en JSON : {"produits":[{"idx":1,"cat":"...","scat":"...","marche":"..."}]}\n\n' + noms
+              'Classifie ces produits pharmaceutiques/dermo-cosmetiques. Pour chacun : cat (Soin corps, Soin visage, Solaire, Capillaire, Complement alimentaire, Hygiene...), scat (sous-categorie courte), marche (gamme: ATODERM, CREALINE, PHOTODERM, SEBIUM, HYDRABIO, NODE, CICABIO, ABCDERM, PIGMENTBIO...). JSON UNIQUEMENT: {"produits":[{"idx":1,"cat":"...","scat":"...","marche":"..."}]}\n\n' + noms
             }]
           })
         });
         var data = await resp.json();
         var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
-        var jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
+        var m = raw.match(/\{[\s\S]*\}/);
+        if (m) {
           var parsed;
-          try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
-            // Try to repair truncated JSON
-            var txt = jsonMatch[0].replace(/,\s*$/, '');
-            var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
-            var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
-            for (var k=0;k<op;k++) txt+=']';
-            for (var k=0;k<ob;k++) txt+='}';
-            try { parsed = JSON.parse(txt); } catch(e2) { continue; }
+          try { parsed = JSON.parse(m[0]); } catch(e) {
+            var t = m[0];
+            var op=(t.match(/\[/g)||[]).length-(t.match(/\]/g)||[]).length;
+            var ob=(t.match(/\{/g)||[]).length-(t.match(/\}/g)||[]).length;
+            for(var ki=0;ki<op;ki++) t+=']';
+            for(var ki=0;ki<ob;ki++) t+='}';
+            try { parsed=JSON.parse(t); } catch(e2) { continue; }
           }
           (parsed.produits||[]).forEach(function(r) {
             var p = nonClasses[r.idx-1];
-            if (p) { p.categorie = r.cat; p.sous_cat = r.scat; p.marche = r.marche; p.classified = true; totalClassified++; }
+            if (p) { p.categorie=r.cat; p.sous_cat=r.scat; p.marche=r.marche; p.classified=true; totalOk++; }
           });
         }
       } catch(err) {
-        if (status) status.textContent += ' Erreur lot ' + (Math.floor(bi/BATCH)+1) + ': ' + err.message;
+        if (status) status.textContent += ' err lot '+(Math.floor(bi/BATCH)+1)+': '+err.message;
       }
     }
     catRenderTable();
-    if (status) status.textContent = 'Classification complète : ' + totalClassified + '/' + nonClasses.length + ' classifiés. Corrigez si besoin puis Sauvegarder.';
+    if (status) status.textContent = 'Classification complete : ' + totalOk + '/' + nonClasses.length + ' classes. Sauvegarder.';
   } else {
-    if (status) status.textContent = 'Classification complète. Corrigez si besoin puis Sauvegarder.';
+    if (status) status.textContent = 'Classification complete. Sauvegarder.';
   }
-    try {
-      var noms = nonClasses.map(function(p,i){ return (i+1) + '. ' + p.nom; }).join('\n');
-      var resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 2000,
-          messages: [{role:'user', content:
-            'Classifie ces produits de complement alimentaire. Pour chacun donne : categorie (ex: Vitamines, Mineraux, Proteines, Acides amines, Microbiote, Beaute, Articulations, Bien-etre, Superaliments...), sous_categorie courte, marche (groupe de produits concurrents).\nReponds UNIQUEMENT en JSON : {"produits":[{"idx":1,"cat":"...","scat":"...","marche":"..."}]}\n\n' + noms
-          }]
-        })
-      });
-      var data = await resp.json();
-      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
-      var jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        var parsed = JSON.parse(jsonMatch[0]);
-        (parsed.produits||[]).forEach(function(r) {
-          var p = nonClasses[r.idx-1];
-          if (p) { p.categorie = r.cat; p.sous_cat = r.scat; p.marche = r.marche; p.classified = true; }
-        });
-        catRenderTable();
-        if (status) status.textContent = 'Classification complete : ' + catProduits.length + ' produits. Corrigez si besoin puis Sauvegarder.';
-      }
-    } catch(err) {
-      if (status) status.textContent += ' Erreur Claude : ' + err.message;
-    }
+}
 function catUpdateProduit(idx, key, val) {
   if (!catProduits[idx]) return;
   catProduits[idx][key] = val;

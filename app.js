@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.72
+// Calculateur Pharmacie Michelet — app.js v3.73
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -6801,22 +6801,21 @@ function catInjecterProduits() {
   var prods = window._catExtractedProds;
   if (!prods || !prods.length || !catLaboActif || !condLabos[catLaboActif]) return;
   var labo = condLabos[catLaboActif];
-  // REMPLACEMENT TOTAL : on vide d'abord, puis on injecte uniquement les produits du PDF actuel
-  // Filtre strict : EAN valide + nom non vide
-  var valid = prods.filter(function(p){ return p.nom && p.nom.trim() && p.ean && p.ean.length >= 8; });
-  // Dédupliquer par EAN
-  var seen = {};
-  var dedup = [];
-  valid.forEach(function(p){
-    if (!seen[p.ean]) { seen[p.ean] = true; dedup.push(p); }
+  if (!labo.produits) labo.produits = [];
+  var eanExist = {};
+  labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
+  var added = 0;
+  prods.forEach(function(p) {
+    if (p.ean && p.ean.length >= 8 && eanExist[p.ean]) return;
+    labo.produits.push(p);
+    if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true;
+    added++;
   });
-  labo.produits = dedup;
-  labo.catalogue = {};
   try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
   condSyncGitHubAuto();
   catChargeLabo();
   document.getElementById('cat-extract-preview').style.display = 'none';
-  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + dedup.length + ' produits importés</strong> dans <strong>' + (labo.nom || 'ce labo') + '</strong> (catalogue précédent remplacé)';
+  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
   window._catExtractedProds = null;
 }
 
@@ -7068,7 +7067,7 @@ function catRenderTable() {
     var marcheLabel = mDef ? mDef.label + ' \u2014 ' + mDef.rem + '%' + (mDef.ug_ach>0?' + '+mDef.ug_ach+'+'+mDef.ug_off+' UG':'') : marcheId;
     if (isNA) marcheLabel = '\u26a0 Non affect\u00e9';
 
-    html += '<tr style="background:' + hdrBg + '"><td colspan="' + (showLPPR ? 8 : 7) + '" style="padding:5px 10px;font-size:10px;font-weight:700;color:' + hdrClr + ';text-transform:uppercase;letter-spacing:.06em">' +
+    html += '<tr style="background:' + hdrBg + '"><td colspan="' + (showLPPR ? 9 : 8) + '" style="padding:5px 10px;font-size:10px;font-weight:700;color:' + hdrClr + ';text-transform:uppercase;letter-spacing:.06em">' +
       marcheLabel + ' <span style="font-weight:400;opacity:.7">(' + items.length + ' produit' + (items.length>1?'s':'') + ')</span></td></tr>';
 
     items.forEach(function(item) {
@@ -7083,6 +7082,8 @@ function catRenderTable() {
       // Marche = dropdown des 5 marchés officiels
       html += '<td style="' + td + 'background:#e8f8f0;min-width:118px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
         marcheOpts.replace('value="' + (p.marche_id||'') + '"', 'value="' + (p.marche_id||'') + '" selected') + '</select></td>';
+      // Gamme labo (famille extraite par IA)
+      html += '<td style="' + td + 'text-align:center;font-size:9px;font-weight:600;color:#92400e;background:#fffbeb;white-space:nowrap;min-width:80px">' + (p.famille||'-') + '</td>';
       // Palier: conditions auto depuis marche_id
       var palierTxt = '-';
       if (mDef && p.marche_id === marcheId) {

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.75</div>
+  <div class="ver">v3.77</div>
 </header>
 <div class="main">
 
@@ -1496,6 +1496,7 @@ git push origin main</pre>
           <button type="button" onclick="catApercuPDF()" style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#128196; Aperçu PDF</button>
           <label style="font-size:12px;padding:5px 12px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#8593; Importer catalogue officiel (PDF/Excel)<input type="file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="catImportOfficiel(this)"></label>
           <label style="font-size:12px;padding:5px 12px;border:1px solid #f59e0b;border-radius:var(--radius-sm);background:#fffbeb;cursor:pointer;font-weight:500;color:#92400e;">&#129302; Extraire produits (IA)<input type="file" accept=".pdf" style="display:none" onchange="catExtrarePDF(this)"></label>
+          <label style="font-size:12px;padding:5px 12px;border:1px solid #3b82f6;border-radius:var(--radius-sm);background:#eff6ff;cursor:pointer;font-weight:500;color:#1d4ed8;">&#128202; Importer catalogue (XLSX)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterXLSX(this)"></label>
           <span id="cat-officiel-info" style="font-size:11px;color:var(--text-sec)"></span>
         </div>
       </p>
@@ -1590,6 +1591,6 @@ git push origin main</pre>
 <script src="/app.js?v=3.67"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.75</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.77</div>
 </body>
 </html>

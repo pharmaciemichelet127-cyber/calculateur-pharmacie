@@ -6819,132 +6819,6 @@ function catInjecterProduits() {
   window._catExtractedProds = null;
 }
 
-
-// ===== IMPORT CATALOGUE XLSX GENERIQUE =====
-function catImporterXLSX(input) {
-  var file = input.files[0];
-  if (!file) return;
-  input.value = '';
-  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo.'); return; }
-  var statusEl = document.getElementById('cat-extract-status');
-  var previewEl = document.getElementById('cat-extract-preview');
-  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML='⏳ Lecture du fichier Excel...'; }
-  if (previewEl) previewEl.style.display='none';
-
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      var data = new Uint8Array(e.target.result);
-      var wb = XLSX.read(data, {type:'array'});
-      var ws = wb.Sheets[wb.SheetNames[0]];
-      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-
-      // Détection automatique des colonnes
-      var colEAN = -1, colNom = -1, colPrix = -1, colUC = -1, colTVA = -1, colACL = -1;
-      for (var hi = 0; hi < Math.min(rows.length, 15); hi++) {
-        var row = rows[hi];
-        row.forEach(function(cell, ci) {
-          var h = String(cell||'').toLowerCase().trim();
-          if ((h.indexOf('ean') >= 0 || h.indexOf('gencod') >= 0 || h.indexOf('code barre') >= 0) && colEAN < 0) colEAN = ci;
-          else if ((h.indexOf('désignation') >= 0 || h.indexOf('designation') >= 0 || h.indexOf('libellé') >= 0 || h.indexOf('libelle') >= 0 || h.indexOf('référence') >= 0 || h.indexOf('reference') >= 0 || h.indexOf('produit') >= 0) && colNom < 0) colNom = ci;
-          else if ((h.indexOf('prix') >= 0 || h.indexOf('tarif') >= 0 || h.indexOf('pu') >= 0 || h.indexOf('brut') >= 0) && colPrix < 0) colPrix = ci;
-          else if ((h.indexOf('unité') >= 0 || h.indexOf('unite') >= 0 || h.indexOf('colisage') >= 0 || h.indexOf('uc') >= 0 || h === 'pcb' || h.indexOf('colis') >= 0) && colUC < 0) colUC = ci;
-          else if ((h.indexOf('tva') >= 0 || h.indexOf('t.v.a') >= 0) && colTVA < 0) colTVA = ci;
-          else if ((h.indexOf('acl') >= 0 || h.indexOf('cip') >= 0 || h.indexOf('code') >= 0) && colACL < 0) colACL = ci;
-        });
-        if (colEAN >= 0 && colNom >= 0) break;
-      }
-
-      // Fallback : détection par valeurs si pas d'en-tête trouvé
-      if (colEAN < 0) {
-        for (var fi = 0; fi < Math.min(rows.length, 20); fi++) {
-          rows[fi].forEach(function(cell, ci) {
-            var v = typeof cell === 'number' ? Math.round(cell) : parseInt(String(cell||'').replace(/\s/g,''));
-            if (!isNaN(v) && String(v).length >= 8 && String(v).length <= 13 && colEAN < 0) colEAN = ci;
-          });
-          if (colEAN >= 0) break;
-        }
-        // Nom = colonne texte la plus longue près de l'EAN
-        if (colEAN >= 0 && colNom < 0) colNom = colEAN === 0 ? 1 : colEAN - 1;
-      }
-
-      var cat = '', famille = '';
-      var prods = [];
-      var seen = {};
-
-      rows.forEach(function(row) {
-        var r0 = String(row[0]||'').trim();
-        // Détection catégorie / marque dans les métadonnées
-        if (r0.toLowerCase().indexOf('catégorie') >= 0 || r0.toLowerCase().indexOf('categorie') >= 0) {
-          cat = String(row[1]||'').trim();
-        } else if (r0.toLowerCase().indexOf('marque') >= 0 || r0.toLowerCase().indexOf('gamme') >= 0 || r0.toLowerCase().indexOf('famille') >= 0) {
-          famille = String(row[1]||'').trim();
-        }
-
-        // Extraction EAN
-        var ean = '';
-        if (colEAN >= 0) {
-          var eanRaw = row[colEAN];
-          if (typeof eanRaw === 'number') ean = String(Math.round(eanRaw));
-          else ean = String(eanRaw||'').replace(/\s/g,'');
-        }
-        // EAN valide : 8-13 chiffres
-        if (!/^\d{8,13}$/.test(ean)) return;
-        if (seen[ean]) return;
-
-        var nom = colNom >= 0 ? String(row[colNom]||'').trim() : '';
-        if (!nom) return;
-
-        var pu_ht = colPrix >= 0 ? (parseFloat(row[colPrix]) || 0) : 0;
-        var tva = colTVA >= 0 ? (parseFloat(row[colTVA]) || 0.055) : 5.5;
-        if (tva < 1) tva = Math.round(tva * 1000) / 10;
-        var uc = colUC >= 0 ? (parseInt(row[colUC]) || 1) : 1;
-        if (isNaN(uc) || uc < 1) uc = 1;
-        var acl = colACL >= 0 ? String(row[colACL]||'').trim() : '';
-
-        seen[ean] = true;
-        prods.push({
-          nom: nom, ean: ean, acl: acl,
-          uc: uc, tva: tva, pu_catalogue: pu_ht,
-          famille: famille, categorie: cat, sous_cat: '',
-          format: '', marche_id: '', colisage: uc, min_cmd: uc,
-          panachage: true, nouveaute: false, remises_paliers: [], lppr: 0,
-          moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0,
-          mois:[0,0,0,0,0,0,0,0,0,0,0,0]
-        });
-      });
-
-      if (prods.length === 0) {
-        if (statusEl) statusEl.innerHTML = '❌ Aucun produit trouvé — vérifiez le format (EAN en colonne B, Prix en D).';
-        return;
-      }
-
-      // Aperçu familles
-      var familles = {};
-      prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
-      var famHtml = Object.keys(familles).sort().map(function(f){
-        return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>';
-      }).join('');
-
-      window._catExtractedProds = prods;
-      if (statusEl) statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits lus</strong> depuis Excel.';
-      if (previewEl) {
-        previewEl.style.display = 'block';
-        previewEl.innerHTML = '<div style="background:#eff6ff;border:1px solid #3b82f6;border-radius:var(--radius-sm);padding:10px 12px">'
-          + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Marques détectées (' + prods.length + ' produits) :</div>'
-          + '<div style="margin-bottom:10px">' + famHtml + '</div>'
-          + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Le catalogue existant sera <strong>remplacé</strong>.</div>'
-          + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#3b82f6;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
-          + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
-          + '</div>';
-      }
-    } catch(err) {
-      if (statusEl) statusEl.innerHTML = '❌ Erreur lecture Excel : ' + err.message;
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
 function catInit() {
   // Load condLabos if needed
   if (Object.keys(condLabos).length === 0) {
@@ -6957,10 +6831,9 @@ function catInit() {
   var sel = document.getElementById('cat-labo-sel');
   if (!sel) return;
   while (sel.options.length > 1) sel.remove(1);
-  var labosTriés = Object.keys(condLabos).filter(function(id){ return condLabos[id].nom; });
-  labosTriés.sort(function(a,b){ return condLabos[a].nom.localeCompare(condLabos[b].nom, 'fr'); });
-  labosTriés.forEach(function(id) {
+  Object.keys(condLabos).forEach(function(id) {
     var labo = condLabos[id];
+    if (!labo.nom) return;
     var opt = document.createElement('option');
     opt.value = id;
     opt.textContent = labo.nom + (labo.produits ? ' (' + labo.produits.length + ' prod.)' : '');

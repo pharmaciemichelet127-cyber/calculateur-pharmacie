@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.59
+// Calculateur Pharmacie Michelet — app.js v3.60
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -3954,7 +3954,7 @@ function cmdImporterRDV(input) {
       var qteZone = parseInt((r[11]||'').replace(/[^\d]/g,'')) || null;
       var qteFin  = parseInt((r[13]||'').replace(/[^\d]/g,'')) || null;
       if (!qteFin) qteFin = qteZone || qteMot;
-      window._cmdRDVData[ean] = { ean:ean, lib:r[2]||'', qteMot:qteMot, qteZone:qteZone, qteFin:qteFin };
+      window._cmdRDVData[ean] = { ean:ean, lib:r[2]||'', role:r[4]||'', qteMot:qteMot, qteZone:qteZone, qteFin:qteFin };
       nb++;
     }
     if (status) { status.textContent = '✅ '+nb+' refs RDV importées'; status.style.color='var(--accent-text)'; }
@@ -4298,7 +4298,7 @@ function cmdGenerer() {
     '<th style="'+thSR+'">PV TTC</th>'+
     '<th style="'+thSR+'">CA cde</th>'+
     '<th style="'+thSR+'">MB%</th>'+
-    (hasRDV ? '<th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Moteur</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Zone</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Écart</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Finale</th>' : '')+
+    (hasRDV ? '<th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Moteur</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Zone</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Écart</th><th style="'+thSR+';background:#fef3c7;color:#92400e">Qté Finale</th><th style="'+thS+';background:#fef3c7;color:#92400e">Rôle</th>' : '')+
     '</tr></thead><tbody>';
 
   lignes.forEach(function(l,i){
@@ -4334,7 +4334,8 @@ function cmdGenerer() {
         '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow&&rdvRow.qteMot!==null?rdvRow.qteMot:'-')+'</td>'+
         '<td style="'+tdR+';background:#fffbeb;font-weight:600">'+(rdvRow&&rdvRow.qteZone!==null?rdvRow.qteZone:'-')+'</td>'+
         '<td style="'+tdR+';background:#fffbeb">'+ecartStr+'</td>'+
-        '<td style="'+tdR+';background:#fffbeb;font-weight:700;color:var(--accent-text)">'+(rdvRow&&rdvRow.qteFin!==null?rdvRow.qteFin:l.qte)+'</td>'
+        '<td style="'+tdR+';background:#fffbeb;font-weight:700;color:var(--accent-text)">'+(rdvRow&&rdvRow.qteFin!==null?rdvRow.qteFin:l.qte)+'</td>'+
+        '<td style="'+td+';background:#fffbeb;font-size:10px;font-weight:600">'+(rdvRow&&rdvRow.role?rdvRow.role:'-')+'</td>'
       ) : '')+
       '</tr>';
   });

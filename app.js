@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.80
+// Calculateur Pharmacie Michelet — app.js v3.82
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -2202,6 +2202,34 @@ async function condGitHubPutRetry(token, b64, sha) {
   }
 }
 
+// ===== SYNC PRODUITS PAR LABO SUR GITHUB (v3.82) =====
+async function condSauvegarderProduitsGitHub(laboId) {
+  var token = localStorage.getItem('gh_token');
+  if (!token || !laboId || !condLabos[laboId]) return;
+  var prods = condLabos[laboId].produits || [];
+  if (!prods.length) return;
+  var path = 'produits/' + laboId + '.json';
+  try {
+    var data = JSON.stringify({ laboId: laboId, nom: condLabos[laboId].nom || '', date: new Date().toISOString(), produits: prods });
+    var b64 = btoa(unescape(encodeURIComponent(data)));
+    var sha = await condGitHubGetSha(token, path);
+    await condGitHubPutFile(token, path, b64, sha, 'Produits ' + (condLabos[laboId].nom || laboId) + ' v3.82');
+  } catch(e) { /* silencieux */ }
+}
+async function condChargerProduitsGitHub(laboId) {
+  var token = localStorage.getItem('gh_token');
+  if (!token || !laboId) return;
+  var path = 'produits/' + laboId + '.json';
+  try {
+    var r = await fetch('https://raw.githubusercontent.com/' + GH_OWNER + '/' + GH_REPO + '/' + GH_BRANCH + '/' + path + '?t=' + Date.now());
+    if (!r.ok) return;
+    var d = await r.json();
+    if (d && d.produits && d.produits.length > 0) {
+      condLabos[laboId].produits = d.produits;
+      try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+    }
+  } catch(e) { /* silencieux */ }
+}
 async function condSyncGitHubAuto() {
   var token = localStorage.getItem('gh_token');
   if (!token) return;
@@ -3110,6 +3138,7 @@ function condImportCatalogueLaboXLSX(input) {
         var ean = colMap.ean !== undefined ? String(row2[colMap.ean] || '').trim().replace(/\D/g,'') : '';
         var nom = colMap.nom !== undefined ? String(row2[colMap.nom] || '').trim() : '';
         var labo = colMap.labo !== undefined ? String(row2[colMap.labo] || '').trim() : '';
+        var famille = colMap.gamme !== undefined ? String(row2[colMap.gamme] || '').trim() : '';
         var colisage = colMap.colisage !== undefined ? (parseInt(row2[colMap.colisage]) || 1) : 1;
         var pu = colMap.pu_catalogue !== undefined ? (parseFloat(String(row2[colMap.pu_catalogue]).replace(',','.')) || 0) : 0;
         var prixNetRendu = colMap.prix_net_rendu !== undefined ? (parseFloat(String(row2[colMap.prix_net_rendu]).replace(',','.')) || 0) : 0;
@@ -3123,6 +3152,7 @@ function condImportCatalogueLaboXLSX(input) {
 
         existing.push({
           nom: nom, ean: ean, labo: labo,
+          famille: famille,
           format: '', colisage: colisage,
           pu_catalogue: pu, prix_net_rendu: prixNetRendu, lppr: 0,
           tva: tva,
@@ -3136,12 +3166,13 @@ function condImportCatalogueLaboXLSX(input) {
       condLabos[condLaboActif].produits = existing;
       condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
       condSauvegarder();
+      condSauvegarderProduitsGitHub(condLaboActif);
 
       var majEl = document.getElementById('cond-catalogue-maj');
       if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
 
       if (status) {
-        status.textContent = nb + ' refs ajoutées depuis XLSX (total : ' + existing.length + ' produits)';
+        status.textContent = nb + ' refs ajoutées depuis XLSX (total : ' + existing.length + ' produits) — sync GitHub ☁';
         status.style.color = 'var(--accent-text)';
       }
       condUpdateDiag();
@@ -3254,6 +3285,7 @@ async function condImportAvenantLabo(input) {
       if (ve) { ve.value = allDateValidite; condCheckValidite(); }
     }
     condSauvegarder();
+    condSauvegarderProduitsGitHub(condLaboActif);
 
     var majEl = document.getElementById('cond-catalogue-maj');
     if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
@@ -3625,6 +3657,7 @@ async function condImportPDFDiag(input) {
 
     condLabos[condLaboActif].alertes = alertes;
     condLabos[condLaboActif].produits = prods;
+    condSauvegarderProduitsGitHub(condLaboActif);
 
     // Calculer CA et marge sur l'exercice Jan→dateEval (mois de l'année civile)
     // PDF order: mois[0]=jun26, mois[1]=mai26, ..., mois[11]=juil25
@@ -6850,6 +6883,11 @@ function catChargeLabo() {
   var labo = condLabos[catLaboActif];
   if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
   catRenderOfficielInfo();
+  // Si pas de produits locaux, tenter de charger depuis GitHub puis recharger
+  if ((!labo.produits || labo.produits.length === 0) && localStorage.getItem('gh_token')) {
+    condChargerProduitsGitHub(catLaboActif).then(function() { catChargeLabo(); });
+    return;
+  }
   var src = labo.produits || [];
   // Merge with existing catalogue if any
   var existing = labo.catalogue || {};

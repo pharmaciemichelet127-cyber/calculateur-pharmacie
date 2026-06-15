@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v3.86</div>
+  <div class="ver">v3.87</div>
 </header>
 <div class="main">
 
@@ -1491,6 +1491,7 @@ git push origin main</pre>
           <button type="button" onclick="catClassifierAuto(false)" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Auto-classifier</button>
           <button type="button" onclick="catClassifierAuto(true)" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Catalogue labo</button>
           <button type="button" onclick="catSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
+          <button type="button" onclick="catSauvegarder();if(catLaboActif)condSauvegarderProduitsGitHub(catLaboActif).then(function(){var s=document.getElementById('cat-status');if(s){s.textContent='☁ Produits sauvegardés sur GitHub';setTimeout(function(){s.textContent=''},3000);}});" style="font-size:12px;padding:5px 12px;background:#2563eb;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">☁ GitHub</button>
           <button type="button" onclick="catExportXLSX()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">&#8595; Export Excel</button>
           <button type="button" onclick="catApercuPDF()" style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#128196; Aperçu PDF</button>
           <label style="font-size:12px;padding:5px 12px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#8593; Importer catalogue officiel (PDF/Excel)<input type="file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="catImportOfficiel(this)"></label>
@@ -1587,9 +1588,9 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v386.js"></script>
+<script src="/app-v387.js"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.86</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v3.87</div>
 </body>
 </html>

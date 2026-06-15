@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.83
+// Calculateur Pharmacie Michelet — app.js v3.84
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -3561,8 +3561,9 @@ async function condImportPDFDiag(input) {
     var prods = Object.values(allProds);
     if (prods.length === 0) throw new Error('Aucun produit extrait');
 
-    // Merger avec NUTRICO_CATALOGUE : ajouter les refs manquantes (non vendues) avec moy=0
-    if (typeof NUTRICO_CATALOGUE !== 'undefined') {
+    // Merger avec NUTRICO_CATALOGUE : UNIQUEMENT pour NUTRI&CO (v3.84)
+    var _isNutrico = condLabos[condLaboActif] && (condLabos[condLaboActif].nom || '').toUpperCase().indexOf('NUTRI') >= 0;
+    if (_isNutrico && typeof NUTRICO_CATALOGUE !== 'undefined') {
       var eansDansProds = {};
       prods.forEach(function(p){ if (p.ean && p.ean.length >= 10) eansDansProds[p.ean] = true; });
       Object.keys(NUTRICO_CATALOGUE).forEach(function(ean) {

@@ -1,4 +1,4 @@
-// Calculateur Pharmacie Michelet — app.js v3.84
+// Calculateur Pharmacie Michelet — app.js v3.85
 var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
 var stratData = null;
 var stratFiltre = 'tous';
@@ -6899,11 +6899,7 @@ function catChargeLabo() {
   var labo = condLabos[catLaboActif];
   if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
   catRenderOfficielInfo();
-  // Si pas de produits locaux, tenter de charger depuis GitHub puis recharger
-  if ((!labo.produits || labo.produits.length === 0) && localStorage.getItem('gh_token')) {
-    condChargerProduitsGitHub(catLaboActif).then(function() { catChargeLabo(); });
-    return;
-  }
+  // Pas de chargement automatique GitHub (v3.85 - trop de 404) - utiliser le bouton ☁
   var src = labo.produits || [];
   // Merge with existing catalogue if any
   var existing = labo.catalogue || {};

@@ -7153,7 +7153,7 @@ function catRenderTable() {
   var marchesActifs = getMarchesLabo(catLaboActif);
   var marcheOpts = '<option value="">\u2014 choisir \u2014</option>';
   marchesActifs.forEach(function(m) {
-    marcheOpts += '<option value="' + m.id + '">' + m.label + ' \u2014 ' + (m.rem||m.rem_30||0) + '%' +
+    marcheOpts += '<option value="' + m.label + '">' + m.label + ' \u2014 ' + (m.rem||m.rem_30||0) + '%' +
       (m.ug_ach > 0 ? ' + ' + m.ug_ach + '+' + m.ug_off + ' UG' : '') + '</option>';
   });
 
@@ -7205,7 +7205,7 @@ function catRenderTable() {
       html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
       // Marche = dropdown des 5 marchés officiels
       html += '<td style="' + td + 'background:#e8f8f0;min-width:118px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
-        (function(opts,mid,mlabel){var byId=mid && opts.indexOf('value="'+mid+'"')>=0;if(byId) return opts.replace('value="'+mid+'"','value="'+mid+'" selected');if(mlabel){var idx2=opts.indexOf('>'+mlabel+' —');if(idx2<0) idx2=opts.indexOf('>'+mlabel+'<');if(idx2>=0){var start=opts.lastIndexOf('<option',idx2);return opts.slice(0,start)+'<option selected'+opts.slice(start+7);}}return opts;})(marcheOpts,p.marche_id||'',p.marche||'') + '</select></td>';
+        marcheOpts.replace('value="' + (p.marche||'') + '"', 'value="' + (p.marche||'') + '" selected') + '</select></td>';
       // Gamme labo (famille) - éditable
       html += '<td style="' + td + 'background:#fffbeb;min-width:80px"><input type="text" value="' + (p.famille||'') + '" placeholder="gamme" style="font-size:9px;padding:2px 3px;border:1px solid #f59e0b;border-radius:3px;background:#fffbeb;width:100%;box-sizing:border-box;font-weight:600;color:#92400e" oninput="catUpdateProduit(' + i + ',\'famille\',this.value)"></td>';
       // Palier: conditions auto depuis marche_id

@@ -7884,4 +7884,4 @@ function decTrouverQteN1(p, prodsN1) {
     if (decCarteNorm(prodsN1[j].lib) === libNorm) return prodsN1[j].qte;
   }
   return null;
-}
+}/* v4.00 */

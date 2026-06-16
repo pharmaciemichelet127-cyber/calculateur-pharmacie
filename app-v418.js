@@ -1,0 +1,8224 @@
+// Calculateur Pharmacie Michelet — app.js v3.89
+var MOIS_LABELS = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
+var stratData = null;
+var stratFiltre = 'tous';
+var pmMode = 'mb';
+var situation = 'new';
+var bundleInited = false;
+var histoData = { neg: new Array(12).fill(0), prix: new Array(12).fill(0) };
+var histoVisible = { neg: false, prix: false };
+
+function setSituation(s) {
+  situation = s;
+  document.getElementById('tog-new').classList.toggle('active', s==='new');
+  document.getElementById('tog-exist').classList.toggle('active', s==='exist');
+  document.getElementById('situation-exist').style.display = s==='exist' ? 'block' : 'none';
+  recalc();
+}
+
+function showTab(t) {
+  var WIDE = ['cat','sim','cmd','prixnet','decision'];
+  var mainEl = document.querySelector('.main');
+  ['neg','prix','lex','pm','bundle','strat','verdict','mc','cond','guide','prixnet','cmd','cat','sim','workflow','decision'].forEach(function(x) {
+    var p = document.getElementById('panel-'+x);
+    var b = document.getElementById('tab-'+x);
+    if (p) p.style.display = x===t ? 'block' : 'none';
+    if (b) b.classList.toggle('active', x===t);
+  });
+  if (mainEl) {
+    if (WIDE.indexOf(t) >= 0) {
+      mainEl.style.maxWidth = '100%';
+      mainEl.style.paddingLeft = '24px';
+      mainEl.style.paddingRight = '24px';
+    } else {
+      mainEl.style.maxWidth = '720px';
+      mainEl.style.paddingLeft = '16px';
+      mainEl.style.paddingRight = '16px';
+    }
+  }
+  if (t === 'bundle' && !bundleInited) { bundleInited = true; initBundleTotals(); }
+  if (t === 'pm')      try { calcPM(); }     catch(e) { console.error('calcPM',e); }
+  if (t === 'prix')    try { calcPrix(); }   catch(e) { console.error('calcPrix',e); }
+  if (t === 'mc')      try { calcMC(); }     catch(e) { console.error('calcMC',e); }
+  if (t === 'cond')     try { if(!condInited){condInited=true;condInit();} } catch(e) {}
+  if (t === 'prixnet' && !pnInited) { pnInited=true; pnAjouterLigne(); pnAjouterLigne(); pnAjouterLigne(); }
+  if (t === 'cmd') { if(!cmdInited){cmdInited=true;} cmdInit(); }
+  if (t === 'cat') { if(!condInited){condInited=true;condInit();} if(!catInited){catInited=true;} catInit(); }
+  if (t === 'sim') { if(!simInited){simInited=true;} simInit(); }
+  if (t === 'workflow') { wfInit(); wfRender(); }
+  if (t === 'verdict') try { runVerdict(); } catch(e) { console.error('verdict',e); }
+}
+
+function setPm(m) {
+  pmMode = m;
+  document.getElementById('pm-mb').classList.toggle('active', m==='mb');
+  document.getElementById('pm-k').classList.toggle('active', m==='k');
+  document.getElementById('pm-row-mb').style.display = m==='mb' ? 'flex' : 'none';
+  document.getElementById('pm-row-k').style.display  = m==='k'  ? 'flex' : 'none';
+  calcPrix();
+}
+
+function fe(v, d=2) { return v.toFixed(d).replace('.', ',') + ' €'; }
+function fp(v, d=1) { return v.toFixed(d).replace('.', ',') + ' %'; }
+function fn(v, d=3) { return v.toFixed(d).replace('.', ','); }
+
+function met(cls, lbl, val, sub) {
+  return `<div class="met ${cls}"><p class="lbl">${lbl}</p><p class="val">${val}</p>${sub ? `<p class="sub">${sub}</p>` : ''}</div>`;
+}
+
+function recalc() {
+  const pacat   = parseFloat(document.getElementById('pacat').value) || 0;
+  const remb    = parseFloat(document.getElementById('rembase').value) || 0;
+  const tvaRate = parseFloat(document.getElementById('tva').value) / 100;
+  const tvaMult = 1 + tvaRate;
+  const pvttc   = parseFloat(document.getElementById('pvttc').value) || 0;
+  const mbCib   = parseFloat(document.getElementById('mbcible').value) || 0;
+  const qteVal  = parseInt(document.getElementById('qte-val').value) || 12;
+  const qteUG   = parseInt(document.getElementById('qte-ug').value) || 12;
+  const ugPa    = parseFloat(document.getElementById('ug-pa').value) || 0;
+
+
+  if (!pacat) return;
+
+  // PA HT actuel
+  const pahta = pacat * (1 - remb / 100);
+  document.getElementById('paht-actuel').textContent = '→ PA HT actuel : ' + fe(pahta);
+
+  // Vérif MB warn
+  const warnEl = document.getElementById('mb-warn');
+  if (mbCib <= 0) { warnEl.textContent = '⚠ objectif nul'; warnEl.className = 'hint danger'; }
+  else if (mbCib < 15) { warnEl.textContent = '⚠ marge faible'; warnEl.className = 'hint warn'; }
+  else { warnEl.textContent = ''; warnEl.className = 'hint'; }
+
+  if (!pvttc || !mbCib) return;
+
+  const pvht = pvttc / tvaMult;
+
+  // PA HT actuel → MB actuel sur PV cible
+  const mbActuelSurCible = pahta > 0 ? (pvht - pahta) / pvht * 100 : 0;
+  const KActuel  = pahta > 0 ? pvttc / pahta : 0;
+
+  // PA HT cible
+  const pahtCib = pvht * (1 - mbCib / 100);
+  const KCib    = tvaMult / (1 - mbCib / 100);
+  const mbuCib  = pvht - pahtCib;
+
+  // Écart unitaire à combler
+  const ecart = pahta - pahtCib;
+
+  // Remise totale sur catalogue
+  const remTotale = pacat > 0 ? (1 - pahtCib / pacat) * 100 : 0;
+  // Remise additionnelle = sur le PA HT déjà remisé (comme LGPI)
+  const remAddi   = pahta > 0 ? (1 - pahtCib / pahta) * 100 : 0;
+
+  // Bloc comparaison situation actuelle
+  const cmpEl = document.getElementById('grid-compare');
+  const hrEl  = document.getElementById('hr-compare');
+  if (situation === 'exist') {
+    const pvActuel  = parseFloat(document.getElementById('pv-actuel').value) || 0;
+    const mbActuel  = parseFloat(document.getElementById('mb-actuel').value) || 0;
+    const colisage  = parseInt(document.getElementById('colisage').value) || 0;
+    const pvhtAct   = pvActuel > 0 ? pvActuel / tvaMult : 0;
+    const pahtActMB = pvhtAct > 0 ? pvhtAct * (1 - mbActuel / 100) : 0;
+    const deltaPV   = pvttc - pvActuel;
+    const deltaMB   = mbCib - mbActuel;
+    let html = '<div class="rgrid">';
+    html += met('', 'PV TTC actuel', pvActuel > 0 ? fe(pvActuel) : '—', '');
+    html += met('hi', 'PV TTC cible', fe(pvttc), deltaPV !== 0 ? `${deltaPV > 0 ? '+' : ''}${fe(deltaPV)} vs actuel` : 'inchangé');
+    html += met('', 'Taux de marque actuel', mbActuel > 0 ? fp(mbActuel) : '—', pvActuel > 0 && mbActuel > 0 ? `PA HT impliqué : ${fe(pahtActMB)}` : '');
+    html += met('hi', 'Taux de marque cible', fp(mbCib), deltaMB !== 0 ? `${deltaMB > 0 ? '+' : ''}${fp(deltaMB)} vs actuel` : 'inchangé');
+    if (colisage > 0) {
+      const gainUnitaire = mbuCib - (pvhtAct > 0 && mbActuel > 0 ? pvhtAct - pahtActMB : 0);
+      html += met(gainUnitaire >= 0 ? 'hi' : 'warn', `Gain MB / colis (${colisage} u.)`, gainUnitaire !== 0 ? fe(gainUnitaire * colisage) : '—', gainUnitaire >= 0 ? '✓ amélioration' : '⚠ dégradation');
+      html += met('', 'MBu cible', fe(mbuCib), `colisage ${colisage} u. → ${fe(mbuCib * colisage)} / colis`);
+    }
+    html += '</div>';
+    cmpEl.innerHTML = html;
+    hrEl.style.display = 'block';
+  } else {
+    cmpEl.innerHTML = '';
+    hrEl.style.display = 'none';
+  }
+
+  // Grid achat
+  document.getElementById('grid-results').innerHTML =
+    met('', 'PA HT actuel', fe(pahta), `remise base ${fp(remb, 1)}`) +
+    met('hi', 'PA HT cible', fe(pahtCib), `pour MB ${fp(mbCib)} sur PV ${fe(pvttc)}`) +
+    met(ecart > 0.005 ? 'warn' : 'hi', 'Écart à négocier / unité', fe(ecart), ecart > 0.005 ? 'à réduire' : '✓ déjà atteint') +
+    met('', 'MB% avec PA actuel sur PV cible', fp(mbActuelSurCible), `coeff. K cible : ${fn(KCib)}`);
+
+  document.getElementById('formula-box').innerHTML =
+    `PA HT cible = PV TTC ÷ (1 + TVA%) × (1 − MB%) = ${fe(pvttc)} ÷ ${fn(tvaMult, 3)} × ${fn(1 - mbCib/100, 3)} = <b>${fe(pahtCib)}</b>`;
+
+  const ok = ecart <= 0.005;
+  const okBadge = '<span class="badge ok">✓ Objectif déjà atteint</span>';
+
+  // Option 1 — remise %
+  document.getElementById('neg-rem').innerHTML = ok ? okBadge :
+    `Remise additionnelle à demander (sur PA net actuel) : <b>${fp(remAddi)}</b><br>
+     Remise totale sur prix catalogue : <b>${fp(remTotale)}</b><br>
+     PA HT actuel : <b>${fe(pahta)}</b> → PA HT cible : <b>${fe(pahtCib)}</b>`;
+
+  // Option 2 — valeur absolue €
+  const coopTotal = ecart * qteVal;
+  document.getElementById('neg-val').innerHTML = ok ? okBadge :
+    `Écart unitaire <b>${fe(ecart)}</b> × <b>${qteVal}</b> unités<br>
+     → Remise / avoir / RFA à demander : <b>${fe(coopTotal)}</b><br>
+     PA net effectif : <b>${fe(pahta - coopTotal / qteVal)}</b>`;
+
+  // Option 3 — UG même produit
+  const ugNb  = pahtCib > 0 ? (qteUG * pahta / pahtCib - qteUG) : 0;
+  const ugInt = Math.ceil(ugNb);
+  const paNetUG = pahta * qteUG / (qteUG + ugInt);
+  const mbUG    = (pvht - paNetUG) / pvht * 100;
+  document.getElementById('neg-ug').innerHTML = ok ? okBadge :
+    `Pour <b>${qteUG}</b> unités payantes → demander <b>${ugInt} UG</b><br>
+     Valeur des UG au PA : <b>${fe(ugInt * pahta)}</b><br>
+     PA net effectif : <b>${fe(paNetUG)}</b> → MB obtenu : <b>${fp(mbUG)}</b>`;
+
+  // Option 4 — remise absolue (option 2) ÷ valeur unitaire = nb unités arrondi au supérieur
+  if (ugPa > 0) {
+    const ugNbExact = coopTotal / ugPa;
+    const ugNbA     = Math.ceil(ugNbExact);
+    const ugValA    = ugNbA * ugPa;
+    document.getElementById('neg-ug-autre').innerHTML = ok ? okBadge :
+      `Remise absolue à couvrir : <b>${fe(coopTotal)}</b> (pour ${qteVal} unités)<br>
+       Valeur unitaire du produit offert : <b>${fe(ugPa)}</b><br>
+       Calcul : ${fe(coopTotal)} ÷ ${fe(ugPa)} = ${ugNbExact.toFixed(2).replace('.',',')} → arrondi à <b>${ugNbA} unité${ugNbA > 1 ? 's' : ''}</b><br>
+       → Le delegue doit offrir <b>${ugNbA} unité${ugNbA > 1 ? 's' : ''}</b> (valeur : <b>${fe(ugValA)}</b>)`;
+  } else {
+    document.getElementById('neg-ug-autre').innerHTML =
+      '<span style="color:var(--text-ter);font-size:12px">Saisir le PA HT du produit proposé en échange.</span>';
+  }
+}
+
+// ===== PRIX DE VENTE =====
+function calcPrixFromCat() {
+  const pacat = parseFloat(document.getElementById(`p-pacat`).value) || 0;
+  const rem   = parseFloat(document.getElementById(`p-rem`).value) || 0;
+  const paht  = pacat * (1 - rem / 100);
+  if (pacat > 0) {
+    document.getElementById(`p-paht`).value = paht.toFixed(3);
+    document.getElementById(`p-paht-hint`).textContent = `PA HT : ${fe(paht)}`;
+  }
+  calcPrix();
+}
+
+// ===== PRIX DE VENTE =====
+function calcPrix() {
+  const paht    = parseFloat(document.getElementById('p-paht').value) || 0;
+  const tvaRate = parseFloat(document.getElementById('p-tva').value) / 100;
+  const tvaMult = 1 + tvaRate;
+  let K, mb;
+  if (pmMode === 'mb') {
+    mb = parseFloat(document.getElementById('p-mb').value) / 100;
+    if (mb >= 1 || mb <= 0) return;
+    K = tvaMult / (1 - mb);
+  } else {
+    K = parseFloat(document.getElementById('p-k').value) || 0;
+    if (K <= 1) return;
+    mb = 1 - tvaMult / K;
+  }
+  const pvttc = paht * K;
+  const pvht  = pvttc / tvaMult;
+  const mbu   = pvht - paht;
+  const txm   = paht > 0 ? (mbu / paht) * 100 : 0;
+  const tvaV  = pvttc - pvht;
+  document.getElementById('p-pvttc').textContent = fe(pvttc);
+  document.getElementById('p-sub').textContent   = `${fe(paht)} × ${fn(K)}`;
+  document.getElementById('p-pvht').textContent  = fe(pvht);
+  document.getElementById('p-mbu').textContent   = fe(mbu);
+  document.getElementById('p-mb-r').textContent  = fp(mb * 100);
+  document.getElementById('p-k-r').textContent   = fn(K);
+  document.getElementById('p-txm').textContent   = fp(txm);
+  document.getElementById('p-tva-v').textContent = fe(tvaV);
+  document.getElementById('p-formula').innerHTML =
+    `PV TTC = PA HT × K = <b>${fe(paht)}</b> × <b>${fn(K)}</b> = <b>${fe(pvttc)}</b>
+K = (1 + TVA%) / (1 − MB%) = (1 + ${fp(tvaRate * 100, 1)}) / (1 − ${fp(mb * 100)}) = <b>${fn(K)}</b>`;
+  if (pmMode === 'k') document.getElementById('p-mb').value = (mb * 100).toFixed(1);
+  else document.getElementById('p-k').value = K.toFixed(3);
+}
+
+// ===== ELASTICITE PRIX =====
+var ELASTICITE = {
+  rx:        { label: `Medicament remboursable (Rx)`,       min: 0,  max: 5,   real: 2,  note: `Prix encadre, demande quasi inelastique. La promo n a quasi aucun effet sur le volume.` },
+  otc:       { label: `OTC conseil`,                         min: 5,  max: 20,  real: 10, note: `Leger effet volume. Le conseil du pharmacien pese plus que le prix.` },
+  para:      { label: `Parapharmacie courante`,              min: 10, max: 40,  real: 20, note: `Sensibilite prix moderee. Une remise visible peut accelerer l achat.` },
+  'para-prem':{ label: `Parapharmacie premium / dermo`,     min: 5,  max: 25,  real: 12, note: `Acheteur moins sensible au prix, mais une promo peut declencher l essai.` },
+  nutri:     { label: `Nutrition / complement alimentaire`,  min: 15, max: 60,  real: 25, note: `Fort effet volume sur les formats familiaux et les recharges.` },
+};
+
+function setVol(v) {
+  const el = document.getElementById(`pm-vol-hyp`);
+  el.value = v;
+  el.dataset.userEdited = '1';
+  calcPM();
+}
+
+// ===== POINT MORT =====
+function calcPM() {
+  const pacat = parseFloat(document.getElementById(`pm-pacat`).value) || 0;
+  const rem   = parseFloat(document.getElementById(`pm-rem`).value) || 0;
+  const paht  = pacat * (1 - rem / 100);
+  const tvaR  = parseFloat(document.getElementById(`pm-tva`).value) / 100;
+  const tvaM  = 1 + tvaR;
+  const pv    = parseFloat(document.getElementById(`pm-pv`).value) || 0;
+  const stock = parseInt(document.getElementById(`pm-stock`).value) || 0;
+  const vann  = parseFloat(document.getElementById(`pm-vann`).value) || 0;
+  const vmois = vann / 12;
+  const promo    = parseFloat(document.getElementById(`pm-promo`).value) || 0;
+  const typeProd = document.getElementById(`pm-type-prod`).value;
+  const elast    = ELASTICITE[typeProd] || ELASTICITE[`para`];
+  // Auto-fill vol hypothesis with elast.real when field is untouched or matches previous type real
+  const volInput = document.getElementById(`pm-vol-hyp`);
+  if (!volInput.dataset.userEdited) {
+    volInput.value = elast.real;
+  }
+  const volHyp = parseFloat(volInput.value) || 0;
+
+  // Update elasticity info block
+  const elInfo = document.getElementById(`pm-elasticite-info`);
+  // seuil calcule plus bas apres mbu
+  elInfo.innerHTML = `<p class="nego-title">${elast.label}</p><div class="nego-body">` +
+    `Fourchette realiste : <b>+${elast.min}% a +${elast.max}%</b> de ventes supplementaires | Hypothese mediane : <b>+${elast.real}%</b><br>` +
+    `${elast.note}` +
+    `</div>`;
+
+  // Highlight active vol button
+  document.querySelectorAll('#pm-vol-btns .tog-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.textContent) === volHyp || b.textContent === '+'+volHyp+'%');
+  });
+  const labQte  = parseInt(document.getElementById(`pm-labo-qte`).value) || 0;
+  const labRem  = parseFloat(document.getElementById(`pm-labo-rem`).value) || 0;
+
+  document.getElementById(`pm-paht-hint`).textContent = pacat > 0 ? `PA HT : ${fe(paht)}` : ``;
+  document.getElementById(`pm-vmois-hint`).textContent = vann > 0 ? `soit ${(vann/12).toFixed(1).replace('.',',')} u./mois` : ``;
+
+  if (!paht || !pv || !stock) return;
+
+  const pvht  = pv / tvaM;
+  const mbu   = pvht - paht;
+  const mb    = pvht > 0 ? mbu / pvht * 100 : 0;
+  const cout  = paht * stock;
+
+  // Helpers
+  function pm(coutTotal, pvhtPromo) { return pvhtPromo > 0 ? Math.ceil(coutTotal / pvhtPromo) : stock + 1; }
+  function ecoul(qte) { return vmois > 0 ? qte / vmois : null; }
+  function moisStr(v) { return v !== null ? v.toFixed(1).replace('.',',') + ` mois` : `?`; }
+  function metR(cls, lbl, val, sub) {
+    return `<div class="met ${cls}"><p class="lbl">${lbl}</p><p class="val">${val}</p>${sub?`<p class="sub">${sub}</p>`:``}</div>`;
+  }
+
+  // ===== S1 : vente normale =====
+  const pm1   = pm(cout, pvht);
+  const mb1   = mbu * stock;
+  const ec1   = ecoul(stock);
+  const pmec1 = ecoul(pm1);
+
+  document.getElementById(`pm-s1`).innerHTML =
+    metR(``, `MB unitaire`, fe(mbu), `taux de marque : ${fp(mb)}`) +
+    metR(``, `Cout du stock`, fe(cout), `${stock} u. x ${fe(paht)}`) +
+    metR(pm1 <= stock ? `hi` : `warn`, `Point mort`, `${pm1} u.`, pm1 <= stock ? `atteignable en ${moisStr(pmec1)}` : `ATTENTION > stock`) +
+    metR(`hi`, `Marge si tout vendu`, fe(mb1), `ecoulement en ${moisStr(ec1)}`);
+
+  const c1El = document.getElementById(`pm-c1`);
+  c1El.innerHTML = `<p class="nego-title">Conclusion S1</p><div class="nego-body">` +
+    `Vente normale : ecoulement en <b>${moisStr(ec1)}</b>, marge totale <b>${fe(mb1)}</b>. ` +
+    `Point mort atteint apres <b>${pm1} u.</b> (${moisStr(pmec1)}).` +
+    (ec1 !== null && ec1 > 6 ? ` <span class="badge ko">ecoulement > 6 mois</span>` : ` <span class="badge ok">stock raisonnable</span>`) +
+    `</div>`;
+  c1El.style.display = `block`;
+
+  // ===== S2 : remise directe % avec elasticite =====
+  const pvPromo  = pv * (1 - promo / 100);
+  const pvhtProm = pvPromo / tvaM;
+  const mbuProm  = pvhtProm - paht;
+  const mbProm   = pvhtProm > 0 ? mbuProm / pvhtProm * 100 : 0;
+  const pm2      = pm(cout, pvhtProm);
+  const pmec2    = ecoul(pm2);
+  const diff2    = mbuProm * stock - mb1;
+
+  // Volume avec hypothese elasticite
+  const vmoisPromo    = vmois * (1 + volHyp / 100);
+  const stockEcoule   = stock; // on ecoule le meme stock
+  const ecoulPromo    = vmoisPromo > 0 ? stockEcoule / vmoisPromo : null;
+  const ecoulNormal   = ec1;
+  const gainTemps     = (ecoulNormal !== null && ecoulPromo !== null) ? ecoulNormal - ecoulPromo : null;
+
+  // Seuil : nb d unites suppl. min pour que promo soit rentable vs vente normale
+  // mbuProm * (stock + extra) >= mbu * stock => extra >= stock*(mbu-mbuProm)/mbuProm
+  const seuilExtra    = mbuProm > 0 ? Math.ceil(stock * (mbu - mbuProm) / mbuProm) : null;
+  const seuilPct      = seuilExtra !== null && stock > 0 ? (seuilExtra / stock * 100) : null;
+  const seuilAtteint  = seuilPct !== null && volHyp >= seuilPct;
+
+  // Hypothese pessimiste / realiste / optimiste
+  const scenVol = [
+    { label: `Pessimiste`, pct: elast.min },
+    { label: `Realiste`,   pct: elast.real },
+    { label: `Optimiste`,  pct: elast.max },
+    { label: `Votre hyp.`, pct: volHyp, custom: true },
+  ];
+
+  // Hint
+  document.getElementById(`pm-vol-hint`).textContent =
+    seuilPct !== null ? `seuil min : +${seuilPct.toFixed(0)}% ${seuilAtteint ? '✓' : '⚠ non atteint'}` : ``;
+
+  let html2 = ``;
+  // Bloc fixe : marge sur le stock sans effet volume
+  html2 += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">`;
+  html2 += metR(``, `PV TTC promo`, fe(pvPromo), `-${promo}% sur ${fe(pv)}`);
+  html2 += metR(mbuProm >= 0 ? `` : `danger`, `MB unitaire promo`, fe(mbuProm), `taux de marque : ${fp(mbProm)}`);
+  html2 += metR(pm2 <= stock ? `hi` : `warn`, `Point mort`, `${pm2} u.`, pm2<=stock?`atteint en ${moisStr(pmec2)}`:`> stock`);
+  html2 += `</div>`;
+
+  // Seuil de rentabilite
+  html2 += `<div class="nego" style="margin-bottom:12px">`;
+  html2 += `<p class="nego-title">Seuil de rentabilite de la promo</p><div class="nego-body">`;
+  if (seuilExtra !== null) {
+    if (seuilExtra <= 0) {
+      html2 += `La promo est rentable meme sans vente supplementaire <span class="badge ok">toujours gagnant</span>`;
+    } else {
+      html2 += `Il faut vendre au minimum <b>+${seuilExtra} u. de plus</b> (+${seuilPct !== null ? seuilPct.toFixed(0) : '?'}%) pour que la promo soit aussi rentable que la vente normale.<br>`;
+      html2 += seuilAtteint
+        ? `Votre hypothese de +${volHyp}% <span class="badge ok">depasse ce seuil</span>`
+        : `Votre hypothese de +${volHyp}% <span class="badge ko">ne depasse pas ce seuil</span>`;
+    }
+  }
+  html2 += `</div></div>`;
+
+  // Tableau des scenarios de volume
+  html2 += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">`;
+  scenVol.forEach(s => {
+    const vmP   = vmois * (1 + s.pct / 100);
+    const ecP   = vmP > 0 ? stock / vmP : null;
+    const gainT = (ecoulNormal !== null && ecP !== null) ? ecoulNormal - ecP : null;
+    const mbTotP = mbuProm * stock;
+    const rentable = seuilExtra !== null ? s.pct >= seuilPct : true;
+    const cls = s.custom ? (rentable ? `hi` : `warn`) : (rentable ? `` : ``);
+    html2 += `<div class="met ${cls}">`;
+    html2 += `<p class="lbl">${s.label} (+${s.pct}%)</p>`;
+    html2 += `<p class="val" style="font-size:14px">${ecP !== null ? moisStr(ecP) : '?'} ecoulement</p>`;
+    html2 += `<p class="sub">${gainT !== null ? (gainT > 0 ? `-${gainT.toFixed(1).replace('.',',')} mois vs normal` : `pas de gain de temps`) : ``}</p>`;
+    html2 += `<p class="sub">${rentable ? `rentable` : `sous le seuil`}</p>`;
+    html2 += `</div>`;
+  });
+  html2 += `</div>`;
+
+  document.getElementById(`pm-s2`).innerHTML = html2;
+
+  const c2El = document.getElementById(`pm-c2`);
+  c2El.innerHTML = `<p class="nego-title">Conclusion S2</p><div class="nego-body">` +
+    `Remise <b>-${promo}%</b> : MB unitaire <b>${fe(mbuProm)}</b>.<br>` +
+    `Seuil de rentabilite : vendre <b>${seuilExtra !== null ? '+'+seuilExtra+' u.' : '?'}</b> de plus (${seuilPct !== null ? '+'+seuilPct.toFixed(0)+'%' : '?'}).<br>` +
+    `Type de produit : <b>${elast.label}</b> — fourchette realiste <b>+${elast.min}% a +${elast.max}%</b>.<br>` +
+    (seuilAtteint
+      ? `Avec votre hypothese de +${volHyp}%, la promo est <span class="badge ok">rentable</span> et ecoulera le stock en <b>${moisStr(ecoulProm)}</b>.`
+      : seuilPct !== null && elast.max >= seuilPct
+        ? `La promo peut etre rentable si vous atteignez le haut de la fourchette (+${elast.max}%). <span class="badge ko">risque modere</span>`
+        : `La fourchette realiste (+${elast.max}% max) ne depasse pas le seuil (+${seuilPct !== null ? seuilPct.toFixed(0) : '?'}%). <span class="badge ko">promo risquee</span>`) +
+    `</div>`;
+  c2El.style.display = `block`;
+
+  // Feed verdict
+  _vd = {
+    mbuP:     mbuProm,
+    seuilOk:  seuilAtteint,
+    seuilExtra: seuilExtra || 0,
+    gain:     (mbuProm - mbu) * stock,
+    ecoulP:   vmoisPromo > 0 ? stock / vmoisPromo : null,
+    ecoulN:   vmois > 0 ? stock / vmois : null
+  };
+  renderVerdict();
+
+  // ===== S3 : offres groupees sur stock actuel =====
+  // 3 formules : 1+1, 3+1, lot de 3 au prix remise
+  function evalGroupee(label, qtePayantes, qteTotal, pvHtPayante, note) {
+    const coutG   = paht * qteTotal;
+    const mbuG    = pvHtPayante - paht * (qteTotal / qtePayantes);
+    const pmG     = Math.ceil(coutG / pvHtPayante);
+    const mbTotG  = (pvHtPayante - paht * (qteTotal / qtePayantes)) * qtePayantes;
+    const rentG   = mbTotG > 0;
+    const attG    = pmG <= qteTotal;
+    const ecG     = ecoul(qteTotal);
+    return { label, qtePayantes, qteTotal, pvHtPayante, mbuG, pmG, mbTotG, rentG, attG, ecG, note };
+  }
+
+  // 1+1 : client paie 1, recoit 2 => on ecoule 2 pour 1 vente payante => PA effectif = 2*paht
+  const g1 = evalGroupee(`1 achete = 1 offert`, Math.floor(stock/2), stock, pvht, `client paie ${fe(pv)}, recoit 2 u.`);
+
+  // 3+1 : client paie 3, recoit 4 => PA effectif = 4/3 * paht
+  const g2 = evalGroupee(`3 achetes = 1 offert`, Math.floor(stock*3/4), stock, pvht, `client paie ${fe(pv*3)}, recoit 4 u.`);
+
+  // Lot de 3 : 3 unites vendu en lot remise
+  const pvLot3   = pv * 3 * (1 - promo/100);
+  const pvLot3HT = pvLot3 / 3 / tvaM;
+  const g3 = evalGroupee(`Lot de 3 a -${promo}%`, stock, stock, pvLot3HT, `lot a ${fe(pvLot3)} soit ${fe(pvLot3/3)}/u.`);
+
+  const groupees = [g1, g2, g3];
+
+  let html3 = ``;
+  groupees.forEach(g => {
+    const cls = g.attG && g.rentG ? `` : `warn`;
+    html3 += `<div class="nego" style="margin-bottom:8px">`;
+    html3 += `<p class="nego-title">${g.label}</p>`;
+    html3 += `<div class="rgrid" style="gap:6px">`;
+    html3 += metR(g.mbuG >= 0 ? `` : `danger`, `MB unitaire effectif`, fe(g.mbuG), g.note);
+    html3 += metR(g.attG ? `hi` : `warn`, `Point mort`, `${g.pmG} u.`, g.attG ? `atteignable` : `> stock`);
+    html3 += metR(g.rentG ? `hi` : `danger`, `Marge totale`, fe(g.mbTotG), `ecoulement : ${moisStr(g.ecG)}`);
+    const d3 = g.mbTotG - mb1;
+    html3 += metR(d3 >= 0 ? `hi` : `warn`, `vs vente normale`, `${d3 >= 0 ? '+' : ''}${fe(d3)}`, g.attG && g.rentG ? `OK` : `attention`);
+    html3 += `</div></div>`;
+  });
+  document.getElementById(`pm-s3`).innerHTML = html3;
+
+  const bestG = groupees.filter(g => g.rentG && g.attG).sort((a,b) => b.mbTotG - a.mbTotG)[0] || null;
+  const c3El = document.getElementById(`pm-c3`);
+  c3El.innerHTML = `<p class="nego-title">Conclusion S3</p><div class="nego-body">` +
+    (bestG
+      ? `Meilleure offre groupee : <b>${bestG.label}</b> — marge totale <b>${fe(bestG.mbTotG)}</b> (${fe(bestG.mbTotG - mb1)} vs vente normale).`
+      : `Aucune offre groupee n est rentable avec ces parametres.`) +
+    `</div>`;
+  c3El.style.display = `block`;
+
+  // ===== S4 : offre labo independante =====
+  if (!labQte) return;
+  const pahtLabo = pacat * (1 - labRem / 100);
+  const coutLabo = pahtLabo * labQte;
+  const mbuLabo  = pvht - pahtLabo;
+  const mbLabo   = pvht > 0 ? mbuLabo / pvht * 100 : 0;
+  const pm4      = pm(coutLabo, pvht);
+  const mb4      = mbuLabo * labQte;
+  const ec4      = ecoul(labQte);
+  const gain4    = (mbuLabo - mbu) * labQte;
+
+  document.getElementById(`pm-s4`).innerHTML =
+    metR(``, `PA HT labo`, fe(pahtLabo), `${fe(pacat)} x (1 - ${labRem}%)`) +
+    metR(``, `Cout commande labo`, fe(coutLabo), `${labQte} u. x ${fe(pahtLabo)}`) +
+    metR(mbuLabo >= mbu ? `hi` : `warn`, `MB unitaire labo`, fe(mbuLabo), `taux de marque : ${fp(mbLabo)}`) +
+    metR(pm4 <= labQte ? `hi` : `warn`, `Point mort`, `${pm4} u.`, pm4 <= labQte ? `atteignable en ${moisStr(ecoul(pm4))}` : `ATTENTION > stock`) +
+    metR(`hi`, `Marge si tout vendu`, fe(mb4), `ecoulement : ${moisStr(ec4)}`) +
+    metR(gain4 >= 0 ? `hi` : `warn`, `Gain vs achat normal`, fe(gain4), gain4 >= 0 ? `offre interessante` : `moins bon`);
+
+  const c4El = document.getElementById(`pm-c4`);
+  c4El.innerHTML = `<p class="nego-title">Conclusion S4</p><div class="nego-body">` +
+    `Offre labo ${labQte} u. a ${labRem}% : PA HT <b>${fe(pahtLabo)}</b>, marge totale <b>${fe(mb4)}</b> en ${moisStr(ec4)}. ` +
+    (gain4 >= 0
+      ? `<span class="badge ok">Gain de ${fe(gain4)} vs achat normal</span>`
+      : `<span class="badge ko">Perte de ${fe(Math.abs(gain4))} vs achat normal</span>`) +
+    `</div>`;
+  c4El.style.display = `block`;
+
+  // ===== RECOMMANDATION FINALE =====
+  // Classe tous les scenarios disponibles par (1) ne pas perdre, (2) marge max
+  const candidats = [
+    { label: `S1 Vente normale`, mb: mb1, pm: pm1, stock: stock, ok: pm1<=stock && mb1>0 },
+    { label: `S2 Remise -${promo}%`, mb: mbuProm*stock, pm: pm2, stock: stock, ok: pm2<=stock && mbuProm*stock>0 },
+  ];
+  groupees.forEach(g => {
+    if (g.attG && g.rentG) candidats.push({ label: `S3 ${g.label}`, mb: g.mbTotG, pm: g.pmG, stock: g.qteTotal, ok: true });
+  });
+  if (pm4 <= labQte && mb4 > 0) candidats.push({ label: `S4 Offre labo (${labQte} u.)`, mb: mb4, pm: pm4, stock: labQte, ok: true });
+
+  const valides = candidats.filter(c => c.ok);
+  const best = valides.length > 0 ? valides.reduce((a, b) => b.mb > a.mb ? b : a) : null;
+
+  const recoCard = document.getElementById(`pm-reco-card`);
+  const recoEl   = document.getElementById(`pm-reco`);
+  let reco = `<div class="nego-body">`;
+
+  // Tableau comparatif
+  reco += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">`;
+  candidats.forEach(c => {
+    const isBest = best && c.label === best.label;
+    const cls = isBest ? `hi` : (c.ok ? `` : `warn`);
+    reco += `<div class="met ${cls}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">`;
+    reco += `<div><p class="lbl">${c.label}${isBest ? ` <span class="badge ok">Recommande</span>` : ``}</p>`;
+    reco += `<p class="val" style="font-size:16px">${fe(c.mb)}</p><p class="sub">marge totale</p></div>`;
+    reco += `<div style="text-align:right"><p class="lbl">Point mort</p><p class="val" style="font-size:14px">${c.pm} u.</p>`;
+    reco += `<p class="sub">${c.ok ? `rentable` : `non rentable`}</p></div></div>`;
+  });
+  reco += `</div>`;
+
+  if (best) {
+    reco += `<b>Meilleure option : ${best.label}</b><br>`;
+    reco += `Marge totale potentielle : <b>${fe(best.mb)}</b> — point mort : <b>${best.pm} u.</b><br>`;
+    const diffBest = best.mb - mb1;
+    if (diffBest > 0) reco += `Gain de <b>${fe(diffBest)}</b> par rapport a la vente normale.`;
+    else if (diffBest < 0) reco += `Cout de <b>${fe(Math.abs(diffBest))}</b> par rapport a la vente normale, mais stock ecoule plus vite.`;
+    else reco += `Meme marge que la vente normale.`;
+  } else {
+    reco += `Aucun scenario n est rentable avec ces parametres. Verifiez le PA HT et le PV.`;
+  }
+  reco += `</div>`;
+  recoEl.innerHTML = reco;
+  recoCard.style.display = `block`;
+}
+
+recalc();
+calcPrix();
+
+
+
+
+// ===== BUNDLE =====
+function readBVtes(prefix) {
+  const vals = [];
+  for (let i = 0; i < 12; i++) {
+    const el = document.getElementById(`${prefix}-${i}`);
+    vals.push(el ? (parseInt(el.value) || 0) : 0);
+  }
+  return vals;
+}
+
+function updateBVte(prefix) {
+  const data = readBVtes(prefix);
+  const tot  = data.reduce((a, b) => a + b, 0);
+  const totId = prefix === `bva` ? `b-vt-a` : `b-vt-b`;
+  const el = document.getElementById(totId);
+  if (el) el.textContent = `Total : ${tot} u. | Moyenne : ${(tot/12).toFixed(1)} u./mois`;
+  const mx = Math.max(...data);
+  for (let i = 0; i < 12; i++) {
+    const inp = document.getElementById(`${prefix}-${i}`);
+    if (inp) inp.style.background = (parseInt(inp.value)||0) === mx && mx > 0
+      ? `var(--color-background-success)` : ``;
+  }
+  calcBundle();
+}
+
+function bundleOrigine() {
+  const isLabo = document.getElementById(`b-origine`).value === `labo`;
+  document.getElementById(`b-labo-section`).style.display = isLabo ? `block` : `none`;
+}
+
+function initBundleTotals() {
+  updateBVte(`bva`);
+  updateBVte(`bvb`);
+}
+
+function calcBundle() {
+  const paA    = parseFloat(document.getElementById(`b-pa-a`).value) || 0;
+  const pvA    = parseFloat(document.getElementById(`b-pv-a`).value) || 0;
+  const paB    = parseFloat(document.getElementById(`b-pa-b`).value) || 0;
+  const pvB    = parseFloat(document.getElementById(`b-pv-b`).value) || 0;
+  const pvBun  = parseFloat(document.getElementById(`b-pv-bundle`).value) || 0;
+  const tvaR   = parseFloat(document.getElementById(`b-tva`).value) / 100;
+  const tvaM   = 1 + tvaR;
+  const orig   = document.getElementById(`b-origine`).value;
+  const paCof  = orig === `labo` ? (parseFloat(document.getElementById(`b-pa-coffret`).value) || 0) : 0;
+  const stockA = parseInt(document.getElementById(`b-stock-a`).value) || 0;
+  const stockB = parseInt(document.getElementById(`b-stock-b`).value) || 0;
+  const stockBun = Math.min(stockA, stockB);
+
+  const vtesA = readBVtes(`bva`);
+  const vtesB = readBVtes(`bvb`);
+  const totA  = vtesA.reduce((a,b) => a+b, 0);
+  const totB  = vtesB.reduce((a,b) => a+b, 0);
+  const vmA   = totA / 12;
+  const vmB   = totB / 12;
+  const vmBun = Math.min(vmA, vmB);
+  const nomA  = document.getElementById(`b-nom-a`).value || `Produit A`;
+  const nomB  = document.getElementById(`b-nom-b`).value || `Produit B`;
+  const limitant = vmA <= vmB ? nomA : nomB;
+
+  if (!paA || !pvA || !paB || !pvB || !pvBun) return;
+
+  const pvSep   = pvA + pvB;
+  const paSep   = paA + paB;
+  const pvSepHT = pvSep / tvaM;
+  const mbuSep  = pvSepHT - paSep;
+  const mbSep   = pvSepHT > 0 ? mbuSep / pvSepHT * 100 : 0;
+
+  const paBun   = (orig === `labo` && paCof > 0) ? paCof : paSep;
+  const pvBunHT = pvBun / tvaM;
+  const mbuBun  = pvBunHT - paBun;
+  const mbBun   = pvBunHT > 0 ? mbuBun / pvBunHT * 100 : 0;
+  const cout    = paBun * stockBun;
+  const pmBun   = pvBunHT > 0 ? Math.ceil(cout / pvBunHT) : stockBun + 1;
+  const mbTotBun = mbuBun * stockBun;
+  const mbTotSep = mbuSep * stockBun;
+  const gainBun  = mbTotBun - mbTotSep;
+  const ecoul    = vmBun > 0 ? stockBun / vmBun : null;
+  const remise   = pvSep - pvBun;
+  const remPct   = pvSep > 0 ? remise / pvSep * 100 : 0;
+
+  const rh = document.getElementById(`b-remise-hint`);
+  if (rh) rh.textContent = pvBun > 0 ? `remise client : ${fe(remise)} (-${remPct.toFixed(1).replace('.',',')}%)` : ``;
+
+  if (orig === `labo` && paCof > 0) {
+    const gc = document.getElementById(`b-gain-coffret`);
+    if (gc) gc.textContent = (paSep - paCof) * stockBun > 0 ? `gain ${fe((paSep-paCof)*stockBun)} vs individuel` : ``;
+  }
+
+  const set = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
+  set(`b-vs-pv`,    fe(pvSep));
+  set(`b-vs-mb`,    `MB : ${fe(mbuSep)} (${fp(mbSep)})`);
+  set(`b-bun-pv`,   fe(pvBun));
+  set(`b-bun-mb`,   `MB : ${fe(mbuBun)} (${fp(mbBun)})`);
+  set(`b-remise-v`, fe(remise));
+  set(`b-remise-pct`, `soit -${remPct.toFixed(1).replace('.',',')}%`);
+
+  const gr = document.getElementById(`b-grid-res`);
+  if (gr) gr.innerHTML =
+    met(mbuBun >= mbuSep ? `hi` : `warn`, `MB unitaire bundle`, fe(mbuBun), `taux de marque : ${fp(mbBun)}`) +
+    met(pmBun <= stockBun ? `hi` : `warn`, `Point mort`, `${pmBun} sets`, pmBun <= stockBun ? `atteignable` : `> stock`) +
+    met(mbTotBun >= 0 ? `hi` : `warn`, `Marge totale`, fe(mbTotBun), `${stockBun} sets x ${fe(mbuBun)}`) +
+    met(gainBun >= 0 ? `hi` : `warn`, `Gain vs vente separee`, `${gainBun>=0?'+':''}${fe(gainBun)}`, gainBun >= 0 ? `bundle plus rentable` : `moins rentable`) +
+    met(ecoul !== null ? (ecoul > 4 ? `warn` : `hi`) : ``, `Ecoulement estime`, ecoul !== null ? `${ecoul.toFixed(1).replace('.',',')} mois` : `?`, `facteur limitant : ${limitant.split(` `).slice(0,2).join(` `)} (${vmBun.toFixed(1).replace('.',',')} u./mois)`) +
+    met(``, `Stock limitant`, `${stockBun} sets`, `min(${stockA}, ${stockB})`);
+
+  const conEl = document.getElementById(`b-conclu`);
+  if (!conEl) return;
+
+  // ---- Analyse intelligente ----
+  const nomAShort = (document.getElementById(`b-nom-a`).value||`Produit A`).split(` `).slice(0,3).join(` `);
+  const nomBShort = (document.getElementById(`b-nom-b`).value||`Produit B`).split(` `).slice(0,3).join(` `);
+  const ratioVentes = vmA > 0 && vmB > 0 ? Math.max(vmA,vmB)/Math.min(vmA,vmB) : 0;
+  const desequilibre = ratioVentes > 3;
+  const ecoulTropLong = ecoul !== null && ecoul > 6;
+  const prixBunTropBas = mbuBun <= 0;
+  const prixBunOk = pvBun >= pvSep * 0.88; // remise max raisonnable = 12%
+
+  let con = `<p class="nego-title">Analyse de cette association</p><div class="nego-body" style="line-height:2">`;
+
+  // 1. Diagnostic principal
+  if (prixBunTropBas) {
+    con += `<span class="badge ko">Prix bundle insuffisant</span> Le prix de <b>${fe(pvBun)}</b> ne couvre pas le PA total de <b>${fe(paBun)}</b>. Vous vendez a perte.<br>`;
+  } else if (gainBun >= 0) {
+    con += `<span class="badge ok">Association rentable</span> Le bundle genere <b>+${fe(gainBun)}</b> de marge supplementaire vs vente separee.<br>`;
+  } else {
+    con += `<span class="badge ko">Association moins rentable</span> Le bundle vous coute <b>${fe(Math.abs(gainBun))}</b> de marge vs vente separee sur ${stockBun} sets.<br>`;
+  }
+
+  // 2. Analyse du desequilibre de rotation
+  if (desequilibre) {
+    con += `<span class="badge warn">Desequilibre de rotation</span> <b>${nomAShort}</b> tourne ${vmA.toFixed(1).replace('.',',')} u./mois vs <b>${nomBShort}</b> a ${vmB.toFixed(1).replace('.',',')} u./mois — ratio de ${ratioVentes.toFixed(0)}x. `;
+    con += `Le produit lent bloque l ecoulement du produit rapide.<br>`;
+  }
+
+  // 3. Ecoulement
+  if (ecoul !== null) {
+    if (ecoulTropLong) {
+      con += `<span class="badge warn">Ecoulement lent</span> ${ecoul.toFixed(1).replace('.',',')} mois pour ${stockBun} sets au rythme actuel. `;
+      con += `Le facteur limitant est <b>${limitant.split(` `).slice(0,2).join(` `)}</b> (${vmBun.toFixed(1).replace('.',',')} u./mois).<br>`;
+    } else {
+      con += `Ecoulement estime : <b>${ecoul.toFixed(1).replace('.',',')} mois</b> pour ${stockBun} sets.<br>`;
+    }
+  }
+
+  // 4. Prix bundle : conseille si trop bas
+  if (!prixBunTropBas && gainBun < 0) {
+    const pvMinBreakeven = paBun * (1 + tvaM) * (pvSepHT / (pvSepHT - mbuSep)); // approximation
+    const pvSuggere = Math.ceil((paSep * tvaM + mbTotSep / stockBun) * 20) / 20; // arrondi 0.05
+    con += `Pour maintenir la meme marge que la vente separee, il faudrait un prix bundle d au moins <b>${fe(pvSuggere)}</b>.<br>`;
+  }
+
+  // 5. Recommandation finale
+  con += `<br>`;
+  if (prixBunTropBas) {
+    con += `<b>Recommandation :</b> Augmentez le prix bundle ou changez l association de produits.`;
+  } else if (gainBun >= 0 && !ecoulTropLong && !desequilibre) {
+    con += `<b>Recommandation :</b> Cette association est pertinente. Lancez le bundle.`;
+  } else if (gainBun >= 0 && ecoulTropLong) {
+    con += `<b>Recommandation :</b> Marge correcte mais stock long a ecouler. Pensez a limiter la quantite ou a activer une communication.`;
+  } else if (desequilibre && gainBun < 0) {
+    con += `<b>Recommandation :</b> Cette association n est pas optimale. Cherchez un produit B qui tourne au meme rythme que <b>${nomAShort}</b> (${vmA.toFixed(1).replace('.',',')} u./mois).`;
+  } else if (!desequilibre && gainBun < 0) {
+    con += `<b>Recommandation :</b> Remontez le prix bundle a <b>${fe(Math.ceil((pvSep * 0.92)*10)/10)}</b> minimum (remise -8%) pour limiter la perte de marge.`;
+  }
+
+  if (orig === `labo` && paCof > 0 && paCof < paSep) {
+    const gainCof = (paSep-paCof)*stockBun;
+    con += ` Le coffret labo vous fait economiser <b>${fe(gainCof)}</b> vs achat individuel — avantage supplementaire.`;
+  }
+
+  con += `</div>`;
+  conEl.innerHTML = con;
+  conEl.style.display = `block`;
+}
+
+// ===== IMPORT CAPTURE LGPI =====
+async function importCapture(input, prefix) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const prodLabel = prefix === `bva` ? `A` : `B`;
+  const statusId  = prefix === `bva` ? `b-import-status-a` : `b-import-status-b`;
+  const statusEl  = document.getElementById(statusId);
+  statusEl.style.display = `block`;
+  statusEl.style.color   = `var(--text-sec)`;
+  statusEl.textContent   = `Lecture de la capture en cours...`;
+
+  // Convert image to base64
+  const b64 = await new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result.split(',')[1]);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+
+  const mediaType = file.type || `image/png`;
+
+  const prompt = `Cette capture d ecran provient du logiciel de gestion LGPI.
+Tu dois extraire les quantites vendues mois par mois sur la ligne "Qte Vente".
+Le tableau affiche les mois de gauche a droite. Il peut y avoir 24 mois affiches (2 annees).
+Je veux uniquement les 12 derniers mois (les plus recents, a droite du tableau).
+Reponds UNIQUEMENT avec un objet JSON valide sans aucun texte autour, exactement ce format :
+{"mois":["Jan","Fev","Mar","Avr","Mai","Jun","Jul","Aou","Sep","Oct","Nov","Dec"],"ventes":[v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12]}
+Les ventes sont des entiers. Si une valeur est illisible mets 0.`;
+
+  try {
+    const resp = await fetch(`/api/claude`, {
+      method: `POST`,
+      headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body: JSON.stringify({
+        model: `claude-sonnet-4-6`,
+        max_tokens: 500,
+        messages: [{
+          role: `user`,
+          content: [
+            { type: `image`, source: { type: `base64`, media_type: mediaType, data: b64 } },
+            { type: `text`, text: prompt }
+          ]
+        }]
+      })
+    });
+
+    const data = await resp.json();
+    const raw  = data.content.map(c => c.text || ``).join(``).trim();
+    const clean = raw.replace(/```json|```/g, ``).trim();
+    const parsed = JSON.parse(clean);
+
+    if (!parsed.ventes || parsed.ventes.length !== 12) {
+      throw new Error(`Format inattendu`);
+    }
+
+    // Fill inputs
+    parsed.ventes.forEach((v, i) => {
+      const el = document.getElementById(`${prefix}-${i}`);
+      if (el) el.value = v;
+    });
+
+    // Update labels with actual month names if provided
+    if (parsed.mois && parsed.mois.length === 12) {
+      parsed.mois.forEach((m, i) => {
+        const lbl = document.querySelector(`label[for="${prefix}-${i}"]`);
+        // Labels are not linked by for= so find by position
+        const parent = document.getElementById(`${prefix}-${i}`);
+        if (parent && parent.previousElementSibling) {
+          parent.previousElementSibling.textContent = m.substring(0,3);
+        }
+      });
+    }
+
+    updateBVte(prefix);
+    statusEl.style.color = `var(--color-text-success)`;
+    const tot = parsed.ventes.reduce((a,b)=>a+b,0);
+    statusEl.textContent = `Import reussi : ${tot} u. sur 12 mois detectees. Verifiez les valeurs.`;
+
+  } catch(err) {
+    statusEl.style.color = `var(--color-text-danger)`;
+    statusEl.textContent = `Erreur : ${err.message}. Saisissez les valeurs manuellement.`;
+    console.error(err);
+  }
+
+  // Reset input so same file can be re-imported
+  input.value = ``;
+}
+
+// ===== IMPORT CAPTURE LGPI — NEGOCIATION & PRIX =====
+async function importCaptureLGPI(file, statusId, callback) {
+  const statusEl = document.getElementById(statusId);
+  if (!file) return;
+  statusEl.textContent = `Lecture...`;
+  statusEl.style.color = `var(--text-sec)`;
+
+  const b64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  try {
+    const resp = await fetch(`/api/claude`, {
+      method: `POST`,
+      headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body: JSON.stringify({
+        model: `claude-sonnet-4-6`,
+        max_tokens: 500,
+        messages: [{
+          role: `user`,
+          content: [
+            { type: `image`, source: { type: `base64`, media_type: file.type||`image/png`, data: b64 } },
+            { type: `text`, text: `Capture LGPI. Extrais depuis cette fiche produit :
+1. La designation (nom du produit)
+2. Le code produit / EAN
+3. La moyenne de vente mensuelle (Moy. vente mens.)
+4. Les ventes des 12 derniers mois ligne "Qte Vente" (les 12 valeurs les plus recentes)
+Reponds UNIQUEMENT en JSON :
+{"nom":"...","ean":"...","vmois":X,"ventes":[v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12]}` }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    const raw  = data.content.map(c => c.text||``).join(``).trim();
+    const parsed = JSON.parse(raw.replace(/```json|```/g,``).trim());
+    callback(parsed);
+    statusEl.style.color = `var(--color-text-success)`;
+    statusEl.textContent = `Import OK — verifiez les valeurs`;
+  } catch(err) {
+    statusEl.style.color = `var(--color-text-danger)`;
+    statusEl.textContent = `Erreur : ${err.message}`;
+  }
+}
+
+function importCaptureNeg(input) {
+  importCaptureLGPI(input.files[0], `neg-import-status`, parsed => {
+    if (parsed.nom)    document.getElementById(`nom`).value      = parsed.nom;
+    if (parsed.ean)    document.getElementById(`ean`).value      = parsed.ean;
+    if (parsed.vmois)  document.getElementById(`neg-vmois`).value= parsed.vmois;
+    if (parsed.ventes && parsed.ventes.length===12) {
+      fillHistoFromImport(`neg`, parsed.ventes);
+      if (!histoVisible[`neg`]) toggleHisto(`neg`);
+    }
+  });
+  input.value = ``;
+}
+
+function importCapturePrix(input) {
+  importCaptureLGPI(input.files[0], `p-import-status`, parsed => {
+    if (parsed.nom)    document.getElementById(`p-nom`).value    = parsed.nom;
+    if (parsed.ean)    document.getElementById(`p-ean`).value    = parsed.ean;
+    if (parsed.vmois)  document.getElementById(`p-vmois`).value  = parsed.vmois;
+    if (parsed.ventes && parsed.ventes.length===12) {
+      fillHistoFromImport(`prix`, parsed.ventes);
+      if (!histoVisible[`prix`]) toggleHisto(`prix`);
+    }
+  });
+  input.value = ``;
+}
+
+// ===== HISTORIQUE + SAISONNALITE =====
+
+function buildHistoGrid(prefix) {
+  const grid = document.getElementById(`${prefix}-histo-grid`);
+  if (!grid) return;
+  let h = ``;
+  histoData[prefix].forEach((v, i) => {
+    h += `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">`;
+    h += `<label style="font-size:10px;color:var(--text-ter);font-weight:500">${MOIS_LABELS[i]}</label>`;
+    h += `<input type="number" id="${prefix}-hv-${i}" value="${v}" min="0" step="1" `;
+    h += `style="width:100%;text-align:center;font-size:12px;padding:4px 2px" `;
+    h += `oninput="updateHisto('${prefix}',${i})">`;
+    h += `</div>`;
+  });
+  grid.innerHTML = h;
+  updateHistoTot(prefix);
+}
+
+function updateHisto(prefix, idx) {
+  const el = document.getElementById(`${prefix}-hv-${idx}`);
+  histoData[prefix][idx] = parseInt(el.value)||0;
+  updateHistoTot(prefix);
+  detectSaisonnalite(prefix);
+  // highlight peak
+  const mx = Math.max(...histoData[prefix]);
+  for (let i=0;i<12;i++) {
+    const inp = document.getElementById(`${prefix}-hv-${i}`);
+    if (inp) inp.style.background = histoData[prefix][i]===mx && mx>0 ? `var(--color-background-success)` : ``;
+  }
+}
+
+function updateHistoTot(prefix) {
+  const tot = histoData[prefix].reduce((a,b)=>a+b,0);
+  const el  = document.getElementById(`${prefix}-histo-tot`);
+  if (el) el.textContent = `Total : ${tot} u. | Moyenne : ${(tot/12).toFixed(1)} u./mois`;
+  // Update vmois field
+  const vmoisId = prefix === `neg` ? `neg-vmois` : `p-vmois`;
+  const vmoisEl = document.getElementById(vmoisId);
+  if (vmoisEl && tot > 0) vmoisEl.value = (tot/12).toFixed(1);
+}
+
+function toggleHisto(prefix) {
+  histoVisible[prefix] = !histoVisible[prefix];
+  const panel = document.getElementById(`${prefix}-histo-panel`);
+  const icon  = document.getElementById(`${prefix}-histo-icon`);
+  const lbl   = document.getElementById(`${prefix}-histo-btn-label`);
+  if (panel) panel.style.display = histoVisible[prefix] ? `block` : `none`;
+  if (icon)  icon.className = histoVisible[prefix] ? `ti ti-chevron-up` : `ti ti-chevron-down`;
+  if (lbl)   lbl.textContent = histoVisible[prefix] ? `Masquer historique` : `Afficher historique 12 mois (facultatif)`;
+  if (histoVisible[prefix]) buildHistoGrid(prefix);
+}
+
+function fillHistoFromImport(prefix, ventes) {
+  if (!ventes || ventes.length !== 12) return;
+  histoData[prefix] = ventes.map(v => parseInt(v)||0);
+  // Show panel if not visible
+  if (!histoVisible[prefix]) toggleHisto(prefix);
+  // toggleHisto calls buildHistoGrid, but re-call to be sure values are set
+  buildHistoGrid(prefix);
+  updateHistoTot(prefix);
+  detectSaisonnalite(prefix);
+}
+
+function detectSaisonnalite(prefix) {
+  const data   = histoData[prefix];
+  const tot    = data.reduce((a,b)=>a+b,0);
+  const el     = document.getElementById(`${prefix}-saisonnalite`);
+  if (!el) return;
+  if (tot === 0) { el.style.display=`none`; return; }
+
+  const moy    = tot / 12;
+  const mx     = Math.max(...data);
+  const mn     = Math.min(...data);
+
+  // Coefficient de variation
+  const variance = data.reduce((s,v)=>s+Math.pow(v-moy,2),0)/12;
+  const stdDev   = Math.sqrt(variance);
+  const cv       = moy > 0 ? stdDev/moy : 0;
+
+  // Pic saisonnier : mois dont la valeur > 1.5x la moyenne
+  const picMois  = data.map((v,i)=>({v,i})).filter(x=>x.v > moy*1.5).map(x=>MOIS_LABELS[x.i]);
+  const creux    = data.map((v,i)=>({v,i})).filter(x=>x.v < moy*0.4 && moy>1).map(x=>MOIS_LABELS[x.i]);
+
+  el.style.display = `block`;
+  let html = `<div class="nego">`;
+  html += `<p class="nego-title"><i class="ti ti-chart-bar" aria-hidden="true" style="margin-right:5px"></i>Saisonnalite</p>`;
+  html += `<div class="nego-body">`;
+
+  if (cv < 0.3) {
+    html += `<span class="badge ok">Produit stable</span> Ventes regulieres toute l annee (CV=${(cv*100).toFixed(0)}%). Pas de saisonnalite marquee.`;
+  } else if (cv < 0.6) {
+    html += `<span class="badge warn">Saisonnalite moderee</span> CV=${(cv*100).toFixed(0)}%. `;
+    if (picMois.length) html += `Pic observe en <b>${picMois.join(`, `)}</b>. `;
+    if (creux.length)   html += `Creux en <b>${creux.join(`, `)}</b>.`;
+  } else {
+    html += `<span class="badge ko">Produit fortement saisonnier</span> CV=${(cv*100).toFixed(0)}%. `;
+    if (picMois.length) html += `Saison haute : <b>${picMois.join(`, `)}</b> (pic a ${mx} u.). `;
+    if (creux.length)   html += `Saison basse : <b>${creux.join(`, `)}</b> (${mn} u.).`;
+    html += `<br>Pensez a adapter vos commandes et promotions a cette saisonnalite.`;
+  }
+
+  html += `</div></div>`;
+  el.innerHTML = html;
+}
+
+// ===== STRATEGIE PRICING =====
+
+
+async function loadStrategie() {
+  const url    = document.getElementById('strat-url').value.trim();
+  const status = document.getElementById('strat-status');
+  if (!url) { status.textContent = 'Saisir l URL de la Web App'; return; }
+
+  status.textContent = 'Chargement...';
+  status.style.color = 'var(--text-sec)';
+
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    stratData  = data;
+    afficherStrategie(data);
+    status.textContent = `OK — ${data.totalLeaders || 0} leaders, ${data.totalStandard || 0} standard`;
+    status.style.color = 'var(--color-text-success)';
+  } catch(err) {
+    status.textContent = 'Erreur : ' + err.message;
+    status.style.color = 'var(--color-text-danger)';
+  }
+}
+
+function afficherStrategie(data) {
+  // Résumé
+  const marches = data.marches || {};
+  let sumHtml = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+  let totalL = 0, totalS = 0;
+
+  for (const [m, v] of Object.entries(marches)) {
+    const nl = v.leaders ? v.leaders.length : 0;
+    const ns = v.standard ? v.standard.length : 0;
+    totalL += nl; totalS += ns;
+    sumHtml += `<div class="met"><p class="lbl">${m}</p>
+      <p class="val" style="font-size:14px">${nl + ns} produits</p>
+      <p class="sub">${nl} leaders · ${ns} standard</p></div>`;
+  }
+  sumHtml += '</div>';
+  sumHtml += `<div style="margin-top:10px;font-size:13px;color:var(--text-sec)">
+    Total : <b>${totalL + totalS} produits DN≥20%</b> — <b>${totalL} leaders</b> — <b>${totalS} standard</b>
+    <br>Généré le : ${data.generated ? new Date(data.generated).toLocaleString('fr-FR') : '?'}
+  </div>`;
+
+  document.getElementById('strat-summary').innerHTML = sumHtml;
+  document.getElementById('strat-results-card').style.display = 'block';
+
+  // Table complète
+  afficherTableStrat(data, 'tous');
+  document.getElementById('strat-table-card').style.display = 'block';
+}
+
+function filtrerStrat(filtre) {
+  stratFiltre = filtre;
+  ['tous','LEADER','STANDARD'].forEach(f => {
+    const btn = document.getElementById('sf-' + f.toLowerCase());
+    if (btn) btn.classList.toggle('active', f === filtre);
+  });
+  document.getElementById('strat-filter-label').textContent =
+    filtre === 'tous' ? 'tous' : filtre === 'LEADER' ? 'leaders uniquement' : 'standard uniquement';
+  if (stratData) afficherTableStrat(stratData, filtre);
+}
+
+function afficherTableStrat(data, filtre) {
+  const marches = data.marches || {};
+  let rows = [];
+  for (const [m, v] of Object.entries(marches)) {
+    if (filtre !== 'STANDARD') rows = rows.concat((v.leaders || []).map(r => ({...r, _statut: 'LEADER'})));
+    if (filtre !== 'LEADER')  rows = rows.concat((v.standard || []).map(r => ({...r, _statut: 'STANDARD'})));
+  }
+
+  if (rows.length === 0) {
+    document.getElementById('strat-table').innerHTML = '<tr><td style="padding:12px;color:var(--text-ter)">Aucun produit</td></tr>';
+    return;
+  }
+
+  const cols = ['EAN','LIBELLE','LABO','MARCHE','DN%','ROTATION_MOIS','STATUT','PA_HT','K_APPLIQUE','PV_TTC','MB%','MBu','PMC','DIFF_PMC','POSITION_PMC'];
+  let html = '<thead><tr>';
+  cols.forEach(c => {
+    html += `<th style="padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border)">${c}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  rows.forEach((r, i) => {
+    const isLead = r._statut === 'LEADER';
+    const posPMC = r['POSITION_PMC'] || '';
+    const bg = isLead ? '#fff3e0' : (i % 2 === 0 ? '#f5f4f0' : '#fff');
+    html += `<tr style="background:${bg}">`;
+    cols.forEach(c => {
+      let val = r[c] !== undefined ? r[c] : '';
+      let style = 'padding:5px 8px;font-size:12px;font-family:monospace;white-space:nowrap;border-bottom:0.5px solid var(--border)';
+      if (c === 'STATUT') {
+        style += `;font-weight:600;color:${isLead ? 'var(--warn)' : 'var(--text-sec)'}`;
+      }
+      if (c === 'POSITION_PMC') {
+        const clr = posPMC === 'SOUS PMC' ? 'var(--color-text-success)' : posPMC === 'SUR PMC' ? 'var(--color-text-danger)' : 'var(--text-sec)';
+        style += `;color:${clr};font-weight:500`;
+      }
+      html += `<td style="${style}">${val}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody>';
+  document.getElementById('strat-table').innerHTML = html;
+}
+
+
+
+
+// ===== VERDICT PROMO =====
+var _vd = null;
+
+function renderVerdict() {
+  var wrap = document.getElementById('pm-vd');
+  if (!wrap || !_vd) return;
+  var d = _vd;
+  var trafic  = parseInt(document.getElementById('pm-vd-trafic').value)  || 0;
+  var rep     = parseInt(document.getElementById('pm-vd-rep').value)     || 0;
+  var urgence = parseInt(document.getElementById('pm-vd-urgence').value) || 0;
+
+  function st(s){ return '★'.repeat(s) + '☆'.repeat(3-s); }
+  function bg(s){ return s>=2 ? 'var(--accent-bg)' : s==1 ? 'var(--warn-bg)' : 'var(--danger-bg)'; }
+  function tc(s){ return s>=2 ? 'var(--accent-text)' : s==1 ? 'var(--warn)' : 'var(--danger)'; }
+
+  var sR=0, lR='';
+  if (d.mbuP <= 0)      { sR=0; lR='Vente a perte'; }
+  else if (!d.seuilOk)  { sR=1; lR='Seuil non atteint (+'+d.seuilExtra+' u. manquantes)'; }
+  else if (d.gain >= 0) { sR=3; lR='Plus rentable (+'+d.gain.toFixed(2).replace('.',',')+' euro)'; }
+  else                  { sR=2; lR='Moins rentable de '+Math.abs(d.gain).toFixed(2).replace('.',',')+' euro'; }
+
+  var sE=0, lE='';
+  if (d.ecoulP === null)              { sE=1; lE='Ventes non renseignees'; }
+  else if (d.ecoulN && d.ecoulP < d.ecoulN*0.6) { sE=3; lE='Ecoulement tres accelere : '+d.ecoulP.toFixed(1)+' mois'; }
+  else if (d.ecoulN && d.ecoulP < d.ecoulN*0.85){ sE=2; lE='Ecoulement ameliore'; }
+  else                                { sE=1; lE='Peu d effet sur l ecoulement'; }
+
+  var total = sR + sE + trafic + rep + urgence;
+
+  var dims = [
+    {l:'Rentabilite directe', s:sR, d:lR},
+    {l:'Ecoulement stock',    s:sE, d:lE},
+    {l:'Effet trafic',   s:trafic,  d:['Nul','Faible','Modere','Fort'][trafic]},
+    {l:'Reputation prix',s:rep,     d:['Non','Faible','Modere','Leader'][rep]},
+  ];
+
+  var g = document.getElementById('pm-vd-grid');
+  if (g) g.innerHTML = dims.map(function(x){
+    return '<div style="background:'+bg(x.s)+';border-radius:var(--radius-sm);padding:10px 12px">' +
+      '<p style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:'+tc(x.s)+';margin:0 0 3px">'+x.l+'</p>' +
+      '<p style="font-size:16px;color:'+tc(x.s)+';letter-spacing:2px;margin:0 0 2px">'+st(x.s)+'</p>' +
+      '<p style="font-size:11px;color:'+tc(x.s)+';opacity:.8;margin:0">'+x.d+'</p>' +
+      '</div>';
+  }).join('');
+
+  var vL,vB,vD,vC;
+  if (d.mbuP <= 0) {
+    vL='NE PAS FAIRE'; vB='var(--danger-bg)';
+    vD='Marge negative — vous vendez a perte.';
+    vC='Reduisez la remise ou abandonnez cette promo.';
+  } else if (total >= 11) {
+    vL='TRES RECOMMANDE'; vB='var(--accent-bg)';
+    vD='Score '+total+'/15 — Rentable, ecoulement accelere, effets qualitatifs positifs.';
+    vC='Lancez la promo. Limitez a 3 semaines pour ne pas habituez le client au prix promo.';
+  } else if (total >= 8) {
+    vL='RECOMMANDE'; vB='var(--accent-bg)';
+    vD='Score '+total+'/15 — La promo est justifiee.';
+    vC='Limitez la duree (2-3 semaines) pour eviter la desensibilisation prix.';
+  } else if (total >= 5) {
+    vL='A EVALUER'; vB='var(--warn-bg)';
+    vD='Score '+total+'/15 — Arguments mitiges.';
+    vC='Testez sur un volume limite avant d etendre.';
+  } else {
+    vL='DECONSEILLE'; vB='var(--warn-bg)';
+    vD='Score '+total+'/15 — Trop peu de criteres positifs pour justifier la perte de marge.';
+    vC = urgence >= 2
+      ? 'Preferez une cooperation commerciale avec le labo plutot qu une remise consommateur.'
+      : 'La vente normale est plus rentable dans ce cas.';
+  }
+
+  var vf = document.getElementById('pm-vd-final');
+  if (vf) {
+    vf.style.background = vB;
+    vf.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+      '<span style="font-size:15px;font-weight:600;color:var(--text)">'+vL+'</span>' +
+      '<span style="font-size:12px;color:var(--text-sec)">Score : '+total+' / 15</span>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--text-sec);line-height:1.8">'+vD+'<br><b>Conseil :</b> '+vC+'</div>';
+  }
+  wrap.style.display = 'block';
+}
+
+// ===== VERDICT PROMO (onglet dedie) =====
+function runVerdict() {
+  var pa     = parseFloat(document.getElementById('vd-pa').value) || 0;
+  var pv     = parseFloat(document.getElementById('vd-pv').value) || 0;
+  var tvaR   = parseFloat(document.getElementById('vd-tva').value) / 100;
+  var tvaM   = 1 + tvaR;
+  var stock  = parseInt(document.getElementById('vd-stock').value) || 0;
+  var vmois  = parseFloat(document.getElementById('vd-vmois').value) || 0;
+  var promo  = parseFloat(document.getElementById('vd-promo').value) || 0;
+  var vol    = parseFloat(document.getElementById('vd-vol').value) || 0;
+  var trafic = parseInt(document.getElementById('vd-trafic').value) || 0;
+  var rep    = parseInt(document.getElementById('vd-rep').value) || 0;
+  var urgence= parseInt(document.getElementById('vd-urgence').value) || 0;
+
+  if (!pa || !pv || !stock) return;
+
+  var pvht   = pv / tvaM;
+  var mbu    = pvht - pa;
+  var pvP    = pv * (1 - promo / 100);
+  var pvhtP  = pvP / tvaM;
+  var mbuP   = pvhtP - pa;
+  var mb1    = mbu * stock;
+  var mb2    = mbuP * stock;
+  var cout   = pa * stock;
+
+  var seuilExtra = mbuP > 0 ? Math.ceil(stock * (mbu - mbuP) / mbuP) : null;
+  var seuilPct   = (seuilExtra !== null && stock > 0) ? (seuilExtra / stock * 100) : null;
+  var seuilOk    = (seuilPct !== null) ? (vol >= seuilPct) : false;
+
+  var vmoisP  = vmois * (1 + vol / 100);
+  var ecoulN  = vmois > 0 ? stock / vmois : null;
+  var ecoulP  = vmoisP > 0 ? stock / vmoisP : null;
+
+  function f2(v) { return v.toFixed(2).replace('.', ','); }
+  function f1(v) { return v.toFixed(1).replace('.', ','); }
+
+  // Chiffres cles
+  var rc = document.getElementById('vd-result');
+  var ch = document.getElementById('vd-chiffres');
+  rc.style.display = 'block';
+  ch.innerHTML =
+    met('', 'PV TTC normal', f2(pv) + ' euro', 'MB : ' + f2(mbu) + ' euro (' + f1(mbu/pvht*100) + '%)') +
+    met(mbuP >= 0 ? '' : 'danger', 'PV TTC promo', f2(pvP) + ' euro', 'MB promo : ' + f2(mbuP) + ' euro (' + f1(mbuP/pvhtP*100) + '%)') +
+    met(seuilOk ? 'hi' : 'warn', 'Seuil de rentabilite', seuilExtra !== null ? '+' + seuilExtra + ' u. min' : 'N/A', seuilPct !== null ? 'soit +' + f1(seuilPct) + '% — hyp : +' + vol + '%' : '') +
+    met(mb2 >= mb1 ? 'hi' : 'warn', 'Gain vs vente normale', (mb2 >= mb1 ? '+' : '') + f2(mb2 - mb1) + ' euro', 'sur ' + stock + ' unites');
+
+  // Scores
+  var sR = 0, lR = '';
+  if (mbuP <= 0)     { sR = 0; lR = 'Vente a perte'; }
+  else if (!seuilOk) { sR = 1; lR = 'Seuil non atteint (+' + (seuilExtra||0) + ' u. manquantes)'; }
+  else if (mb2 >= mb1){ sR = 3; lR = 'Plus rentable (+' + f2(mb2-mb1) + ' euro)'; }
+  else               { sR = 2; lR = 'Moins rentable de ' + f2(mb1-mb2) + ' euro'; }
+
+  var sE = 0, lE = '';
+  if (ecoulP === null)                       { sE = 1; lE = 'Ventes non renseignees'; }
+  else if (ecoulN && ecoulP < ecoulN * 0.6)  { sE = 3; lE = 'Ecoulement tres accelere : ' + f1(ecoulP) + ' mois'; }
+  else if (ecoulN && ecoulP < ecoulN * 0.85) { sE = 2; lE = 'Ecoulement ameliore'; }
+  else                                       { sE = 1; lE = 'Peu d effet sur l ecoulement'; }
+
+  var total = sR + sE + trafic + rep + urgence;
+
+  function bgS(s) { return s >= 2 ? 'var(--accent-bg)' : s >= 1 ? 'var(--warn-bg)' : 'var(--danger-bg)'; }
+  function tcS(s) { return s >= 2 ? 'var(--accent-text)' : s >= 1 ? 'var(--warn)' : 'var(--danger)'; }
+  function st(s)  { var r = ''; for(var i=0;i<3;i++) r += i<s ? '★' : '☆'; return r; }
+
+  var dims = [
+    {l:'Rentabilite directe', s:sR, d:lR},
+    {l:'Ecoulement stock',    s:sE, d:lE},
+    {l:'Effet trafic',        s:trafic, d:['Nul','Faible','Modere','Fort'][trafic]},
+    {l:'Reputation prix',     s:rep,    d:['Non','Faible','Modere','Leader'][rep]},
+  ];
+
+  // ---- Compensation (Document 19) ----
+  // QU1 = ventes actuelles / mois
+  // MB1 = mbu * QU1 (marge totale actuelle sur 1 mois)
+  // QU2 = MB1 / MBu2 = nb unites a vendre au prix promo pour obtenir meme marge
+  // QU2 - QU1 = unites supplementaires a vendre
+  // % augmentation = (QU2 - QU1) / QU1 * 100
+  var qu1    = vmois;
+  var mb1val = mbu * qu1;
+  var qu2    = mbuP > 0 ? mb1val / mbuP : null;
+  var qu2int = qu2 !== null ? Math.ceil(qu2) : null;
+  var quDiff = qu2int !== null ? qu2int - qu1 : null;
+  var quPct  = (quDiff !== null && qu1 > 0) ? (quDiff / qu1 * 100) : null;
+
+  var cc = document.getElementById('vd-compensation');
+  var cg = document.getElementById('vd-comp-grid');
+  var cf = document.getElementById('vd-comp-formula');
+  if (cc && cg && mbuP > 0 && qu1 > 0) {
+    cc.style.display = 'block';
+    cg.innerHTML =
+      met('', 'QU1 — Ventes actuelles / mois', f1(qu1) + ' u.', 'MB mensuelle actuelle : ' + f2(mb1val) + ' euro') +
+      met('', 'MBu promo', f2(mbuP) + ' euro', 'vs MBu normale : ' + f2(mbu) + ' euro') +
+      met(quPct !== null && quPct <= 30 ? 'hi' : 'warn',
+          'QU2 — Unites a vendre au prix promo', qu2int !== null ? qu2int + ' u.' : 'N/A',
+          'pour obtenir la meme marge totale qu en vente normale') +
+      met(quDiff !== null && quDiff <= 0 ? 'hi' : (quPct !== null && quPct <= 25 ? '' : 'warn'),
+          'QU2 - QU1 — Unites supplementaires', quDiff !== null ? (quDiff > 0 ? '+' + quDiff + ' u.' : quDiff + ' u.') : 'N/A',
+          quPct !== null ? 'soit +' + f1(quPct) + '% de ventes en plus' : '');
+    if (cf) cf.innerHTML =
+      'QU2 = MB1 / MBu2 = ' + f2(mb1val) + ' / ' + f2(mbuP) + ' = <b>' + (qu2 !== null ? f1(qu2) : 'N/A') + '</b> arrondi a ' + (qu2int||'N/A') + ' u.' +
+      '<br>QU2 - QU1 = ' + (qu2int||'?') + ' - ' + f1(qu1) + ' = <b>' + (quDiff !== null ? quDiff : '?') + ' u. supplementaires</b>' +
+      '<br>% augmentation necessaire = ' + (quDiff||'?') + ' / ' + f1(qu1) + ' x 100 = <b>' + (quPct !== null ? f1(quPct) + '%' : '?') + '</b>';
+  } else if (cc) {
+    cc.style.display = mbuP <= 0 ? 'none' : 'block';
+  }
+
+  // ---- Tableau de simulation multi-scenarios ----
+  var simCard = document.getElementById('vd-simul');
+  var simTable = document.getElementById('vd-simul-table');
+  if (simCard && simTable && pa > 0 && pv > 0) {
+    simCard.style.display = 'block';
+    var remises = [5, 10, 15, 20, 25, 30];
+    var thStyle = 'padding:7px 10px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right';
+    var thStyleL = 'padding:7px 10px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left';
+    var html = '<thead><tr>' +
+      '<th style="' + thStyleL + '">Remise</th>' +
+      '<th style="' + thStyle + '">PV TTC</th>' +
+      '<th style="' + thStyle + '">MBu</th>' +
+      '<th style="' + thStyle + '">MB%</th>' +
+      '<th style="' + thStyle + '">Baisse MBu</th>' +
+      '<th style="' + thStyle + '">Baisse MB%</th>' +
+      '<th style="' + thStyle + '">QU2 (a vendre)</th>' +
+      '<th style="' + thStyle + '">QU suppl.</th>' +
+      '<th style="' + thStyle + '">% hausse necessaire</th>' +
+      '<th style="' + thStyle + '">Rentable si vol. hyp ?</th>' +
+      '</tr></thead><tbody>';
+
+    remises.forEach(function(r) {
+      var pvPr   = pv * (1 - r / 100);
+      var pvhtPr = pvPr / tvaM;
+      var mbuPr  = pvhtPr - pa;
+      var mbPctPr= pvhtPr > 0 ? mbuPr / pvhtPr * 100 : 0;
+      var baisseV= mbuPr - mbu;
+      var baisseP= mbu > 0 ? (mbuPr - mbu) / mbu * 100 : 0;
+      var mb1v   = mbu * qu1;
+      var qu2v   = mbuPr > 0 ? mb1v / mbuPr : null;
+      var qu2i   = qu2v !== null ? Math.ceil(qu2v) : null;
+      var quDv   = qu2i !== null ? qu2i - qu1 : null;
+      var quPv   = (quDv !== null && qu1 > 0) ? quDv / qu1 * 100 : null;
+      var rentable = quPv !== null ? (vol >= quPv) : false;
+      var isCurrent = r === promo;
+
+      var bg = isCurrent ? 'var(--accent-bg)' : (r % 10 === 0 ? 'var(--surface2)' : '#fff');
+      var tdStyle = 'padding:6px 10px;border-bottom:0.5px solid var(--border);font-family:monospace;font-size:12px;text-align:right;background:' + bg;
+      var tdStyleL = 'padding:6px 10px;border-bottom:0.5px solid var(--border);font-size:12px;font-weight:600;background:' + bg;
+
+      var rentBadge = mbuPr <= 0
+        ? '<span style="color:var(--danger);font-weight:600">Perte</span>'
+        : rentable
+          ? '<span style="color:var(--accent-text);font-weight:600">Oui</span>'
+          : '<span style="color:var(--warn);font-weight:600">Non</span>';
+
+      html += '<tr>' +
+        '<td style="' + tdStyleL + '">' + r + '%' + (isCurrent ? ' ★' : '') + '</td>' +
+        '<td style="' + tdStyle + '">' + f2(pvPr) + '</td>' +
+        '<td style="' + tdStyle + (mbuPr < 0 ? ';color:var(--danger)' : '') + '">' + f2(mbuPr) + '</td>' +
+        '<td style="' + tdStyle + '">' + f1(mbPctPr) + '%</td>' +
+        '<td style="' + tdStyle + ';color:var(--warn)">' + f2(baisseV) + '</td>' +
+        '<td style="' + tdStyle + ';color:var(--warn)">' + f1(baisseP) + '%</td>' +
+        '<td style="' + tdStyle + '">' + (qu2i !== null ? qu2i + ' u.' : 'N/A') + '</td>' +
+        '<td style="' + tdStyle + (quDv !== null && quDv > qu1 ? ';color:var(--danger)' : '') + '">' + (quDv !== null ? '+' + quDv + ' u.' : 'N/A') + '</td>' +
+        '<td style="' + tdStyle + (quPv !== null && quPv > 50 ? ';color:var(--danger)' : quPv !== null && quPv > 25 ? ';color:var(--warn)' : '') + '">' + (quPv !== null ? '+' + f1(quPv) + '%' : 'N/A') + '</td>' +
+        '<td style="' + tdStyle + '">' + rentBadge + '</td>' +
+        '</tr>';
+    });
+
+    html += '</tbody>';
+    simTable.innerHTML = html;
+  }
+
+  var gc = document.getElementById('vd-grille');
+  var gd = document.getElementById('vd-dims');
+  gc.style.display = 'block';
+  gd.innerHTML = dims.map(function(x) {
+    return '<div style="background:' + bgS(x.s) + ';border-radius:var(--radius-sm);padding:10px 12px">' +
+      '<p style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:' + tcS(x.s) + ';margin:0 0 3px">' + x.l + '</p>' +
+      '<p style="font-size:18px;letter-spacing:3px;color:' + tcS(x.s) + ';margin:0 0 2px">' + st(x.s) + '</p>' +
+      '<p style="font-size:11px;color:' + tcS(x.s) + ';opacity:.85;margin:0">' + x.d + '</p>' +
+      '</div>';
+  }).join('');
+
+  var vL, vB, vD, vC;
+  if (mbuP <= 0) {
+    vL = 'NE PAS FAIRE'; vB = 'var(--danger-bg)';
+    vD = 'Marge negative — vous vendez a perte.';
+    vC = 'Reduisez la remise ou abandonnez cette promo.';
+  } else if (total >= 11) {
+    vL = 'TRES RECOMMANDE'; vB = 'var(--accent-bg)';
+    vD = 'Score ' + total + '/15 — Rentable, ecoulement accelere, effets qualitatifs positifs.';
+    vC = 'Lancez la promo. Limitez a 3 semaines pour ne pas habituer le client au prix reduit.';
+  } else if (total >= 8) {
+    vL = 'RECOMMANDE'; vB = 'var(--accent-bg)';
+    vD = 'Score ' + total + '/15 — La promo est justifiee.';
+    vC = 'Limitez la duree (2-3 semaines) pour eviter la desensibilisation prix.';
+  } else if (total >= 5) {
+    vL = 'A EVALUER'; vB = 'var(--warn-bg)';
+    vD = 'Score ' + total + '/15 — Arguments mitiges.';
+    vC = 'Testez sur un volume limite avant d etendre.';
+  } else {
+    vL = 'DECONSEILLE'; vB = 'var(--warn-bg)';
+    vD = 'Score ' + total + '/15 — Trop peu de criteres positifs pour justifier la perte de marge.';
+    vC = urgence >= 2
+      ? 'Preferez une cooperation commerciale avec le labo plutot qu une remise consommateur.'
+      : 'La vente normale est plus rentable dans ce cas.';
+  }
+
+  var vf = document.getElementById('vd-final');
+  vf.style.background = vB;
+  vf.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+    '<span style="font-size:15px;font-weight:600;color:var(--text)">' + vL + '</span>' +
+    '<span style="font-size:12px;color:var(--text-sec)">Score : ' + total + ' / 15</span>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--text-sec);line-height:1.9">' + vD + '<br><b>Conseil :</b> ' + vC + '</div>';
+}
+
+
+// ===== DOC 20 — % augmentation volume pour compenser baisse de marge =====
+// Formule : % augmentation = baisse% / (1 - baisse%) * 100
+// Ex: baisse 20% -> 20/80*100 = 25%
+function calcDoc20() {
+  var b = parseFloat(document.getElementById('d20-baisse').value) || 0;
+  if (b <= 0 || b >= 100) return;
+  var augm = b / (100 - b) * 100;
+  var el = document.getElementById('d20-result');
+  var ef = document.getElementById('d20-formula');
+  if (el) el.textContent = 'Augmentation necessaire : +' + augm.toFixed(1).replace('.',',') + '%';
+  if (ef) ef.innerHTML =
+    'Formule : baisse% / (100 - baisse%) x 100 = ' + b + ' / ' + (100-b) + ' x 100 = <b>' + augm.toFixed(1).replace('.',',') + '%</b>' +
+    '<br>Interpretation : si votre marge baisse de ' + b + '%, il faut vendre <b>+' + augm.toFixed(1).replace('.',',') + '%</b> de plus pour obtenir la meme marge totale.';
+}
+
+// ===== DOC 21 — Impact baisse PV TTC sur marge selon MB% initial =====
+// Si PV baisse de x% et MB% initial = m :
+// Nouveau PV HT = PV HT * (1 - x/100)
+// PA HT reste constant
+// Nouveau MB% = (nouveau PV HT - PA HT) / nouveau PV HT
+// PA HT = PV HT * (1 - m/100)
+// Nouveau MBu = nouveau PV HT - PA HT = PV HT*(1-x/100) - PV HT*(1-m/100) = PV HT*(m/100 - x/100)
+// Nouveau MB% = (PV HT*(m-x)/100) / (PV HT*(1-x/100)) = (m-x)/(100-x)*100
+// Baisse MB% = (nouveau MB% - m) / m * 100
+// QV% en plus = baisse MB% / (100 - baisse MB%) * 100
+function calcDoc21() {
+  var m = parseFloat(document.getElementById('d21-mb').value) || 0;
+  var x = parseFloat(document.getElementById('d21-baisse').value) || 0;
+  if (m <= 0 || x <= 0 || x >= 100) return;
+
+  var newMB    = (m - x) / (100 - x) * 100;
+  var baisseMB = (newMB - m) / m * 100;
+  var qvPlus   = Math.abs(baisseMB) / (100 - Math.abs(baisseMB)) * 100;
+
+  var gr = document.getElementById('d21-result');
+  var gf = document.getElementById('d21-formula');
+  if (!gr) return;
+
+  gr.innerHTML =
+    met(newMB > 0 ? '' : 'danger', 'Nouveau MB%', newMB.toFixed(1).replace('.',',') + '%', 'vs initial : ' + m + '%') +
+    met('warn', 'Baisse MB en %', baisseMB.toFixed(1).replace('.',',') + '%', 'perte relative de marge') +
+    met(qvPlus <= 25 ? 'hi' : qvPlus <= 50 ? '' : 'warn', 'QV% a vendre en plus', '+' + qvPlus.toFixed(1).replace('.',',') + '%', 'pour obtenir la meme marge totale');
+
+  if (gf) gf.innerHTML =
+    'Nouveau MB% = (' + m + ' - ' + x + ') / (100 - ' + x + ') x 100 = <b>' + newMB.toFixed(1).replace('.',',') + '%</b>' +
+    '<br>Baisse MB = (' + newMB.toFixed(1) + ' - ' + m + ') / ' + m + ' x 100 = <b>' + baisseMB.toFixed(1).replace('.',',') + '%</b>' +
+    '<br>QV a vendre en plus = ' + Math.abs(baisseMB).toFixed(1) + ' / (100 - ' + Math.abs(baisseMB).toFixed(1) + ') x 100 = <b>+' + qvPlus.toFixed(1).replace('.',',') + '%</b>';
+}
+
+// ===== DOC 26 — Baisse PV TTC possible apres baisse PA HT pour maintenir MBu =====
+// Si PA HT baisse de y% :
+// Nouveau PA HT = PA HT * (1 - y/100)
+// Pour maintenir MBu constante : nouveau PV HT = nouveau PA HT + MBu = PA HT*(1-y/100) + PV HT*MB%/100... non
+// Plus simple : MBu = PV HT * MB%/100 (constante)
+// PA HT = PV HT * (1 - MB%/100)
+// Nouveau PA HT = PA HT * (1 - y/100) = PV HT * (1 - MB%/100) * (1 - y/100)
+// Pour maintenir MBu : nouveau PV HT - nouveau PA HT = MBu
+// nouveau PV HT = MBu + nouveau PA HT = PV HT*MB%/100 + PV HT*(1-MB%/100)*(1-y/100)
+// % baisse PV = (PV HT - nouveau PV HT) / PV HT * 100
+// = 1 - [MB%/100 + (1-MB%/100)*(1-y/100)]
+// = (1 - MB%/100) * y/100
+// = (1 - m/100) * y/100 * 100 en %
+function calcDoc26() {
+  var m = parseFloat(document.getElementById('d26-mb').value) || 0;
+  var y = parseFloat(document.getElementById('d26-baisse').value) || 0;
+  if (m <= 0 || y <= 0) return;
+
+  var baissePV = (1 - m / 100) * y;
+
+  var gr = document.getElementById('d26-result');
+  var gf = document.getElementById('d26-formula');
+  if (!gr) return;
+
+  gr.innerHTML =
+    met('hi', 'Baisse PV TTC possible', '-' + baissePV.toFixed(1).replace('.',',') + '%', 'tout en maintenant la meme marge unitaire') +
+    met('', 'Interpretation', 'PA baisse de ' + y + '% → PV peut baisser de ' + baissePV.toFixed(1).replace('.',',') + '%', 'sans toucher a votre marge en euros');
+
+  if (gf) gf.innerHTML =
+    'Formule : (1 - MB%/100) x baisse PA% = (1 - ' + m + '/100) x ' + y + ' = <b>-' + baissePV.toFixed(1).replace('.',',') + '%</b>' +
+    '<br>Interpretation : si le labo vous accorde ' + y + '% de remise supplementaire, vous pouvez baisser votre PV de <b>' + baissePV.toFixed(1).replace('.',',') + '%</b> et garder exactement la meme marge unitaire en euros.';
+}
+
+// Init on load
+setTimeout(function() {
+  calcDoc20();
+  calcDoc21();
+  calcDoc26();
+}, 100);
+
+
+// ===== MARGE COMPENSEE =====
+var mcProduits = []; // {ean, libelle, paHT, rotMois, quartz, pvActuel}
+
+function calcMC() {
+  if (!document.getElementById('mc-mb-cible')) return;
+  var mbCible = parseFloat(document.getElementById('mc-mb-cible').value) || 35;
+  var mbTS    = parseFloat(document.getElementById('mc-mb-ts').value) || 28;
+  var mbS     = parseFloat(document.getElementById('mc-mb-s').value) || 35;
+  var mbPS    = parseFloat(document.getElementById('mc-mb-ps').value) || 42;
+  var tvaR    = parseFloat(document.getElementById('mc-tva').value) / 100;
+  var tvaM    = 1 + tvaR;
+
+  // Coefficients K pour chaque categorie
+  var kTS = tvaM / (1 - mbTS/100);
+  var kS  = tvaM / (1 - mbS/100);
+  var kPS = tvaM / (1 - mbPS/100);
+
+  document.getElementById('mc-k-ts').textContent = 'K : ' + kTS.toFixed(3).replace('.',',');
+  document.getElementById('mc-k-s').textContent  = 'K : ' + kS.toFixed(3).replace('.',',');
+  document.getElementById('mc-k-ps').textContent = 'K : ' + kPS.toFixed(3).replace('.',',');
+
+  // Verification equilibre si produits charges
+  if (mcProduits.length > 0) {
+    renderMCTable(mbCible, mbTS, mbS, mbPS, kTS, kS, kPS, tvaM, tvaR);
+  }
+
+  // Formule d equilibre
+  var ef = document.getElementById('mc-equilibre');
+  if (ef) ef.innerHTML =
+    'Pour atteindre MB global = <b>' + mbCible + '%</b> : les marges par categorie doivent etre equilibrees selon la part de CA de chaque categorie.' +
+    '<br>Tres sensible : <b>MB ' + mbTS + '%</b> (K=' + kTS.toFixed(3) + ') | ' +
+    'Sensible : <b>MB ' + mbS + '%</b> (K=' + kS.toFixed(3) + ') | ' +
+    'Peu sensible : <b>MB ' + mbPS + '%</b> (K=' + kPS.toFixed(3) + ')';
+}
+
+function qualifierSensibilite(prod, rotMoyenne) {
+  // If sensCode from Quartz is available, use it directly
+  if (prod.sensCode) return prod.sensCode;
+  // Fallback: rotation-based
+  if (prod.rotMois > rotMoyenne) return 'S';
+  return 'PS';
+}
+
+// Mapping sensibilites Quartz -> 3 niveaux
+var mcQuartzData = {};
+var mcLGPIData   = {};
+var OSPHARM_PMC  = {"3282770204667":{"v":10.06,"p":10.27,"px":11.5,"pn":10.28,"ph":9.65},"3282770204681":{"v":16.43,"p":16.5,"px":17.99,"pn":16.8,"ph":15.99},"3282779003131":{"v":9.11,"p":9.41,"px":10.02,"pn":9.48,"ph":8.9},"3282770396331":{"v":19.9,"p":19.82,"px":20.9,"pn":21.16,"ph":21.4},"3282770396317":{"v":20.35,"p":20.46,"px":21.9,"pn":21.08,"ph":21.5},"3282771000909":{"v":14.02,"p":13.67,"px":14.9,"pn":14.48,"ph":14.9},"3282779003124":{"v":7.38,"p":7.54,"px":7.9,"pn":7.61,"ph":null},"3282770395938":{"v":19.9,"p":20.74,"px":22.9,"pn":21.56,"ph":null},"3282770205633":{"v":13.82,"p":13.65,"px":14.5,"pn":13.5,"ph":13.5},"3282779390132":{"v":18.07,"p":18.73,"px":19.9,"pn":18.63,"ph":null},"3282770207774":{"v":13.82,"p":14.27,"px":14.99,"pn":14.42,"ph":13.99},"3282770402162":{"v":19.47,"p":20.45,"px":21.9,"pn":21.09,"ph":24.35},"3282771000985":{"v":12.04,"p":12.3,"px":13.75,"pn":12.2,"ph":null},"3282770150261":{"v":13.3,"p":13.23,"px":14.5,"pn":13.32,"ph":12.9},"3282770399585":{"v":15.08,"p":15.22,"px":16.9,"pn":15.61,"ph":15.85},"3282770394467":{"v":14.23,"p":14.41,"px":15.9,"pn":14.58,"ph":13.8},"3282779228305":{"v":4.9,"p":4.18,"px":4.9,"pn":4.52,"ph":null},"3282770399936":{"v":7.92,"p":null,"px":8.9,"pn":8.14,"ph":5.99},"3282770392654":{"v":18.17,"p":18.37,"px":19.9,"pn":18.72,"ph":19.1},"3282770149487":{"v":16.54,"p":16.79,"px":17.99,"pn":17.11,"ph":17.65},"3282770396881":{"v":20.99,"p":21.59,"px":22.9,"pn":21.95,"ph":22.75},"3282770399226":{"v":17.28,"p":17.23,"px":17.9,"pn":17.71,"ph":17.4},"3282770396324":{"v":30.05,"p":30.47,"px":32.9,"pn":31.41,"ph":31.45},"3282770149524":{"v":16.23,"p":16.66,"px":17.8,"pn":17.05,"ph":15.99},"3282770204698":{"v":5.95,"p":6.28,"px":6.78,"pn":6.43,"ph":null},"3282771000558":{"v":30.78,"p":31.03,"px":32.9,"pn":31.43,"ph":null},"3282770398984":{"v":24.27,"p":24.4,"px":null,"pn":24.53,"ph":24.9},"3282770399905":{"v":18.33,"p":18.7,"px":19.99,"pn":18.75,"ph":18.9},"3282779416139":{"v":10.23,"p":9.84,"px":10.9,"pn":10.88,"ph":9.8},"3282770396874":{"v":17.9,"p":17.63,"px":null,"pn":18.53,"ph":null},"3282771000299":{"v":19.45,"p":19.45,"px":21.9,"pn":20.05,"ph":18.5},"3282770149494":{"v":16.99,"p":16.26,"px":16.99,"pn":17.13,"ph":null},"3282771000916":{"v":21.5,"p":20.85,"px":22.5,"pn":22.6,"ph":23.1},"3282770149401":{"v":8.8,"p":9.09,"px":9.5,"pn":9.36,"ph":8.99},"3282770139204":{"v":10.12,"p":10.47,"px":10.99,"pn":10.4,"ph":7.9},"3282770208795":{"v":21.45,"p":20.84,"px":22.9,"pn":21.69,"ph":20.95},"3282770100891":{"v":15.16,"p":15.55,"px":16.9,"pn":15.66,"ph":14.95},"3282770208788":{"v":19.92,"p":21.51,"px":23.2,"pn":21.61,"ph":19.4},"3282770397987":{"v":22.84,"p":23.19,"px":24.5,"pn":23.33,"ph":23.55},"3282770148763":{"v":15.8,"p":null,"px":16.99,"pn":16.35,"ph":null},"3282770149548":{"v":16.56,"p":15.91,"px":16.99,"pn":17.05,"ph":null},"3282770401417":{"v":17.41,"p":17.33,"px":19.9,"pn":17.13,"ph":null},"3282770149418":{"v":6.81,"p":6.75,"px":6.99,"pn":7.04,"ph":6.85},"3282770399455":{"v":16.67,"p":16.17,"px":16.9,"pn":17.36,"ph":17.65},"3282770388336":{"v":20.23,"p":19.6,"px":20.9,"pn":20.95,"ph":null},"3282770395235":{"v":23.48,"p":23.44,"px":24.9,"pn":23.71,"ph":23.6},"3282770100617":{"v":null,"p":19.6,"px":19.6,"pn":21.13,"ph":null},"3282779002721":{"v":15.95,"p":17.43,"px":17.9,"pn":17.7,"ph":null},"3282779048637":{"v":12.2,"p":11.47,"px":11.5,"pn":13.45,"ph":null},"3282779255059":{"v":10.92,"p":10.68,"px":10.9,"pn":10.36,"ph":null},"3282770204797":{"v":8.34,"p":8.1,"px":null,"pn":8.54,"ph":7.79},"3282770138801":{"v":22.03,"p":22.76,"px":25.9,"pn":22.93,"ph":21.69},"3282770397079":{"v":21.3,"p":21.81,"px":22.9,"pn":21.85,"ph":22.75},"3282779002738":{"v":9.57,"p":9.87,"px":10.5,"pn":9.73,"ph":null},"3282770101362":{"v":null,"p":null,"px":19.9,"pn":19.75,"ph":19.95},"3282770395365":{"v":23.1,"p":23.61,"px":23.99,"pn":23.81,"ph":22.95},"3282770392760":{"v":24.9,"p":23.43,"px":24.9,"pn":25.34,"ph":null},"3282770392999":{"v":20.81,"p":20.63,"px":21.9,"pn":20.92,"ph":21.5},"3282770142273":{"v":12.95,"p":11.45,"px":11.45,"pn":13.99,"ph":null},"3282770204803":{"v":12.45,"p":12.75,"px":13.5,"pn":13.44,"ph":13.45},"3282770388299":{"v":18.9,"p":19.12,"px":21.9,"pn":20.82,"ph":null},"3282771000534":{"v":29.41,"p":30.65,"px":32.9,"pn":31.21,"ph":null},"3282770392692":{"v":19.9,"p":19.75,"px":19.99,"pn":19.2,"ph":null},"3282770202090":{"v":18.95,"p":null,"px":null,"pn":21.14,"ph":null},"3282770149074":{"v":16.17,"p":16.87,"px":17.99,"pn":16.91,"ph":16.9},"3282770208962":{"v":null,"p":null,"px":null,"pn":18.38,"ph":15.25},"3282770111552":{"v":7.69,"p":8.6,"px":9.99,"pn":9.34,"ph":7.99},"3282770142280":{"v":9.04,"p":12.1,"px":13.5,"pn":11.21,"ph":null},"3282770396300":{"v":null,"p":25.45,"px":null,"pn":25.18,"ph":null},"3282770399141":{"v":17.38,"p":17.62,"px":19.6,"pn":18.24,"ph":18.35},"3282770397451":{"v":23.22,"p":23.9,"px":null,"pn":25.28,"ph":null},"3282770397697":{"v":18.2,"p":18.92,"px":19.99,"pn":18.78,"ph":18.5},"3282770146264":{"v":4.5,"p":4.03,"px":4.5,"pn":4.09,"ph":null},"3282770142112":{"v":5.24,"p":5.65,"px":6.5,"pn":5.39,"ph":4.99},"3282770141214":{"v":null,"p":19.9,"px":19.9,"pn":21.32,"ph":null},"3282771000572":{"v":29.62,"p":30.05,"px":31.9,"pn":31.2,"ph":null},"3282770138856":{"v":20.93,"p":21.52,"px":24.5,"pn":22.74,"ph":null},"3282770389876":{"v":5.99,"p":5.93,"px":5.99,"pn":5.91,"ph":6.08},"3282770207576":{"v":17.95,"p":20.3,"px":20.3,"pn":19.67,"ph":null},"3282770149128":{"v":null,"p":16.5,"px":16.5,"pn":16.92,"ph":null},"3282770401936":{"v":13.25,"p":13.3,"px":13.9,"pn":13.43,"ph":null},"3282770208771":{"v":22.13,"p":21.65,"px":22.99,"pn":22.27,"ph":21.29},"3282770147919":{"v":null,"p":13.57,"px":15.2,"pn":14.03,"ph":null},"3282770072952":{"v":15.94,"p":15.93,"px":16.99,"pn":15.83,"ph":null},"3282770400717":{"v":34.58,"p":34.58,"px":37.9,"pn":35.43,"ph":null},"3282779254892":{"v":5.99,"p":5.6,"px":5.99,"pn":6.36,"ph":null},"3282770146394":{"v":15.9,"p":15.9,"px":15.9,"pn":15.64,"ph":null},"3282770208764":{"v":null,"p":20.85,"px":21.9,"pn":22.14,"ph":null},"3282770207712":{"v":6.94,"p":6.8,"px":6.9,"pn":6.53,"ph":null},"3282770400700":{"v":37.52,"p":40.38,"px":null,"pn":41.29,"ph":null},"3282779051378":{"v":14.13,"p":14.6,"px":15.3,"pn":14.77,"ph":12.65},"3282779003889":{"v":19.9,"p":null,"px":null,"pn":20.88,"ph":null},"3282770114669":{"v":22.83,"p":22.5,"px":22.9,"pn":22.71,"ph":24.7},"3282770399592":{"v":18.9,"p":18.35,"px":18.9,"pn":18.31,"ph":null},"3282770153101":{"v":34.6,"p":34.18,"px":35.99,"pn":36.29,"ph":null},"3282770399479":{"v":null,"p":16.35,"px":16.5,"pn":16.21,"ph":15.4},"3282770397680":{"v":18.2,"p":17.77,"px":17.9,"pn":18.43,"ph":18.5},"3282770397925":{"v":23.9,"p":23.12,"px":24.5,"pn":24.05,"ph":null},"3282770100228":{"v":18.95,"p":18.99,"px":18.99,"pn":20.93,"ph":null},"3282770390476":{"v":14.9,"p":14.63,"px":14.9,"pn":15.58,"ph":null},"3282770153200":{"v":null,"p":38.9,"px":38.9,"pn":41.89,"ph":null},"3282779355773":{"v":null,"p":null,"px":null,"pn":17.27,"ph":null},"3282770392791":{"v":null,"p":26.65,"px":28.4,"pn":25.36,"ph":null},"3282770147926":{"v":null,"p":5.4,"px":5.9,"pn":5.8,"ph":null},"3282770152517":{"v":16.9,"p":17.45,"px":18.9,"pn":18.31,"ph":null},"3282770147261":{"v":7.99,"p":7.17,"px":7.17,"pn":8.76,"ph":null},"3282770207828":{"v":14.9,"p":null,"px":null,"pn":15.44,"ph":null},"3282770389623":{"v":23.3,"p":23.15,"px":24.9,"pn":23.24,"ph":24.7},"3282770209396":{"v":29.95,"p":null,"px":null,"pn":30.48,"ph":null},"3282770147988":{"v":29.95,"p":null,"px":null,"pn":29.32,"ph":null},"3282770073126":{"v":15.4,"p":15.7,"px":16.7,"pn":15.76,"ph":null},"3282770399929":{"v":15.63,"p":16.67,"px":18.9,"pn":16.94,"ph":null},"3282770100549":{"v":19.93,"p":19.4,"px":19.9,"pn":21.38,"ph":null},"3282770399530":{"v":null,"p":19.9,"px":19.9,"pn":20.14,"ph":null},"3282770100747":{"v":null,"p":null,"px":null,"pn":22.09,"ph":null},"3282770100242":{"v":18.95,"p":20.64,"px":22.3,"pn":20.56,"ph":null},"3282770398472":{"v":null,"p":null,"px":null,"pn":7.37,"ph":null},"3282770400687":{"v":48.95,"p":49.48,"px":55.2,"pn":50.56,"ph":null},"3282770100532":{"v":null,"p":20.77,"px":22.4,"pn":21.24,"ph":null},"3282779355872":{"v":16.32,"p":null,"px":null,"pn":18.9,"ph":null},"3282770397437":{"v":23.93,"p":24.9,"px":24.9,"pn":24.87,"ph":null},"3282770209402":{"v":29.9,"p":31.57,"px":32.9,"pn":30.57,"ph":null},"3282770395334":{"v":null,"p":null,"px":null,"pn":23.17,"ph":null},"3282770100556":{"v":null,"p":19.6,"px":19.6,"pn":21.21,"ph":null},"3282770147896":{"v":12.9,"p":13.57,"px":15.2,"pn":14.15,"ph":null},"3282770394313":{"v":31.9,"p":31.75,"px":31.75,"pn":31.53,"ph":null},"3282770145779":{"v":5.22,"p":4.95,"px":5.9,"pn":6.46,"ph":4.5},"3282770202113":{"v":16.95,"p":null,"px":null,"pn":18.42,"ph":null},"3282770111583":{"v":null,"p":19.99,"px":19.99,"pn":22.61,"ph":null},"3282779402927":{"v":null,"p":21.5,"px":21.5,"pn":21.02,"ph":null},"3282770400908":{"v":53.95,"p":56.65,"px":60.4,"pn":59.29,"ph":null},"3282770395990":{"v":50.9,"p":48.99,"px":48.99,"pn":52.44,"ph":null},"3282770398021":{"v":9.9,"p":9.9,"px":9.9,"pn":9.93,"ph":null},"3282770400595":{"v":10.92,"p":11.3,"px":11.5,"pn":11.21,"ph":null},"3282779228633":{"v":15.45,"p":null,"px":null,"pn":16.83,"ph":null},"3282770202106":{"v":null,"p":21.9,"px":21.9,"pn":21.75,"ph":null},"3282770144550":{"v":null,"p":22.9,"px":22.9,"pn":23.76,"ph":null},"3282770399042":{"v":21.95,"p":24.3,"px":24.3,"pn":23.69,"ph":null},"3282770144536":{"v":null,"p":23.7,"px":27.2,"pn":23.64,"ph":null},"3282770401967":{"v":null,"p":null,"px":null,"pn":29.58,"ph":null},"3282770203493":{"v":null,"p":20.9,"px":20.9,"pn":23.23,"ph":null},"3282770399448":{"v":18.44,"p":18.99,"px":18.99,"pn":null,"ph":null},"3282770147841":{"v":null,"p":27.9,"px":27.9,"pn":28.99,"ph":null},"3282770396072":{"v":null,"p":40.15,"px":42.3,"pn":40.23,"ph":40.1},"3282771001463":{"v":null,"p":14.4,"px":14.4,"pn":14.8,"ph":null},"3282770146110":{"v":18.62,"p":null,"px":null,"pn":22.94,"ph":null},"3282770400885":{"v":37.95,"p":40.95,"px":null,"pn":41.45,"ph":null},"3282770401660":{"v":26.9,"p":null,"px":null,"pn":25.73,"ph":null},"3282770146097":{"v":23.95,"p":23.9,"px":23.9,"pn":23.13,"ph":null},"3282770390438":{"v":null,"p":null,"px":null,"pn":4.58,"ph":null},"3282770149111":{"v":15.45,"p":null,"px":null,"pn":16.65,"ph":null},"3282770038545":{"v":34.65,"p":35.9,"px":35.9,"pn":35.56,"ph":null},"3282770146073":{"v":null,"p":18.99,"px":18.99,"pn":22.7,"ph":null},"3282770202854":{"v":null,"p":16.5,"px":16.5,"pn":17.2,"ph":null},"3282770144604":{"v":21.9,"p":21.94,"px":21.99,"pn":23.88,"ph":null},"3282779405485":{"v":null,"p":null,"px":null,"pn":20.26,"ph":null},"3282770050158":{"v":null,"p":null,"px":null,"pn":20.81,"ph":null},"3282770399912":{"v":null,"p":14.9,"px":14.9,"pn":14.83,"ph":null},"3282770144512":{"v":null,"p":null,"px":null,"pn":23.45,"ph":null},"3282770395952":{"v":null,"p":56.9,"px":56.9,"pn":53.61,"ph":null},"3282770111576":{"v":null,"p":4.75,"px":4.75,"pn":5.63,"ph":null},"3282770030068":{"v":null,"p":22.5,"px":22.5,"pn":22.2,"ph":null},"3282770146790":{"v":null,"p":null,"px":null,"pn":17.63,"ph":null},"3282770395198":{"v":19.9,"p":null,"px":null,"pn":20.88,"ph":null},"3282770114201":{"v":null,"p":null,"px":null,"pn":15.52,"ph":null},"3282770100280":{"v":null,"p":null,"px":null,"pn":9.07,"ph":null},"3282770104684":{"v":7.5,"p":7.5,"px":7.5,"pn":6.85,"ph":null},"3282770397376":{"v":null,"p":null,"px":null,"pn":18.33,"ph":null},"3282770395983":{"v":null,"p":null,"px":null,"pn":42.28,"ph":41.5},"3282770393279":{"v":null,"p":16.75,"px":16.75,"pn":18.98,"ph":null},"3282770073478":{"v":6.45,"p":null,"px":null,"pn":6.95,"ph":null},"3282779405553":{"v":null,"p":19.9,"px":19.9,"pn":20.4,"ph":null},"3282770207880":{"v":null,"p":null,"px":null,"pn":24.47,"ph":null},"3282770204339":{"v":null,"p":null,"px":null,"pn":10.8,"ph":null},"3282770400861":{"v":50.8,"p":null,"px":null,"pn":54.79,"ph":51.7},"3282770114171":{"v":null,"p":null,"px":null,"pn":26.46,"ph":null},"3282770098099":{"v":null,"p":null,"px":null,"pn":12.75,"ph":null},"3282770394788":{"v":null,"p":null,"px":null,"pn":16.52,"ph":null},"3282770389524":{"v":null,"p":null,"px":null,"pn":20.18,"ph":null},"3282770401844":{"v":12.9,"p":12.75,"px":12.9,"pn":12.49,"ph":null},"3282770207811":{"v":null,"p":11.9,"px":11.9,"pn":12.8,"ph":13.5},"3282770146066":{"v":null,"p":20.95,"px":20.95,"pn":22.75,"ph":null},"3282770153217":{"v":null,"p":null,"px":null,"pn":31.33,"ph":null},"3282779350655":{"v":null,"p":18.9,"px":18.9,"pn":18.31,"ph":null},"3282770394641":{"v":34.98,"p":34.98,"px":34.98,"pn":40.73,"ph":43.1},"3282770050141":{"v":null,"p":null,"px":null,"pn":21.23,"ph":null},"3282770114195":{"v":null,"p":null,"px":null,"pn":26.44,"ph":null},"3282770146844":{"v":null,"p":null,"px":null,"pn":5.82,"ph":null},"3282779292238":{"v":15.9,"p":null,"px":null,"pn":16.9,"ph":null},"3282779051514":{"v":null,"p":null,"px":null,"pn":18.22,"ph":null},"3282770100921":{"v":null,"p":null,"px":null,"pn":15.32,"ph":null},"3282770100914":{"v":null,"p":14.5,"px":14.5,"pn":14.66,"ph":null},"3282770200096":{"v":null,"p":null,"px":null,"pn":6.42,"ph":null},"3282770100266":{"v":9.9,"p":null,"px":null,"pn":10.99,"ph":null},"3282770208597":{"v":null,"p":null,"px":null,"pn":11.85,"ph":null},"3282770100525":{"v":null,"p":null,"px":null,"pn":20.87,"ph":null},"3282770037319":{"v":null,"p":null,"px":null,"pn":13.3,"ph":null},"3282770148770":{"v":20.9,"p":null,"px":null,"pn":21.71,"ph":null},"3282779051491":{"v":null,"p":null,"px":null,"pn":17.71,"ph":null},"3282779292245":{"v":15.5,"p":null,"px":null,"pn":16.57,"ph":null},"3282770025958":{"v":5.25,"p":null,"px":null,"pn":5.67,"ph":5.25},"3282779292276":{"v":null,"p":18.9,"px":18.9,"pn":16.73,"ph":null},"3282770037111":{"v":null,"p":null,"px":null,"pn":6.74,"ph":null},"3282770200201":{"v":null,"p":null,"px":null,"pn":11.13,"ph":null},"3282770201192":{"v":null,"p":null,"px":null,"pn":17.87,"ph":null},"3282770401974":{"v":null,"p":null,"px":null,"pn":44.87,"ph":null},"3282771000947":{"v":null,"p":null,"px":null,"pn":16.33,"ph":null},"3282770144970":{"v":null,"p":null,"px":null,"pn":11.97,"ph":null},"3282770209938":{"v":null,"p":null,"px":null,"pn":18.93,"ph":null},"3282770072815":{"v":null,"p":null,"px":null,"pn":5.97,"ph":null},"3282770207255":{"v":null,"p":null,"px":null,"pn":16.46,"ph":null},"3282770401981":{"v":null,"p":null,"px":null,"pn":64.68,"ph":null},"3282770110661":{"v":null,"p":null,"px":null,"pn":8.53,"ph":null},"3282779349680":{"v":null,"p":null,"px":null,"pn":10.52,"ph":null},"3282770037364":{"v":null,"p":null,"px":null,"pn":11.31,"ph":null},"3282770049435":{"v":null,"p":null,"px":null,"pn":21.85,"ph":null},"3282770203523":{"v":null,"p":null,"px":null,"pn":22.04,"ph":null},"3282770393774":{"v":null,"p":null,"px":null,"pn":28.1,"ph":null},"3282770207798":{"v":null,"p":null,"px":null,"pn":6.13,"ph":null},"3282770110982":{"v":null,"p":null,"px":null,"pn":23.32,"ph":null},"3282779155670":{"v":null,"p":null,"px":null,"pn":15.6,"ph":null},"3282770200515":{"v":null,"p":null,"px":null,"pn":47.24,"ph":null},"3282770100297":{"v":null,"p":null,"px":null,"pn":29.07,"ph":null},"3282779420884":{"v":null,"p":null,"px":null,"pn":19.89,"ph":null},"3282770203554":{"v":null,"p":null,"px":null,"pn":23.87,"ph":null},"3282779228619":{"v":null,"p":8.5,"px":8.5,"pn":8.55,"ph":null},"3282770153439":{"v":null,"p":null,"px":null,"pn":21.2,"ph":null},"3282770200478":{"v":null,"p":null,"px":null,"pn":48.72,"ph":null},"3282779154192":{"v":null,"p":null,"px":null,"pn":16.2,"ph":null},"3282770145946":{"v":null,"p":null,"px":null,"pn":17.82,"ph":null},"3282770112795":{"v":null,"p":null,"px":null,"pn":18.18,"ph":null},"3282770209068":{"v":null,"p":null,"px":null,"pn":18.88,"ph":null},"3282770052947":{"v":null,"p":null,"px":null,"pn":17.35,"ph":null},"3282770200553":{"v":null,"p":null,"px":null,"pn":36.64,"ph":null},"3282770053135":{"v":null,"p":null,"px":null,"pn":21.43,"ph":null},"3282770074413":{"v":null,"p":null,"px":null,"pn":12.45,"ph":null},"3282770074727":{"v":null,"p":null,"px":null,"pn":20.19,"ph":null},"3282770200591":{"v":null,"p":null,"px":null,"pn":53.3,"ph":null},"3282770209099":{"v":null,"p":null,"px":null,"pn":19.24,"ph":null},"3282770397918":{"v":null,"p":null,"px":null,"pn":17.47,"ph":null},"3282770397901":{"v":null,"p":null,"px":null,"pn":18.13,"ph":null},"3282770037135":{"v":null,"p":null,"px":null,"pn":15.58,"ph":null},"3282770000634":{"v":null,"p":null,"px":null,"pn":21.07,"ph":null},"3282770150209":{"v":null,"p":null,"px":null,"pn":14.99,"ph":null},"3282779075404":{"v":null,"p":null,"px":null,"pn":11.8,"ph":null},"3282779310741":{"v":null,"p":null,"px":null,"pn":10.08,"ph":null},"3282770100099":{"v":null,"p":null,"px":null,"pn":20.01,"ph":null},"3282770209037":{"v":null,"p":null,"px":null,"pn":17.9,"ph":null},"3282771001432":{"v":null,"p":null,"px":null,"pn":17.94,"ph":null},"3282770100198":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770202281":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770100686":{"v":null,"p":null,"px":null,"pn":16.74,"ph":null},"3282770145564":{"v":null,"p":null,"px":null,"pn":35.05,"ph":null},"3282770100112":{"v":null,"p":null,"px":null,"pn":17.11,"ph":null},"3282779420891":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770393910":{"v":null,"p":null,"px":null,"pn":27.9,"ph":null},"3282770074734":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770140521":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770100150":{"v":null,"p":null,"px":null,"pn":18.99,"ph":null},"3282770100402":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770100075":{"v":null,"p":null,"px":null,"pn":21.95,"ph":null},"3282770202946":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282779450652":{"v":null,"p":null,"px":null,"pn":17.95,"ph":null},"3401572078850":{"v":null,"p":null,"px":null,"pn":16.95,"ph":null},"3282779450638":{"v":null,"p":null,"px":null,"pn":24.2,"ph":null},"3282770111590":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770074741":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770074710":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770152203":{"v":null,"p":null,"px":null,"pn":25.88,"ph":null},"3282770082357":{"v":null,"p":null,"px":null,"pn":19.5,"ph":null},"3282779058162":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770100174":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770208245":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770073157":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770204971":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770208177":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770152265":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770205671":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770072976":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770208214":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770209389":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770082616":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770100396":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282770100136":{"v":null,"p":null,"px":null,"pn":null,"ph":null},"3282779042673":{"v":null,"p":null,"px":null,"pn":null,"ph":null}};
+
+function mapSensibilite(s) {
+  if (!s) return 'PS';
+  // Normalize: remove accents, lowercase
+  var sl = s.toLowerCase()
+    .replace(/à/g,'a').replace(/â/g,'a')
+    .replace(/è/g,'e').replace(/é/g,'e').replace(/ê/g,'e')
+    .replace(/î/g,'i').replace(/ô/g,'o').replace(/ù/g,'u').replace(/û/g,'u');
+  if (sl.indexOf('tres') >= 0) return 'TS';
+  if (sl.indexOf('spf50') >= 0 || sl.indexOf('>= spf') >= 0) return 'TS';
+  if (sl.indexOf('< spf') >= 0 || sl.indexOf('solaire') >= 0) return 'S';
+  if (sl.indexOf('sensible') >= 0 && sl.indexOf('peu') < 0) return 'S';
+  return 'PS';
+}
+
+function importMCQuartz(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('mc-quartz-status');
+  if (!status) { console.error('mc-quartz-status not found'); return; }
+  status.textContent = 'Lecture...';
+
+  var formData = new FormData();
+  formData.append('file', file);
+
+  fetch('/api/parse-xlsx', { method: 'POST', body: file })
+    .then(function(r){ return r.text(); })
+    .then(function(txt) {
+      console.log('parse-xlsx raw response:', txt.substring(0,500));
+      var parsed;
+      try { parsed = JSON.parse(txt); } catch(e) { throw new Error('Reponse non JSON : ' + txt.substring(0,200)); }
+      var prods = parsed.produits || [];
+      if (parsed.error) throw new Error(parsed.error);
+      mcQuartzData = {};
+      var cnt = 0;
+      try {
+        prods.forEach(function(p, idx) {
+          try {
+            var lib = String(p.libelle || '');
+            var ean = String(p.ean  || '');
+            var cip = String(p.cip13 || '');
+            if (!lib && !ean && !cip) return;
+            var key = (ean && ean !== '-') ? ean : (cip && cip !== '-') ? cip : lib.substring(0,30);
+            if (!key) return;
+            mcQuartzData[key] = {
+              libelle:    lib,
+              sensibilite:String(p.sensibilite || ''),
+              sensCode:   mapSensibilite(String(p.sensibilite || '')),
+              ean:        ean,
+              cip13:      cip
+            };
+            cnt++;
+          } catch(innerErr) {
+            console.error('Erreur produit idx=' + idx + ':', JSON.stringify(p), innerErr.message);
+          }
+        });
+      } catch(loopErr) {
+        console.error('Erreur boucle forEach:', loopErr.message);
+      }
+      status.textContent = cnt + ' produits Quartz charges';
+      status.style.color = 'var(--color-text-success)';
+      updateMCPreview();
+      fusionnerMCProduits();
+    })
+    .catch(function(err) {
+      status.textContent = 'Erreur : ' + err.message;
+      status.style.color = 'var(--color-text-danger)';
+    });
+  input.value = '';
+}
+
+function importMCCSV(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('mc-import-status');
+  if (!status) { console.error('mc-import-status not found'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var sep   = e.target.result.indexOf(';')>=0?';':',';
+    var lines = e.target.result.split('\n');
+    var headers=lines[0].split(sep).map(function(h){return h.trim().toUpperCase().replace(/"/g,'');});
+    var iEAN=headers.findIndex(function(h){return h==='EAN';});
+    var iLib=headers.findIndex(function(h){return h.indexOf('LIB')>=0||h.indexOf('NOM')>=0||h.indexOf('DES')>=0;});
+    var iPA =headers.findIndex(function(h){return h.indexOf('PA')>=0&&h.indexOf('HT')>=0;});
+    var iRot=headers.findIndex(function(h){return h.indexOf('ROT')>=0||h.indexOf('VTE')>=0||h.indexOf('VENTE')>=0;});
+    var iPV =headers.findIndex(function(h){return h.indexOf('PV')>=0||h.indexOf('PRIX')>=0;});
+    mcLGPIData={};
+    var cnt=0;
+    for (var i=1;i<lines.length;i++) {
+      var cols=lines[i].split(sep).map(function(c){return c.trim().replace(/"/g,'');});
+      var ean=iEAN>=0?cols[iEAN]:'';
+      if (!ean||ean==='-') continue;
+      mcLGPIData[ean]={
+        libelle: iLib>=0?cols[iLib]:'',
+        paHT:    iPA>=0?(parseFloat(cols[iPA].replace(',','.'))||0):0,
+        rotMois: iRot>=0?(parseFloat(cols[iRot].replace(',','.'))||0):0,
+        pvActuel:iPV>=0?(parseFloat(cols[iPV].replace(',','.'))||0):0,
+      };
+      cnt++;
+    }
+    status.textContent=cnt+' produits LGPI charges';
+    status.style.color='var(--color-text-success)';
+    updateMCPreview();
+    fusionnerMCProduits();
+  };
+  reader.readAsText(file,'UTF-8');
+  input.value='';
+}
+
+function updateMCPreview() {
+  var el=document.getElementById('mc-preview');
+  if (!el) return;
+  var nQ=Object.keys(mcQuartzData).length;
+  var nL=Object.keys(mcLGPIData).length;
+  if (nQ===0&&nL===0) { el.textContent=''; return; }
+  el.textContent='Quartz : '+nQ+' produits | LGPI : '+nL+' produits';
+}
+
+function qualifierSensibilite(prod, rotMoyenne) {
+  if (prod.sensCode) return prod.sensCode;
+  if (prod.rotMois > rotMoyenne) return 'S';
+  return 'PS';
+}
+
+function fusionnerMCProduits() {
+  mcProduits=[];
+  var keys=Object.keys(mcQuartzData);
+  if (keys.length===0) return;
+  keys.forEach(function(key) {
+    var q=mcQuartzData[key];
+    var lgpi=mcLGPIData[q.ean]||mcLGPIData[q.cip13]||null;
+    mcProduits.push({
+      ean:      q.ean||key,
+      libelle:  q.libelle,
+      paHT:     lgpi?lgpi.paHT:0,
+      rotMois:  lgpi?lgpi.rotMois:0,
+      pvActuel: lgpi?lgpi.pvActuel:0,
+      sensibilite:q.sensibilite,
+      sensCode:   q.sensCode,
+    });
+  });
+  var preview=document.getElementById('mc-preview');
+  var matched=mcProduits.filter(function(p){return p.paHT>0;}).length;
+  if (preview) preview.innerHTML=
+    mcProduits.length+' produits Quartz | <b>'+matched+' avec PA HT</b>'+
+    (matched<mcProduits.length?' | '+(mcProduits.length-matched)+' sans PA HT':'');
+  calcMC();
+  updateScenarios();
+}
+
+function importMCCSV_unused() {}
+
+
+async function importMCCapture(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('mc-import-status');
+  status.textContent = 'Lecture de la capture...';
+  status.style.color = 'var(--text-sec)';
+
+  var b64 = await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: [
+            {type: 'image', source: {type: 'base64', media_type: file.type||'image/png', data: b64}},
+            {type: 'text', text: 'Capture LGPI liste de produits. Extrais chaque produit avec : EAN ou code, libelle, PA HT, rotation mensuelle, flag Quartz (O/N), PV TTC actuel si visible. Reponds UNIQUEMENT en JSON : {"produits":[{"ean":"...","libelle":"...","paHT":0,"rotMois":0,"quartz":false,"pvActuel":0}]}'}
+          ]
+        }]
+      })
+    });
+    var data = await resp.json();
+    var raw = data.content.map(function(c){ return c.text||''; }).join('').trim();
+    var parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    mcProduits = parsed.produits || [];
+    status.textContent = mcProduits.length + ' produits importes depuis la capture';
+    status.style.color = 'var(--color-text-success)';
+    calcMC();
+  } catch(err) {
+    status.textContent = 'Erreur : ' + err.message;
+    status.style.color = 'var(--color-text-danger)';
+  }
+  input.value = '';
+}
+
+function renderMCTable(mbCible, mbTS, mbS, mbPS, kTS, kS, kPS, tvaM, tvaR) {
+  if (mcProduits.length === 0) return;
+
+  // Calcul rotation moyenne
+  var sumRot = 0;
+  mcProduits.forEach(function(p){ sumRot += p.rotMois; });
+  var rotMoy = sumRot / mcProduits.length;
+
+  // Calcul par produit
+  var totalCAActuel = 0, totalMBActuel = 0;
+  var totalCANew = 0, totalMBNew = 0;
+  var cntTS = 0, cntS = 0, cntPS = 0;
+
+  var rows = mcProduits.map(function(p) {
+    var sens   = qualifierSensibilite(p, rotMoy);
+    var k      = sens === 'TS' ? kTS : (sens === 'S' ? kS : kPS);
+    var mbAppl = sens === 'TS' ? mbTS : (sens === 'S' ? mbS : mbPS);
+    // Ospharm pricing: use PMC data to cap/guide PV
+    var osp    = OSPHARM_PMC[p.ean] || null;
+    var pvCalc = p.paHT > 0 ? Math.ceil(p.paHT * k * (1+tvaR) * 20) / 20 : 0;
+    var pvOsp  = null;
+    if (osp) {
+      if (sens === 'TS')      pvOsp = osp.v  || osp.p;
+      else if (sens === 'S')  pvOsp = osp.p  || osp.pn;
+      else                    pvOsp = osp.px || osp.pn;
+    }
+    // Use Ospharm price if available and different from calculated
+    var pvNew  = pvCalc;
+    var ospUsed = false;
+    if (pvOsp && pvOsp > 0) {
+      pvNew = Math.round(pvOsp * 20) / 20;
+      ospUsed = true;
+    }
+    var pvHT   = pvNew / tvaM;
+    var mbuNew = pvHT - p.paHT;
+    var pvActHT= p.pvActuel > 0 ? p.pvActuel / tvaM : 0;
+    var mbuAct = pvActHT > 0 ? pvActHT - p.paHT : 0;
+    var mbActPct = pvActHT > 0 ? mbuAct / pvActHT * 100 : 0;
+    var diff   = p.pvActuel > 0 ? pvNew - p.pvActuel : null;
+
+    // CA annuel estimé = rotation * 12 * PV HT
+    var caAct = p.rotMois * 12 * pvActHT;
+    var caNew = p.rotMois * 12 * pvHT;
+    totalCAActuel += caAct;
+    totalMBActuel += p.rotMois * 12 * mbuAct;
+    totalCANew    += caNew;
+    totalMBNew    += p.rotMois * 12 * mbuNew;
+
+    if (sens === 'TS') cntTS++;
+    else if (sens === 'S') cntS++;
+    else cntPS++;
+
+    return {p:p, sens:sens, k:k, mbAppl:mbAppl, pvNew:pvNew, mbuNew:mbuNew, mbuAct:mbuAct, mbActPct:mbActPct, diff:diff, caNew:caNew, caAct:caAct, ospUsed:ospUsed};
+  });
+
+  var mbGlobalNew = totalCANew > 0 ? totalMBNew / totalCANew * 100 : 0;
+  var mbGlobalAct = totalCAActuel > 0 ? totalMBActuel / totalCAActuel * 100 : 0;
+  var objectifMarge = parseFloat(document.getElementById('mc-marge-cible').value) || 0;
+
+  // KPIs
+  var kpiEl = document.getElementById('mc-kpis');
+  kpiEl.innerHTML =
+    met(Math.abs(mbGlobalNew - mbCible) < 1 ? 'hi' : 'warn',
+        'MB% global apres pricing', mbGlobalNew.toFixed(1).replace('.',',') + '%',
+        'objectif : ' + mbCible + '% | ecart : ' + (mbGlobalNew - mbCible).toFixed(1).replace('.',',') + '%') +
+    met('', 'MB% global actuel', mbGlobalAct.toFixed(1).replace('.',',') + '%', 'avant repricing') +
+    met('hi', 'Marge annuelle estimee', totalMBNew.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' euro',
+        objectifMarge > 0 ? 'objectif : ' + objectifMarge + ' euro | ecart : ' + (totalMBNew - objectifMarge).toFixed(0) : cntTS + ' TS · ' + cntS + ' S · ' + cntPS + ' PS') +
+    met('', 'Nb produits', mcProduits.length + ' produits', cntTS + ' tres sensibles · ' + cntS + ' sensibles · ' + cntPS + ' peu sensibles');
+
+  if (objectifMarge > 0) {
+    var hintEl = document.getElementById('mc-marge-hint');
+    var ecart = totalMBNew - objectifMarge;
+    hintEl.textContent = ecart >= 0 ? 'Objectif atteint (+' + ecart.toFixed(0) + ' euro)' : 'Deficit de ' + Math.abs(ecart).toFixed(0) + ' euro';
+    hintEl.style.color = ecart >= 0 ? 'var(--color-text-success)' : 'var(--color-text-danger)';
+  }
+
+  // Table
+  var thS = 'padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap';
+  var html = '<thead><tr>' +
+    '<th style="' + thS + ';text-align:left">EAN</th>' +
+    '<th style="' + thS + ';text-align:left">Libelle</th>' +
+    '<th style="' + thS + '">Sensibilite</th>' +
+    '<th style="' + thS + '">Rotation</th>' +
+    '<th style="' + thS + '">PA HT</th>' +
+    '<th style="' + thS + '">MB% actuel</th>' +
+    '<th style="' + thS + '">PV TTC actuel</th>' +
+    '<th style="' + thS + '">K applique</th>' +
+    '<th style="' + thS + '">MB% applique</th>' +
+    '<th style="' + thS + '">PV TTC nouveau</th>' +
+    '<th style="' + thS + '">Ecart PV</th>' +
+    '<th style="' + thS + '">PMC Quartier</th>' +
+    '<th style="' + thS + '">PMC Prox</th>' +
+    '<th style="' + thS + '">Max Zone</th>' +
+    '<th style="' + thS + '">Source PV</th>' +
+    '</tr></thead><tbody>';
+
+  rows.forEach(function(r, i) {
+    var sensBg = r.sens === 'TS' ? 'var(--danger-bg)' : (r.sens === 'S' ? 'var(--warn-bg)' : 'var(--accent-bg)');
+    var sensClr= r.sens === 'TS' ? 'var(--danger)' : (r.sens === 'S' ? 'var(--warn)' : 'var(--accent-text)');
+    var sensLbl= r.sens === 'TS' ? 'Tres sensible' : (r.sens === 'S' ? 'Sensible' : 'Peu sensible');
+    var rowBg  = i % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;font-family:monospace;text-align:right;background:' + rowBg;
+    var tdL= 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;text-align:left;background:' + rowBg;
+    var diffClr = r.diff !== null ? (r.diff > 0.5 ? 'color:var(--accent-text)' : r.diff < -0.5 ? 'color:var(--danger)' : '') : '';
+    var ospObj = OSPHARM_PMC[r.p.ean] || null;
+    var srcLabel='Calcul K', srcColor='color:var(--text-ter)';
+    var usedV=false,usedP=false,usedPx=false;
+    if(r.ospUsed&&ospObj){
+      if(r.sens==='TS'){if(ospObj.v&&ospObj.v>0){usedV=true;srcLabel='PMC Quartier';srcColor='color:var(--danger);font-weight:600';}else if(ospObj.p&&ospObj.p>0){usedP=true;srcLabel='PMC Prox';srcColor='color:var(--warn);font-weight:600';}}
+      else if(r.sens==='S'){if(ospObj.p&&ospObj.p>0){usedP=true;srcLabel='PMC Prox';srcColor='color:var(--warn);font-weight:600';}else if(ospObj.pn){srcLabel='Panel Nat.';srcColor='color:var(--text-sec);font-weight:600';}}
+      else{if(ospObj.px&&ospObj.px>0){usedPx=true;srcLabel='Max Zone';srcColor='color:var(--accent-text);font-weight:600';}else if(ospObj.pn){srcLabel='Panel Nat.';srcColor='color:var(--text-sec);font-weight:600';}}
+    }
+    var hlV=usedV?'background:#d4edda;font-weight:700;':'';
+    var hlP=usedP?'background:#d4edda;font-weight:700;':'';
+    var hlPx=usedPx?'background:#d4edda;font-weight:700;':'';
+    var ospTds='<td style="'+td+';'+hlV+'">'+(ospObj&&ospObj.v?ospObj.v.toFixed(2).replace('.',','):'-')+'</td>'+
+               '<td style="'+td+';'+hlP+'">'+(ospObj&&ospObj.p?ospObj.p.toFixed(2).replace('.',','):'-')+'</td>'+
+               '<td style="'+td+';'+hlPx+'">'+(ospObj&&ospObj.px?ospObj.px.toFixed(2).replace('.',','):'-')+'</td>'+
+               '<td style="'+td+';'+srcColor+'">'+srcLabel+'</td>';
+    html += '<tr>' +
+      '<td style="' + tdL + '">' + (r.p.ean||'—') + '</td>' +
+      '<td style="' + tdL + ';max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + r.p.libelle + '</td>' +
+      '<td style="' + td + ';background:' + sensBg + ';color:' + sensClr + ';font-weight:600;text-align:center">' + sensLbl + '</td>' +
+      '<td style="' + td + '">' + r.p.rotMois.toFixed(1).replace('.',',') + ' u/m</td>' +
+      '<td style="' + td + '">' + (r.p.paHT > 0 ? r.p.paHT.toFixed(3).replace('.',',') : '—') + '</td>' +
+      '<td style="' + td + '">' + (r.mbuAct > 0 ? r.mbActPct.toFixed(1).replace('.',',') + '%' : '—') + '</td>' +
+      '<td style="' + td + '">' + (r.p.pvActuel > 0 ? r.p.pvActuel.toFixed(2).replace('.',',') : '—') + '</td>' +
+      '<td style="' + td + '">' + r.k.toFixed(3).replace('.',',') + '</td>' +
+      '<td style="' + td + ';font-weight:600">' + r.mbAppl + '%</td>' +
+      '<td style="' + td + ';font-weight:600;color:var(--accent-text)">' + (r.pvNew > 0 ? r.pvNew.toFixed(2).replace('.',',') : '—') + '</td>' +
+      '<td style="' + td + ';' + diffClr + '">' + (r.diff !== null ? (r.diff > 0 ? '+' : '') + r.diff.toFixed(2).replace('.',',') : '—') + '</td>' +
+      ospTds +
+      '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('mc-table').innerHTML = html;
+
+  // Conclusion
+  var conEl = document.getElementById('mc-conclusion');
+  var ecartMB = mbGlobalNew - mbCible;
+  var con = '<p class="nego-title">Conclusion</p><div class="nego-body">';
+  con += 'MB% global apres pricing : <b>' + mbGlobalNew.toFixed(1).replace('.',',') + '%</b> pour un objectif de <b>' + mbCible + '%</b>. ';
+  if (Math.abs(ecartMB) < 1) {
+    con += '<span class="badge ok">Objectif atteint</span><br>';
+  } else if (ecartMB < 0) {
+    con += '<span class="badge ko">Deficit de ' + Math.abs(ecartMB).toFixed(1) + '% — augmentez le MB% des produits peu sensibles</span><br>';
+  } else {
+    con += '<span class="badge ok">Objectif depasse de ' + ecartMB.toFixed(1) + '% — vous pouvez etre plus agressif sur les sensibles</span><br>';
+  }
+  con += cntTS + ' produits tres sensibles (Quartz) a <b>' + mbTS + '%</b> · ';
+  con += cntS + ' sensibles a <b>' + mbS + '%</b> · ';
+  con += cntPS + ' peu sensibles a <b>' + mbPS + '%</b>';
+  con += '</div>';
+  conEl.innerHTML = con;
+  conEl.style.display = 'block';
+
+  document.getElementById('mc-result-card').style.display = 'block';
+}
+
+
+// ===== IMPORT ETAT DES VENTES PDF (LGPI) =====
+async function importMCPDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('mc-import-status');
+  status.style.color = 'var(--text-sec)';
+
+  var b64 = await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  var allProds = [];
+  var prompts = [
+    'Etat des ventes LGPI pages 1-2. Pour chaque ligne produit : CODE|QTE|PA|PV (CODE=EAN/CIP 10+ chiffres, QTE=col 12dm ou somme 12 mois, PA=PA Cat Net decimal, PV=PV TTC decimal). 0 si pas de ventes. Une ligne par produit. Aucun texte.',
+    'Etat des ventes LGPI pages 3-4. Meme format : CODE|QTE|PA|PV. Une ligne par produit. Aucun texte.',
+    'Etat des ventes LGPI pages 5-6. Meme format : CODE|QTE|PA|PV. En plus si tu vois une ligne de TOTAUX (Total stock immobilise, Vente sur les 12 derniers mois), ajoute une ligne TOTAL|QTE_VENTES|VAL_PA_NET|0 avec les valeurs globales. Une ligne par produit. Aucun texte.'
+  ];
+
+  for (var pi = 0; pi < 3; pi++) {
+    status.textContent = 'Lecture pages ' + (pi*2+1) + '-' + (pi*2+2) + ' (' + (pi+1) + '/3)...';
+    try {
+      var resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: {type:'base64', media_type:'application/pdf', data:b64} },
+              { type: 'text', text: prompts[pi] }
+            ]
+          }]
+        })
+      });
+      var data = await resp.json();
+      var txt  = (data.content||[]).map(function(c){ return c.text||''; }).join('').trim();
+      txt.split("\n").forEach(function(line) {
+        line = line.trim();
+        if (!line || line.indexOf('|') < 0) return;
+        var p = line.split('|');
+        if (p.length < 3) return;
+        var rawCode = p[0].trim();
+        // Détecter ligne de totaux
+        if (rawCode.toUpperCase() === 'TOTAL') {
+          var totalQteVentes = parseFloat(p[1]) || 0;
+          var totalValPA = parseFloat(p[2]) || 0;
+          if (totalQteVentes > 0) lgpiTotaux = { qte: totalQteVentes, valPA: totalValPA };
+          return;
+        }
+        var code = rawCode.replace(/[^0-9]/g,'');
+        if (code.length < 10) return;
+        var qte12 = parseFloat(p[1]) || 0;
+        var r  = parseFloat((qte12 / 12).toFixed(2));
+        var pa = parseFloat(p[2]) || 0;
+        var pv = parseFloat(p[3]) || 0;
+        if (pa > 0) allProds.push({e:code, r:r, pa:pa, pv:pv});
+      });
+    } catch(err) {
+      console.error('Pass ' + (pi+1) + ':', err.message);
+    }
+  }
+
+  if (allProds.length === 0) {
+    status.textContent = 'Aucun produit extrait';
+    status.style.color = 'var(--color-text-danger)';
+    input.value = '';
+    return;
+  }
+
+  mcLGPIData = {};
+  allProds.forEach(function(p) {
+    var ean = String(p.e).trim();
+    if (!ean) return;
+    mcLGPIData[ean] = { libelle:'', paHT:p.pa, rotMois:p.r, pvActuel:p.pv };
+  });
+
+  var cnt = Object.keys(mcLGPIData).length;
+  status.textContent = cnt + ' produits extraits (' + allProds.length + ' lus)';
+  status.style.color = 'var(--color-text-success)';
+  updateMCPreview();
+  fusionnerMCProduits();
+  input.value = '';
+}
+
+
+
+// ===== CONDITIONS COMMERCIALES =====
+var MOIS_LABELS_COND = ['Jun25','Jul25','Aou25','Sep25','Oct25','Nov25','Dec25','Jan26','Fev26','Mar26','Avr26','Mai26'];
+var condLabos = (function(){ try { var s=localStorage.getItem('cond_labos'); return s ? JSON.parse(s) : {}; } catch(e){ return {}; } })();
+var condInited = false;
+// Load condLabos immediately on page load - so cmd/cat tabs work without visiting cond first
+(function() {
+  try {
+    var _saved = localStorage.getItem('cond_labos');
+    if (_saved) {
+      condLabos = JSON.parse(_saved);
+      var _ids = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n) && n > 0; });
+      if (_ids.length > 0) condNextId = Math.max.apply(null, _ids) + 1;
+    }
+  } catch(e) {}
+})();
+var condLaboActif = null;
+var condNextId = 1;
+
+function condInit() {
+  // condLabos already loaded at startup via IIFE
+  condBuildGrid();
+  condRenderTabs();
+}
+
+function condBuildGrid() {
+  var grid = document.getElementById('cond-ventes-grid');
+  if (!grid) return;
+  var html = '';
+  MOIS_LABELS_COND.forEach(function(m, i) {
+    var v = condLaboActif && condLabos[condLaboActif] && condLabos[condLaboActif].ventes ? (condLabos[condLaboActif].ventes[i] || 0) : 0;
+    html += '<div style="display:flex;flex-direction:column;align-items:center;gap:3px">';
+    html += '<label style="font-size:10px;color:var(--text-ter);font-weight:500">' + m + '</label>';
+    html += '<input type="number" id="cond-v-' + i + '" value="' + v + '" min="0" step="0.01" style="width:100%;text-align:center;font-size:11px;padding:4px 2px" oninput="condUpdateVentes()">';
+    html += '</div>';
+  });
+  grid.innerHTML = html;
+  condUpdateVentes();
+}
+
+function condUpdateVentes() {
+  var ventes = [];
+  var tot = 0;
+  for (var i = 0; i < 12; i++) {
+    var el = document.getElementById('cond-v-' + i);
+    var v = parseFloat(el ? el.value : 0) || 0;
+    ventes.push(v);
+    tot += v;
+  }
+  var moy = tot / 12;
+  document.getElementById('cond-ventes-total').textContent = 'Total : ' + tot.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac';
+  document.getElementById('cond-ventes-moy').textContent = 'Moyenne : ' + moy.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac/mois';
+  if (condLaboActif) {
+    if (!condLabos[condLaboActif]) condLabos[condLaboActif] = {};
+    condLabos[condLaboActif].ventes = ventes;
+    condLabos[condLaboActif].caAnnuel = tot;
+    var caEl = document.getElementById('cond-ca-annuel');
+    if (caEl && tot > 0) caEl.value = tot.toFixed(0);
+  }
+  condCalc();
+}
+
+function condEffacerVentes() {
+  for (var i = 0; i < 12; i++) {
+    var el = document.getElementById('cond-v-' + i);
+    if (el) el.value = 0;
+  }
+  condUpdateVentes();
+}
+
+function condRenderTabs() {
+  var container = document.getElementById('cond-labo-tabs');
+  if (!container) return;
+  var keys = Object.keys(condLabos);
+  if (keys.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-ter)">Aucun labo. Cliquez sur "+ Nouveau labo".</p>';
+    return;
+  }
+  container.innerHTML = keys.map(function(id) {
+    var labo = condLabos[id];
+    var isActive = id == condLaboActif;
+    return '<button type="button" onclick="condSelectionnerLabo(' + id + ')" style="font-size:12px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--border-med);background:' + (isActive ? 'var(--text)' : 'var(--surface)') + ';color:' + (isActive ? '#fff' : 'var(--text-sec)') + ';cursor:pointer;font-weight:' + (isActive ? '600' : '400') + '">' + (labo.nom || 'Labo ' + id) + '</button>';
+  }).join('') + '<button type="button" onclick="condSupprimerLabo()" style="font-size:11px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:transparent;color:var(--danger);cursor:pointer;margin-left:4px">Supprimer</button>';
+}
+
+function condNouveauLabo() {
+  var id = Date.now(); // ID unique basé sur timestamp
+  condNextId = id + 1;
+  condLabos[id] = { nom: '', caAnnuel: 0, mbActuel: 0, margeActuelle: 0, dateEval: new Date().toISOString().slice(0,10), tva: 5.5, ventes: new Array(12).fill(0), conditions: [] };
+  condSelectionnerLabo(id);
+  var nomEl = document.getElementById('cond-labo-nom');
+  if (nomEl) { nomEl.value = ''; nomEl.focus(); }
+}
+
+function condSupprimerLabo() {
+  if (!condLaboActif) return;
+  if (!confirm('Supprimer ce labo ?')) return;
+  delete condLabos[condLaboActif];
+  condLaboActif = null;
+  var keys = Object.keys(condLabos);
+  if (keys.length > 0) condSelectionnerLabo(keys[0]);
+  else {
+    condRenderTabs();
+    document.getElementById('cond-labo-form').style.display = 'none';
+  }
+  condSauvegarder();
+}
+
+function condSelectionnerLabo(id) {
+  // Sauvegarder automatiquement le labo precedent avant de changer (anti-perte de donnees)
+  if (condLaboActif && condLaboActif !== id && condLabos[condLaboActif] && condLabos[condLaboActif].produits && condLabos[condLaboActif].produits.length > 0) {
+    condSauvegarderProduitsGitHub(condLaboActif);
+  }
+  condLaboActif = id;
+  var labo = condLabos[id];
+  // Auto-charger catalogue Thuasne si labo sans produits
+  if (labo && labo.nom && labo.nom.toUpperCase().indexOf('THUASNE') >= 0) {
+    thuasneInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && (labo.nom.toUpperCase().indexOf('GIBAUD') >= 0 || labo.nom.toUpperCase().indexOf('INNOTHERA') >= 0)) {
+    gibaudInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && labo.nom.toUpperCase().indexOf('BOIRON') >= 0) {
+    boironInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && (labo.nom.toUpperCase().indexOf('HORUS') >= 0 || labo.nom.toUpperCase().indexOf('DULCIS') >= 0)) {
+    horusInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && (labo.nom.toUpperCase().indexOf('TOPICREM') >= 0 || labo.nom.toUpperCase().indexOf('NIGY') >= 0)) {
+    topicremInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && labo.nom.toUpperCase().indexOf('BAYER') >= 0) {
+    bayerInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && labo.nom.toUpperCase().indexOf('PODOWELL') >= 0) {
+    podowellInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && labo.nom.toUpperCase().indexOf('THEA') >= 0) {
+    theaInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (labo && labo.nom && (labo.nom.toUpperCase().indexOf('MARQUE VERTE') >= 0 || labo.nom.toUpperCase().indexOf('MARQUEVERTE') >= 0)) {
+    marqueverteInitCatalogue(id);
+    labo = condLabos[id]; // refresh
+  }
+  if (!labo) return;
+  document.getElementById('cond-labo-form').style.display = 'block';
+  document.getElementById('cond-labo-nom').value = labo.nom || '';
+  document.getElementById('cond-date-eval').value = labo.dateEval || new Date().toISOString().slice(0,10);
+  document.getElementById('cond-ca-annuel').value = labo.caAnnuel || '';
+  document.getElementById('cond-mb-actuel').value = labo.mbActuel || '';
+  document.getElementById('cond-marge-actuelle').value = labo.margeActuelle || '';
+  document.getElementById('cond-tva').value = labo.tva !== undefined ? labo.tva : 5.5;
+  var validEl = document.getElementById('cond-tarif-validite');
+  if (validEl) validEl.value = labo.tarifValidite || '';
+  condCheckValidite();
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = labo.catalogueMaj ? new Date(labo.catalogueMaj).toLocaleDateString('fr-FR') : '—';
+  // Suivi commandes
+  var loEl = document.getElementById('cond-last-order');
+  if (loEl) loEl.value = labo.lastOrder || '';
+  var laEl = document.getElementById('cond-last-order-amount');
+  if (laEl) laEl.value = labo.lastOrderAmount || '';
+  var ocEl = document.getElementById('cond-order-coverage');
+  if (ocEl) ocEl.value = labo.orderCoverage || 2;
+  var ddEl = document.getElementById('cond-delivery-days');
+  if (ddEl) ddEl.value = labo.deliveryDays || 3;
+  var nrEl = document.getElementById('cond-next-rdv');
+  if (nrEl) nrEl.value = labo.nextRdv || '';
+  condUpdateOrderStatus();
+  condBuildGrid();
+  condUpdateDiag();
+  condRenderConditions();
+  condRenderMarches();
+  condRenderPaliers();
+  condCalc();
+  condRenderTabs();
+  condAfficherHistorique();
+}
+
+// ===== GITHUB SYNC =====
+async function condGitHubPut(token, b64, sha) {
+  var body = {
+    message: 'Auto-save ' + new Date().toISOString().slice(0,16).replace('T',' '),
+    content: b64, branch: GH_BRANCH
+  };
+  if (sha) body.sha = sha;
+  return await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE, {
+    method: 'PUT',
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+// PUT avec une seconde tentative automatique en cas d'erreur réseau transitoire (NetworkError)
+async function condGitHubPutRetry(token, b64, sha) {
+  try {
+    return await condGitHubPut(token, b64, sha);
+  } catch (eNet) {
+    await new Promise(function(r){ setTimeout(r, 1500); });
+    return await condGitHubPut(token, b64, sha);
+  }
+}
+
+// ===== SYNC PRODUITS PAR LABO SUR GITHUB (v3.82) =====
+async function condSauvegarderProduitsGitHub(laboId) {
+  var token = localStorage.getItem('gh_token');
+  if (!token || !laboId || !condLabos[laboId]) return;
+  var prods = condLabos[laboId].produits || [];
+  if (!prods.length) return;
+  var path = 'produits/' + laboId + '.json';
+  try {
+    var data = JSON.stringify({ laboId: laboId, nom: condLabos[laboId].nom || '', date: new Date().toISOString(), produits: prods });
+    var b64 = btoa(unescape(encodeURIComponent(data)));
+    var sha = await condGitHubGetSha(token, path);
+    await condGitHubPutFile(token, path, b64, sha, 'Produits ' + (condLabos[laboId].nom || laboId) + ' v3.82');
+  } catch(e) { /* silencieux */ }
+}
+async function condSauvegarderSnapshotGitHub(laboId, dateEval, prods) {
+  var token = localStorage.getItem('gh_token');
+  if (!token || !laboId || !dateEval) return;
+  var path = 'evaluations/' + laboId + '_' + dateEval + '.json';
+  try {
+    var data = JSON.stringify({ laboId: laboId, date: dateEval, produits: prods });
+    var b64 = btoa(unescape(encodeURIComponent(data)));
+    var sha = await condGitHubGetSha(token, path);
+    await condGitHubPutFile(token, path, b64, sha, 'Snapshot evaluation ' + dateEval + ' labo ' + laboId);
+  } catch(e) { /* silencieux */ }
+}
+async function condChargerSnapshotGitHub(laboId, dateEval) {
+  var path = 'evaluations/' + laboId + '_' + dateEval + '.json';
+  try {
+    var r = await fetch('https://raw.githubusercontent.com/' + GH_OWNER + '/' + GH_REPO + '/' + GH_BRANCH + '/' + path + '?t=' + Date.now());
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+}
+async function condChargerProduitsGitHub(laboId) {
+  var token = localStorage.getItem('gh_token');
+  if (!token || !laboId) return;
+  var path = 'produits/' + laboId + '.json';
+  try {
+    var r = await fetch('https://raw.githubusercontent.com/' + GH_OWNER + '/' + GH_REPO + '/' + GH_BRANCH + '/' + path + '?t=' + Date.now());
+    if (!r.ok) return;
+    var d = await r.json();
+    if (d && d.produits && d.produits.length > 0) {
+      condLabos[laboId].produits = d.produits;
+      try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+    }
+  } catch(e) { /* silencieux */ }
+}
+async function condSyncGitHubAuto() {
+  var token = localStorage.getItem('gh_token');
+  if (!token) return;
+  try {
+    // Vider les produits des labos pré-chargés avant sauvegarde (évite dépassement 1MB GitHub)
+    var condLabosSave = JSON.parse(JSON.stringify(condLabos));
+    // Vider TOUS les produits avant sauvegarde GitHub (trop lourd sinon)
+    Object.keys(condLabosSave).forEach(function(k) {
+      condLabosSave[k].produits = [];
+    });
+    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabosSave });
+    var b64 = btoa(unescape(encodeURIComponent(data)));
+    // Toujours refetch le SHA frais avant PUT
+    var sha = null;
+    var getResp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?t=' + Date.now(), {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (getResp.ok) { var existing = await getResp.json(); sha = existing.sha; }
+    var putResp = await condGitHubPutRetry(token, b64, sha);
+    // Si SHA mismatch, retenter avec un SHA refetch
+    if (!putResp.ok) {
+      var errData = await putResp.json();
+      var msgA = String(errData.message || '');
+      if (msgA.indexOf('does not match') >= 0 || msgA.toLowerCase().indexOf('sha') >= 0) {
+        var getResp2 = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?t=' + Date.now(), {
+          headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (getResp2.ok) { var ex2 = await getResp2.json(); sha = ex2.sha; }
+        putResp = await condGitHubPutRetry(token, b64, sha);
+      }
+    }
+    if (putResp.ok) {
+      var status = document.getElementById('cond-backup-status');
+      if (status) { status.textContent = '☁ GitHub ✓'; status.style.color = 'var(--accent-text)'; setTimeout(function(){ status.textContent = ''; }, 3000); }
+    }
+  } catch(e) { /* silencieux */ }
+}
+
+// ===== GITHUB SYNC =====
+var GH_OWNER = 'pharmaciemichelet127-cyber';
+var GH_REPO  = 'calculateur-pharmacie';
+var GH_FILE  = 'data-labos.json';
+var GH_BRANCH = 'main';
+
+function condGetToken() {
+  return document.getElementById('cond-gh-token').value || localStorage.getItem('gh_token') || '';
+}
+
+async function condSyncGitHub() {
+  var token = condGetToken();
+  var status = document.getElementById('cond-backup-status');
+  if (!token) {
+    if (status) { status.textContent = 'Token GitHub requis'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (status) { status.textContent = 'Sauvegarde en cours...'; status.style.color = 'var(--text-sec)'; }
+
+  try {
+    // Récupérer le SHA du fichier existant si il existe (cache-buster pour éviter une réponse raw en cache)
+    var sha = null;
+    var getResp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    var tailleDistante = 0;
+    if (getResp.ok) {
+      var existing = await getResp.json();
+      sha = (existing && existing.sha) ? existing.sha : null;
+      tailleDistante = (existing && existing.size) ? existing.size : 0;
+    }
+
+    // GARDE-FOU anti-écrasement : refuser d'écraser un fichier riche par une version quasi vide
+    var totalProdsLoc = 0;
+    Object.keys(condLabos).forEach(function(k){ totalProdsLoc += (condLabos[k].produits || []).length; });
+    if (totalProdsLoc === 0 && tailleDistante > 200000) {
+      var okEcrase = confirm('⚠️ ATTENTION : cette machine ne contient AUCUN produit, mais la sauvegarde GitHub existante est riche (' + Math.round(tailleDistante/1024) + ' Ko).\n\nSauvegarder maintenant écraserait les données distantes.\n\nConseil : cliquez d\u2019abord sur « Charger depuis GitHub ».\n\nÉcraser quand même ?');
+      if (!okEcrase) {
+        if (status) { status.textContent = 'Sauvegarde annulée — chargez d\u2019abord depuis GitHub'; status.style.color = 'var(--danger)'; }
+        return;
+      }
+    }
+
+    // Encoder les données en base64
+    var data = JSON.stringify({ version: 2, date: new Date().toISOString(), condLabos: condLabos });
+    var b64 = btoa(unescape(encodeURIComponent(data)));
+
+    // PUT le fichier
+    var putResp = await condGitHubPutRetry(token, b64, sha);
+    if (!putResp.ok) {
+      var errData2 = await putResp.json();
+      var msg2 = String(errData2.message || '');
+      if (msg2.indexOf('does not match') >= 0 || msg2.toLowerCase().indexOf('sha') >= 0) {
+        // SHA obsolète ou manquant — récupérer le SHA actuel et réessayer
+        var gr2 = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?t=' + Date.now(), {
+          headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (gr2.ok) { var ex3 = await gr2.json(); sha = ex3.sha; }
+        putResp = await condGitHubPutRetry(token, b64, sha);
+        if (!putResp.ok) {
+          var errRetry = await putResp.json();
+          throw new Error(errRetry.message || putResp.status);
+        }
+      } else {
+        throw new Error(errData2.message || putResp.status);
+      }
+    }
+
+    if (status) { status.textContent = '✓ Sauvegardé sur GitHub (' + Object.keys(condLabos).length + ' labos)'; status.style.color = 'var(--accent-text)'; }
+    setTimeout(function(){ if (status) status.textContent = ''; }, 5000);
+  } catch(err) {
+    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+  }
+}
+
+async function condChargerGitHub() {
+  var token = condGetToken();
+  var status = document.getElementById('cond-backup-status');
+  if (!token) {
+    if (status) { status.textContent = 'Token GitHub requis'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (status) { status.textContent = 'Chargement...'; status.style.color = 'var(--text-sec)'; }
+
+  try {
+    var resp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE + '?ref=' + GH_BRANCH, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.raw' }
+    });
+    if (!resp.ok) throw new Error('Fichier introuvable sur GitHub');
+    var decoded = await resp.text();
+    if (!decoded || !decoded.trim()) throw new Error('Contenu vide renvoy\u00e9 par GitHub \u2014 r\u00e9essayez');
+    // Repli : si GitHub a ignor\u00e9 le mode raw et renvoy\u00e9 l'objet API, d\u00e9coder le base64
+    if (decoded.charAt(0) === '{') {
+      var maybeApi = null;
+      try { maybeApi = JSON.parse(decoded); } catch(eParse) { maybeApi = null; }
+      if (maybeApi && maybeApi.encoding === 'base64' && typeof maybeApi.content === 'string') {
+        if (!maybeApi.content) throw new Error('Fichier trop volumineux pour ce mode \u2014 r\u00e9essayez');
+        var b64clean = maybeApi.content.split('\n').join('');
+        decoded = decodeURIComponent(escape(atob(b64clean)));
+      }
+    }
+    var data = JSON.parse(decoded);
+    if (!data.condLabos) throw new Error('Format invalide');
+    var prodsConserves = 0;
+    Object.keys(data.condLabos).forEach(function(id) {
+      var key = parseInt(id) || id;
+      var entrant = data.condLabos[id];
+      var local = condLabos[key];
+      // GARDE-FOU : un labo entrant SANS produits ne doit jamais effacer des produits locaux
+      // (l'auto-save GitHub vide les produits par design pour rester sous 1 Mo)
+      if (local && local.produits && local.produits.length > 0 && (!entrant.produits || entrant.produits.length === 0)) {
+        entrant = Object.assign({}, entrant, { produits: local.produits, catalogueMaj: local.catalogueMaj, tarifValidite: local.tarifValidite });
+        prodsConserves++;
+      }
+      // Preserver paliers_references local si absent du distant (champ personnalise, jamais ecrase par un PDF/sync)
+      if (local && local.paliers_references && !entrant.paliers_references) {
+        entrant = Object.assign({}, entrant, { paliers_references: local.paliers_references });
+      }
+      condLabos[key] = entrant;
+    });
+    // Recalculer condNextId pour éviter les collisions
+    var allIds = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n); });
+    if (allIds.length > 0) condNextId = Math.max.apply(null, allIds) + 1;
+    condSauvegarder();
+    condInit();
+    var nb = Object.keys(data.condLabos).length;
+    if (status) { status.textContent = '✓ ' + nb + ' labo(s) — chargement catalogues...'; status.style.color = 'var(--accent-text)'; }
+    // Charger les produits depuis produits/LABOID.json pour chaque labo
+    var labosIds = Object.keys(condLabos);
+    var loaded = 0;
+    await Promise.all(labosIds.map(async function(id) {
+      await condChargerProduitsGitHub(id);
+      loaded++;
+    }));
+    condSauvegarder();
+    condInit();
+    if (status) { status.textContent = '✓ ' + nb + ' labo(s) + catalogues chargés depuis GitHub' + (prodsConserves > 0 ? ' (locaux conservés: ' + prodsConserves + ')' : ''); status.style.color = 'var(--accent-text)'; }
+    setTimeout(function(){ if (status) status.textContent = ''; }, 5000);
+  } catch(err) {
+    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+  }
+}
+
+// Restaurer token depuis localStorage au chargement
+window.addEventListener('DOMContentLoaded', function() {
+  var savedToken = localStorage.getItem('gh_token');
+  var tokenEl = document.getElementById('cond-gh-token');
+  if (savedToken && tokenEl) tokenEl.value = savedToken;
+  setTimeout(function(){ showTab('workflow'); }, 100);
+});
+
+// ===== EXPORT / IMPORT SAUVEGARDE =====
+function condExporterTout() {
+  var data = {
+    version: 2,
+    date: new Date().toISOString(),
+    condLabos: condLabos
+  };
+  var json = JSON.stringify(data, null, 2);
+  var blob = new Blob([json], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'calculateur-pharmacie-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function condImporterTout(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('cond-backup-status');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      if (!data.condLabos) throw new Error('Format invalide');
+      // Merger avec les données existantes
+      Object.keys(data.condLabos).forEach(function(id) {
+        condLabos[parseInt(id) || id] = data.condLabos[id];
+      });
+      var allIds3 = Object.keys(condLabos).map(Number).filter(function(n){ return !isNaN(n); });
+      if (allIds3.length > 0) condNextId = Math.max.apply(null, allIds3) + 1;
+      condSauvegarder();
+      condInit();
+      var nb = Object.keys(data.condLabos).length;
+      if (status) { status.textContent = nb + ' labo(s) importé(s) ✓'; }
+      setTimeout(function(){ if (status) status.textContent = ''; }, 4000);
+    } catch(err) {
+      if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ===== SUIVI COMMANDES =====
+function condSaveOrderInfo() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var l = condLabos[condLaboActif];
+  var lo = document.getElementById('cond-last-order');
+  var la = document.getElementById('cond-last-order-amount');
+  var oc = document.getElementById('cond-order-coverage');
+  var dd = document.getElementById('cond-delivery-days');
+  var nr = document.getElementById('cond-next-rdv');
+  if (lo) l.lastOrder = lo.value;
+  if (la) l.lastOrderAmount = parseFloat(la.value) || 0;
+  if (oc) l.orderCoverage = parseFloat(oc.value) || 2;
+  if (dd) l.deliveryDays = parseInt(dd.value) || 3;
+  if (nr) l.nextRdv = nr.value;
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+}
+
+function condUpdateOrderStatus() {
+  var el = document.getElementById('cond-order-status');
+  if (!el || !condLaboActif || !condLabos[condLaboActif]) return;
+  var l = condLabos[condLaboActif];
+  if (!l.lastOrder) { el.style.display = 'none'; return; }
+
+  var today = new Date();
+  var lastOrder = new Date(l.lastOrder);
+  // Couverture réelle depuis LGPI prioritaire sur couverture saisie
+  var coverage = parseFloat(l.couvertureReelle) || parseFloat(l.orderCoverage) || 2;
+  var deliveryDays = parseInt(l.deliveryDays) || 3;
+
+  // Date de rupture = date état des ventes + couverture réelle en jours
+  var rupture = new Date(lastOrder);
+  rupture.setDate(rupture.getDate() + Math.round(coverage * 30));
+
+  // Date limite pour commander = rupture - délai livraison
+  var commandeAvant = new Date(rupture);
+  commandeAvant.setDate(commandeAvant.getDate() - deliveryDays);
+
+  // Jours restants avant rupture
+  var joursRupture = Math.round((rupture - today) / (1000 * 60 * 60 * 24));
+  var joursCommande = Math.round((commandeAvant - today) / (1000 * 60 * 60 * 24));
+
+  // Afficher la couverture utilisée
+  var couv = l.couvertureReelle ? l.couvertureReelle.toFixed(1) + ' mois (stock réel LGPI)' : (coverage.toFixed(1) + ' mois (couverture saisie)');
+
+  var html = '<span style="font-size:10px;color:var(--text-ter)">Couverture : ' + couv + ' · Livraison : ' + deliveryDays + 'j</span><br>';
+  var bg = '', border = '';
+
+  if (joursRupture <= 0) {
+    // Rupture probable
+    bg = '#fdeaea'; border = 'var(--danger)';
+    html = '<b style="color:var(--danger)">⚠ Rupture probable</b> — stock théoriquement épuisé depuis ' + Math.abs(joursRupture) + ' jours.<br>';
+    html += 'Commander immédiatement.';
+  } else if (joursCommande <= 0) {
+    // Doit commander maintenant
+    bg = '#fff3e0'; border = 'var(--warn)';
+    html = '<b style="color:var(--warn)">⏰ Commander maintenant</b> — rupture estimée le <b>' + rupture.toLocaleDateString('fr-FR') + '</b> (dans ' + joursRupture + ' jours).<br>';
+    html += 'Délai livraison ' + deliveryDays + ' jours → commande urgente.';
+  } else if (joursCommande <= 14) {
+    // Bientôt
+    bg = '#fff8ee'; border = '#f0b429';
+    html = '<b style="color:#b36000">📦 Commande à préparer</b> — à passer avant le <b>' + commandeAvant.toLocaleDateString('fr-FR') + '</b> (dans ' + joursCommande + ' jours).<br>';
+    html += 'Rupture estimée : ' + rupture.toLocaleDateString('fr-FR') + '.';
+  } else {
+    // OK
+    bg = '#e8f5ee'; border = 'var(--accent)';
+    html = '<b style="color:var(--accent-text)">✓ Stock OK</b> — prochaine commande vers le <b>' + commandeAvant.toLocaleDateString('fr-FR') + '</b> (dans ' + joursCommande + ' jours).<br>';
+    html += 'Rupture estimée : ' + rupture.toLocaleDateString('fr-FR') + '.';
+  }
+
+  // Prochain RDV
+  if (l.nextRdv) {
+    var rdv = new Date(l.nextRdv);
+    var joursRdv = Math.round((rdv - today) / (1000 * 60 * 60 * 24));
+    html += '<br>📅 Prochain RDV : <b>' + rdv.toLocaleDateString('fr-FR') + '</b>';
+    if (joursRdv > 0) html += ' (dans ' + joursRdv + ' jours)';
+    else html += ' <span style="color:var(--danger)">(passé)</span>';
+  }
+
+  el.style.display = 'block';
+  el.style.background = bg;
+  el.style.border = '1px solid ' + border;
+  el.innerHTML = html;
+}
+
+// ===== VALIDITÉ CATALOGUE =====
+function condCheckValidite() {
+  var ve = document.getElementById('cond-tarif-validite');
+  var hint = document.getElementById('cond-validite-hint');
+  if (!ve || !hint) return;
+  var val = ve.value;
+  if (!val) { hint.textContent = ''; return; }
+  var today = new Date();
+  var expire = new Date(val);
+  var diffDays = Math.round((expire - today) / (1000*60*60*24));
+  if (diffDays < 0) {
+    hint.textContent = '⚠ Expiré depuis ' + Math.abs(diffDays) + ' jours — mettre à jour le catalogue';
+    hint.style.color = 'var(--danger)';
+  } else if (diffDays <= 30) {
+    hint.textContent = '⚠ Expire dans ' + diffDays + ' jours';
+    hint.style.color = 'var(--warn)';
+  } else {
+    hint.textContent = '✓ Valide encore ' + diffDays + ' jours';
+    hint.style.color = 'var(--accent-text)';
+  }
+}
+
+// ===== MARCHÉS OUVERTS =====
+function condRenderMarches() {
+  var container = document.getElementById('cond-marches-list');
+  if (!container) return;
+  var labo = condLabos[condLaboActif];
+  if (!labo) return;
+  var marches = labo.marches_negocies || [];
+  var inS = 'font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);';
+  if (marches.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-ter);padding:8px 0">Aucun marché ouvert. Cliquez sur + Marché.</p>';
+    return;
+  }
+  container.innerHTML = marches.map(function(m, i) {
+    return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--accent)">' +
+      '<input type="text" value="' + (m.label||'') + '" placeholder="Nom du marché (ex: Marché général)" style="' + inS + 'flex:1;min-width:180px" oninput="condUpdateMarche(' + i + ',\'label\',this.value)">' +
+      '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">Remise négociée</span>' +
+      '<input type="number" value="' + (m.rem||0) + '" min="0" max="60" step="0.5" style="' + inS + 'width:60px;font-weight:600;color:var(--accent-text)" oninput="condUpdateMarche(' + i + ',\'rem\',this.value)"> %' +
+      '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">ID marché</span>' +
+      '<input type="text" value="' + (m.marche_id||'') + '" placeholder="general / prot / isolat / barres" style="' + inS + 'width:140px;font-size:11px" oninput="condUpdateMarche(' + i + ',\'marche_id\',this.value)">' +
+      '<button type="button" onclick="condSupprimerMarche(' + i + ')" style="font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>' +
+      '</div>';
+  }).join('');
+}
+
+function condAjouterMarche() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  if (!condLabos[condLaboActif].marches_negocies) condLabos[condLaboActif].marches_negocies = [];
+  condLabos[condLaboActif].marches_negocies.push({ label:'', marche_id:'', rem:30 });
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condUpdateMarche(i, key, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var m = (condLabos[condLaboActif].marches_negocies || [])[i];
+  if (!m) return;
+  m[key] = key === 'rem' ? parseFloat(val)||0 : val.trim();
+  condSauvegarder();
+}
+
+function condSupprimerMarche(i) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].marches_negocies.splice(i, 1);
+  condRenderMarches();
+  condSauvegarder();
+}
+
+// ===== PALIERS PAR NOMBRE DE REFERENCES =====
+function condRenderPaliers() {
+  var container = document.getElementById('cond-paliers-list');
+  if (!container) return;
+  var labo = condLabos[condLaboActif];
+  if (!labo) return;
+  var paliers = labo.paliers_references || [];
+  var inS = 'font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);';
+  if (paliers.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-ter);padding:8px 0">Aucun palier defini. Cliquez sur + Palier.</p>';
+    return;
+  }
+  var sorted = paliers.slice().sort(function(a,b){ return (a.nb_refs||0) - (b.nb_refs||0); });
+  container.innerHTML = sorted.map(function(p) {
+    var i = paliers.indexOf(p);
+    return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--accent)">' +
+      '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">A partir de</span>' +
+      '<input type="number" value="' + (p.nb_refs||0) + '" min="0" step="1" style="' + inS + 'width:70px;font-weight:600" oninput="condUpdatePalier(' + i + ',\'nb_refs\',this.value)">' +
+      '<span style="font-size:11px;color:var(--text-sec);white-space:nowrap">references → remise</span>' +
+      '<input type="number" value="' + (p.remise||0) + '" min="0" max="60" step="0.5" style="' + inS + 'width:60px;font-weight:600;color:var(--accent-text)" oninput="condUpdatePalier(' + i + ',\'remise\',this.value)"> %' +
+      '<button type="button" onclick="condSupprimerPalier(' + i + ')" style="font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>' +
+      '</div>';
+  }).join('');
+}
+
+function condAjouterPalier() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  if (!condLabos[condLaboActif].paliers_references) condLabos[condLaboActif].paliers_references = [];
+  condLabos[condLaboActif].paliers_references.push({ nb_refs:0, remise:0 });
+  condRenderPaliers();
+  condSauvegarder();
+}
+
+function condUpdatePalier(i, key, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var p = (condLabos[condLaboActif].paliers_references || [])[i];
+  if (!p) return;
+  p[key] = parseFloat(val) || 0;
+  condSauvegarder();
+}
+
+function condSupprimerPalier(i) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].paliers_references.splice(i, 1);
+  condRenderPaliers();
+  condSauvegarder();
+}
+
+function condAutoSave() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].nom = document.getElementById('cond-labo-nom').value || '';
+  condLabos[condLaboActif].dateEval = document.getElementById('cond-date-eval').value || '';
+  condLabos[condLaboActif].mbActuel = parseFloat(document.getElementById('cond-mb-actuel').value) || 0;
+  condLabos[condLaboActif].margeActuelle = parseFloat(document.getElementById('cond-marge-actuelle').value) || 0;
+  condLabos[condLaboActif].tva = parseFloat(document.getElementById('cond-tva').value) || 5.5;
+  var ve = document.getElementById('cond-tarif-validite');
+  if (ve) condLabos[condLaboActif].tarifValidite = ve.value || '';
+  condUpdateDiag();
+  condRenderTabs();
+  condCalc();
+}
+
+function condSauvegarder() {
+  condAutoSave();
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  var btn = document.querySelector('[onclick="condSauvegarder()"]');
+  if (btn) { btn.textContent = 'Sauvegarde !'; setTimeout(function(){ btn.textContent = 'Sauvegarder'; }, 1500); }
+  condSyncGitHubAuto();
+}
+
+// ===== AJOUTER CONDITIONS =====
+function condAjouterUG() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].conditions.push({ type:'UG', produit:'', qteAchat:6, qteOffert:1, paCatHT:0, actif:true });
+  condRenderConditions();
+  condCalc();
+}
+function condAjouterPalier() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].conditions.push({ type:'PALIER', seuil:500, remisePct:5, actif:true });
+  condRenderConditions();
+  condCalc();
+}
+function condAjouterRFA() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].conditions.push({ type:'RFA', tauxPct:3, baseCA:true, actif:true });
+  condRenderConditions();
+  condCalc();
+}
+
+function condSupprimerCond(idx) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].conditions.splice(idx, 1);
+  condRenderConditions();
+  condCalc();
+}
+
+function condRenderConditions() {
+  var labo = condLabos[condLaboActif];
+  var container = document.getElementById('cond-conditions-list');
+  var emptyMsg = document.getElementById('cond-empty-msg');
+  if (!labo || !labo.conditions || labo.conditions.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-ter);text-align:center;padding:16px 0" id="cond-empty-msg">Aucune condition. Cliquez sur + UG, + Palier ou + RFA.</p>';
+    return;
+  }
+  container.innerHTML = labo.conditions.map(function(c, i) {
+    var bg = c.type==='UG' ? 'var(--danger-bg)' : (c.type==='PALIER' ? 'var(--warn-bg)' : 'var(--accent-bg)');
+    var tc = c.type==='UG' ? 'var(--danger)' : (c.type==='PALIER' ? 'var(--warn)' : 'var(--accent-text)');
+    var label = c.type==='UG' ? 'Unites Gratuites' : (c.type==='PALIER' ? 'Palier de remise' : 'RFA / Remise arriere');
+    var fields = '';
+    if (c.type === 'UG') {
+      fields = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">Produit</label><input type="text" value="' + (c.produit||'') + '" placeholder="ex : NUTRI&CO OMEGA 3" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:180px" oninput="condUpdateCond('+i+',\'produit\',this.value)"></div>' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">Pour X achetes</label><input type="number" value="' + (c.qteAchat||6) + '" min="1" step="1" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:70px;text-align:center" oninput="condUpdateCond('+i+',\'qteAchat\',+this.value)"></div>' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">Y offerts</label><input type="number" value="' + (c.qteOffert||1) + '" min="1" step="1" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:60px;text-align:center" oninput="condUpdateCond('+i+',\'qteOffert\',+this.value)"></div>' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">PA Cat HT (euro)</label><input type="number" value="' + (c.paCatHT||0) + '" min="0" step="0.01" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:90px" oninput="condUpdateCond('+i+',\'paCatHT\',+this.value)"></div>' +
+        '</div>';
+    } else if (c.type === 'PALIER') {
+      fields = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">A partir de (euro)</label><input type="number" value="' + (c.seuil||500) + '" min="0" step="50" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:100px" oninput="condUpdateCond('+i+',\'seuil\',+this.value)"></div>' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">Remise (%)</label><input type="number" value="' + (c.remisePct||5) + '" min="0" max="50" step="0.5" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:80px;text-align:center" oninput="condUpdateCond('+i+',\'remisePct\',+this.value)"></div>' +
+        '</div>';
+    } else {
+      fields = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">Taux RFA (%)</label><input type="number" value="' + (c.tauxPct||3) + '" min="0" max="20" step="0.1" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:80px;text-align:center" oninput="condUpdateCond('+i+',\'tauxPct\',+this.value)"></div>' +
+        '<div style="display:flex;flex-direction:column;gap:3px"><label style="font-size:10px;color:var(--text-ter)">Base de calcul</label><select style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px" onchange="condUpdateCond('+i+',\'baseCA\',this.value===\'ca\')"><option value="ca"' + (c.baseCA!==false?' selected':'') + '>CA annuel TTC</option><option value="ht"' + (c.baseCA===false?' selected':'') + '>CA annuel HT</option></select></div>' +
+        '</div>';
+    }
+    return '<div style="background:'+bg+';border-radius:var(--radius-sm);padding:12px;position:relative">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+      '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:'+tc+'">'+label+'</span>' +
+      '<button type="button" onclick="condSupprimerCond('+i+')" style="font-size:11px;color:var(--text-ter);background:none;border:none;cursor:pointer;padding:0">✕ Supprimer</button>' +
+      '</div>' + fields + '</div>';
+  }).join('');
+}
+
+function condUpdateCond(idx, key, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  condLabos[condLaboActif].conditions[idx][key] = val;
+  condCalc();
+}
+
+
+function condUpdateDiag() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var mb = parseFloat(document.getElementById('cond-mb-actuel').value) || 0;
+  var marge = parseFloat(document.getElementById('cond-marge-actuelle').value) || 0;
+  var ca = parseFloat(document.getElementById('cond-ca-annuel').value) || 0;
+  var dateStr = document.getElementById('cond-date-eval').value || '';
+
+  // Update date label in header
+  var dl = document.getElementById('cond-date-label');
+  if (dl && dateStr) {
+    var d = new Date(dateStr);
+    dl.textContent = 'Evaluation du ' + d.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
+  }
+  // Update date in diag card title
+  var dd = document.getElementById('cond-diag-date');
+  if (dd && dateStr) {
+    var d2 = new Date(dateStr);
+    dd.textContent = d2.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
+  }
+
+  // MB% hint
+  var mbHint = document.getElementById('cond-mb-hint');
+  if (mbHint && mb > 0) {
+    var cls = mb >= 35 ? 'var(--accent-text)' : mb >= 28 ? 'var(--warn)' : 'var(--danger)';
+    var label = mb >= 35 ? 'Bon' : mb >= 28 ? 'Passable' : 'Insuffisant';
+    mbHint.textContent = label;
+    mbHint.style.color = cls;
+  }
+
+  // Marge hint
+  var tvaR = parseFloat(document.getElementById('cond-tva').value) / 100;
+  var caHT = ca > 0 ? ca / (1 + tvaR) : 0;
+  var margeHint = document.getElementById('cond-marge-hint');
+  if (margeHint && marge > 0 && caHT > 0) {
+    var mbCalc = marge / caHT * 100;
+    // Recalculer MB% sur le périmètre Jan-dateEval
+    var tvaRHint = parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055;
+    var caHintHT = ca > 0 ? ca / (1 + tvaRHint) : 0; // ca = CA 12 mois glissants
+    var mbSur12 = caHintHT > 0 ? marge / caHintHT * 100 : 0;
+    margeHint.textContent = 'soit MB% réel = ' + mbSur12.toFixed(1).replace('.',',') + '% sur CA HT (12 mois glissants)';
+    margeHint.style.color = 'var(--text-ter)';
+  }
+
+  // Stock immobilisé
+  var labo_ = condLabos[condLaboActif];
+  var stockRow = document.getElementById('cond-stock-row');
+  var stockEl  = document.getElementById('cond-stock-immo');
+  var stockHint = document.getElementById('cond-stock-immo-hint');
+  if (labo_ && labo_.stockImmoVal !== undefined && stockRow && stockEl) {
+    var fE_ = function(v){ return v.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; };
+    stockRow.style.display = 'flex';
+    stockEl.textContent = fE_(labo_.stockImmoVal);
+    var couv = (labo_.caAnnuel > 0) ? (labo_.stockImmoVal / (labo_.caAnnuel / 12)) : 0;
+    if (stockHint) stockHint.textContent = labo_.stockImmoQte + ' unités · ' + couv.toFixed(1).replace('.',',') + ' mois de couverture';
+  } else if (stockRow) { stockRow.style.display = 'none'; }
+
+  if (mb <= 0 && marge <= 0 && ca <= 0) { document.getElementById('cond-diag-card').style.display='none'; return; }
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; }
+
+  // ===== CA RÉEL YTD ET PROJECTION AU 31/12 =====
+  // ventes = tableau [Jun25(0), Jul25(1), ..., Mai26(11)] CA TTC mensuel réel
+  // dateEval = 03/06/2026 → on est en juin 2026
+  // Ordre app: index 0=Jun25, 1=Jul25, ..., 10=Avr26, 11=Mai26
+  // PDF order inverse: jun26=pdfIdx0=appIdx11, mai26=pdfIdx1=appIdx10, ...
+  // Reconstituer CA réel depuis ventes mensuelles stockées
+  // Source de vérité unique : condLabos.ventes (stable, mis à jour par import et saisie)
+  // Si la grille est rendue ET a des valeurs non nulles, on la préfère (saisie manuelle récente)
+  var ventes12 = new Array(12).fill(0);
+  var ventesGrille = [];
+  var grilleOK = true;
+  for (var vi = 0; vi < 12; vi++) {
+    var vel = document.getElementById('cond-v-' + vi);
+    if (!vel) { grilleOK = false; break; }
+    ventesGrille.push(parseFloat(vel.value) || 0);
+  }
+  if (grilleOK && ventesGrille.length === 12 && ventesGrille.reduce(function(s,v){return s+v;},0) > 0) {
+    ventes12 = ventesGrille;
+  } else if (condLabos[condLaboActif] && condLabos[condLaboActif].ventes) {
+    ventes12 = condLabos[condLaboActif].ventes.slice();
+  }
+  // ventes12 order: [0]=Jun25, [1]=Jul25, [2]=Aou25, [3]=Sep25, [4]=Oct25,
+  //                 [5]=Nov25, [6]=Dec25, [7]=Jan26, [8]=Fev26, [9]=Mar26, [10]=Avr26, [11]=Mai26
+  // Date d'évaluation → déterminer le premier mois de l'année civile en cours dans le tableau
+  var moisEcoules = 6; // défaut : juin
+  var evalYear = new Date().getFullYear();
+  if (dateStr) {
+    var evalDate = new Date(dateStr);
+    moisEcoules = evalDate.getMonth() + 1; // 1=jan, 6=juin...
+    evalYear = evalDate.getFullYear();
+  }
+  // Index dans ventes12 du mois de janvier de l'année d'évaluation
+  // ventes12[6]=Dec25, ventes12[7]=Jan26 → pour 2026, jan = index 7
+  // Formule : index_jan = 12 - (12 - moisEcoules) - moisEcoules + 1 = trop complexe
+  // Plus simple : l'index de Jan de l'année éval = 12 - moisEcoules + 1 - 1 = 12 - moisEcoules
+  // Vérifié : si date=juin 2026 (moisEcoules=6), jan26=index 7 = 12-6+1=7 ✓
+  // ventes12 = [Jun25(0), Jul25(1), ..., Dec25(6), Jan26(7), ..., Mai26(11)]
+  // idxJan = index de janvier de l'année éval dans ventes12
+  // Pour date 03/06/2026 : moisEcoules=6 → idxJan = 12-6+1 = 7
+  var idxJan = 12 - moisEcoules + 1;
+  var tvaRCalc = parseFloat(document.getElementById('cond-tva').value) / 100 || 0.055;
+
+  // CA réel YTD = somme Jan → mois précédent dateEval (indices idxJan à 11)
+  var caReel = 0, moisAvecCA = 0;
+  for (var mi = idxJan; mi < 12; mi++) {
+    caReel += ventes12[mi] || 0;
+    if ((ventes12[mi]||0) > 0) moisAvecCA++;
+  }
+  // Nb mois complets écoulés dans l'exercice (Jan à mois avant dateEval)
+  var nbMoisEcoules = 12 - idxJan; // ex: idxJan=7 → 5 mois (Jan-Mai)
+  // CA moyen mensuel sur les mois écoulés (même si certains = 0)
+  var caMoyMois = nbMoisEcoules > 0 ? caReel / nbMoisEcoules : 0;
+  // Mois restants = mois en cours + mois suivants jusqu'au 31/12
+  var moisRestants = moisEcoules; // ex: juin 2026 → 7 mois restants (juin→déc) mais on a déjà jan-mai=5 mois
+  // Correction : moisRestants = 12 - nbMoisEcoules
+  moisRestants = Math.max(0, 12 - nbMoisEcoules);
+  // Projection CA = CA réel + mois restants × CA moyen mensuel
+  var caProjTotal = caReel + moisRestants * caMoyMois;
+  // Marge réelle YTD = CA HT réel Jan-Mai × MB%
+  // MB% vient de l'import LGPI (calculé produit par produit sur 12 mois) — taux le plus fiable
+  var caHTReel = caReel > 0 ? caReel / (1 + tvaRCalc) : 0;
+  var margeReelle = caHTReel * (mb / 100);
+  // Marge projetée = CA HT projeté × MB%
+  var caHTProj = caProjTotal > 0 ? caProjTotal / (1 + tvaRCalc) : 0;
+  var margeProjTotal = caHTProj * (mb / 100);
+  var mbProj = mb;
+  var caActuel = caReel > 0 ? caReel : ca;
+  var margeActuelle_ = margeReelle;
+
+  // Labels dynamiques avec période
+  var mNoms = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  var mFinLabel = mNoms[Math.min(nbMoisEcoules - 1, 11)];
+  var periodeLabel = 'Jan–' + mFinLabel + ' ' + evalYear;
+  var el = function(id){ return document.getElementById(id); };
+  var lblCA = document.getElementById('cond-diag-ca-lbl');
+  if (lblCA) lblCA.textContent = 'CA TTC (' + periodeLabel + ')';
+  var lblMarge = document.getElementById('cond-diag-marge-lbl');
+  if (lblMarge) lblMarge.textContent = 'Marge (' + periodeLabel + ')';
+  var lblMargeField = document.getElementById('cond-marge-lbl');
+  if (lblMargeField) lblMargeField.textContent = 'Marge 12 mois glissants (euro)';
+
+  if (el('cond-diag-ca')) el('cond-diag-ca').textContent = caActuel > 0 ? fE(caActuel) : '—';
+  if (el('cond-diag-mb')) {
+    el('cond-diag-mb').textContent = mb > 0 ? mb.toFixed(1).replace('.',',') + '%' : '—';
+    el('cond-diag-mb').style.color = mb >= 35 ? 'var(--accent-text)' : mb >= 28 ? 'var(--warn)' : 'var(--danger)';
+  }
+  if (el('cond-diag-marge')) {
+    el('cond-diag-marge').textContent = margeActuelle_ > 0 ? fE(margeActuelle_) : '—';
+  }
+
+  // Fill projection KPIs (extrapolation sur mois restants)
+  if (el('cond-proj-ca')) el('cond-proj-ca').textContent = caProjTotal > 0 ? fE(caProjTotal) : '—';
+  if (el('cond-proj-mb')) {
+    el('cond-proj-mb').textContent = mbProj > 0 ? mbProj.toFixed(1).replace('.',',') + '%' : '—';
+    el('cond-proj-mb').style.color = mbProj >= 35 ? 'var(--accent-text)' : mbProj >= 28 ? 'var(--warn)' : 'var(--danger)';
+  }
+  if (el('cond-proj-marge')) {
+    el('cond-proj-marge').textContent = margeProjTotal > 0 ? fE(margeProjTotal) : '—';
+  }
+  if (el('cond-proj-mois')) {
+    el('cond-proj-mois').textContent = nbMoisEcoules + ' mois réels + ' + moisRestants + ' mois projetés à ' + fE(Math.round(caMoyMois)) + '/mois';
+  }
+
+  // Diag body: use produit data if available
+  var labo = condLabos[condLaboActif];
+  var body = document.getElementById('cond-diag-body');
+  if (!body) return;
+
+  var alertes = labo.alertes || [];
+  if (alertes.length === 0 && mb > 0) {
+    // Generic diagnostic based on MB%
+    var html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    if (mb < 20) {
+      html += '<div class="nego" style="border-left:3px solid var(--danger)"><p class="nego-title" style="color:var(--danger)">MB% insuffisant — action urgente</p><div class="nego-body">Ton taux de marque de <b>' + mb.toFixed(1).replace('.',',') + '%</b> est bien en dessous du seuil minimal de 30%. Chaque vente contribue peu a ta marge. Verifie tes prix de vente et negocie de meilleures conditions.</div></div>';
+    } else if (mb < 28) {
+      html += '<div class="nego" style="border-left:3px solid var(--warn)"><p class="nego-title" style="color:var(--warn)">MB% a ameliorer</p><div class="nego-body">Ton taux de marque de <b>' + mb.toFixed(1).replace('.',',') + '%</b> est en dessous de l objectif de 35%. Des negociations ou ajustements de prix sont recommandes.</div></div>';
+    } else {
+      html += '<div class="nego" style="border-left:3px solid var(--accent)"><p class="nego-title" style="color:var(--accent-text)">MB% correct</p><div class="nego-body">Ton taux de marque de <b>' + mb.toFixed(1).replace('.',',') + '%</b> est dans la zone acceptable. Vise 35% pour optimiser.</div></div>';
+    }
+    html += '</div>';
+    body.innerHTML = html;
+  } else if (alertes.length > 0) {
+    // Detailed diagnostic from produit import
+    var html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    alertes.forEach(function(a) {
+      var bord = a.sev === 'danger' ? 'var(--danger)' : a.sev === 'warn' ? 'var(--warn)' : 'var(--accent)';
+      var tc = a.sev === 'danger' ? 'var(--danger)' : a.sev === 'warn' ? 'var(--warn)' : 'var(--accent-text)';
+      html += '<div class="nego" style="border-left:3px solid ' + bord + '"><p class="nego-title" style="color:' + tc + '">' + a.titre + '</p><div class="nego-body">' + a.desc + '</div></div>';
+    });
+    html += '</div>';
+    body.innerHTML = html;
+  }
+  document.getElementById('cond-diag-card').style.display = 'block';
+}
+
+// ===== CALCUL =====
+function condCalc() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var labo = condLabos[condLaboActif];
+  var ca = parseFloat(document.getElementById('cond-ca-annuel').value) || labo.caAnnuel || 0;
+  var mbAct = parseFloat(document.getElementById('cond-mb-actuel').value) || labo.mbActuel || 0;
+  var tvaR = parseFloat(document.getElementById('cond-tva').value) / 100;
+  var tvaM = 1 + tvaR;
+  var caHT = ca / tvaM;
+  var margeActuelleInput = parseFloat(document.getElementById('cond-marge-actuelle').value) || 0;
+  var margeActuelle = margeActuelleInput > 0 ? margeActuelleInput : caHT * (mbAct / 100);
+  var conds = labo.conditions || [];
+  var totalGain = 0;
+  var details = [];
+
+  conds.forEach(function(c) {
+    if (c.type === 'UG') {
+      // UG: gain = valeur des UG recues sur 1 an
+      // Nombre de cycles sur 1 an = commandes / qteAchat
+      // Estimation: CA / (qteAchat * PV unitaire estime)
+      // Si paCatHT renseigne: gain = paCatHT * qteOffert * cycles
+      if (c.paCatHT > 0 && c.qteAchat > 0) {
+        // Estimer PV unitaire depuis PA: PV TTC = PA * K (K=tvaM/(1-mbAct/100))
+        var k = tvaM / (1 - mbAct / 100);
+        var pvEst = c.paCatHT * k;
+        var cycles = pvEst > 0 ? ca / (c.qteAchat * pvEst) : 0;
+        var gainUG = c.paCatHT * c.qteOffert * cycles;
+        var remiseEff = cycles > 0 ? c.qteOffert / (c.qteAchat + c.qteOffert) * 100 : 0;
+        totalGain += gainUG;
+        details.push({ type:'UG', label: (c.produit||'UG') + ' : ' + c.qteAchat + '+' + c.qteOffert,
+          gain: gainUG, remiseEff: remiseEff,
+          desc: Math.round(cycles*10)/10 + ' cycles/an × ' + c.qteOffert + ' UG × PA ' + c.paCatHT.toFixed(2) + '\u20ac' });
+      } else {
+        details.push({ type:'UG', label:(c.produit||'UG')+' : '+c.qteAchat+'+'+c.qteOffert, gain:0, remiseEff:0, desc:'Saisir PA Cat HT pour calculer le gain' });
+      }
+    } else if (c.type === 'PALIER') {
+      // Palier: si CA > seuil, remise sur la totalite ou sur l excedent
+      if (ca >= c.seuil && c.remisePct > 0) {
+        var gainPalier = (ca / tvaM) * (c.remisePct / 100);
+        totalGain += gainPalier;
+        details.push({ type:'PALIER', label:'Palier ' + c.seuil + '\u20ac → ' + c.remisePct + '%',
+          gain: gainPalier, remiseEff: c.remisePct,
+          desc: 'CA ' + Math.round(ca).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u20ac ≥ seuil ' + c.seuil + '\u20ac → remise ' + c.remisePct + '% sur CA HT' });
+      } else {
+        var manque = c.seuil - ca;
+        details.push({ type:'PALIER', label:'Palier ' + c.seuil + '\u20ac → ' + c.remisePct + '%', gain:0, remiseEff:0,
+          desc: 'Seuil non atteint — il manque ' + Math.round(manque).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u20ac de CA' });
+      }
+    } else if (c.type === 'RFA') {
+      var base = c.baseCA !== false ? ca / tvaM : ca / tvaM;
+      var gainRFA = base * (c.tauxPct / 100);
+      totalGain += gainRFA;
+      details.push({ type:'RFA', label:'RFA ' + c.tauxPct + '%',
+        gain: gainRFA, remiseEff: c.tauxPct,
+        desc: 'RFA ' + c.tauxPct + '% × CA HT ' + Math.round(caHT).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u20ac' });
+    }
+  });
+
+  var margeApres = margeActuelle + totalGain;
+  var mbApres = caHT > 0 ? margeApres / caHT * 100 : 0;
+  var gainMBPts = mbApres - mbAct;
+
+  // KPIs
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
+  function f1(v){ return v.toFixed(1).replace('.',','); }
+  var kpiEl = document.getElementById('cond-kpis');
+  kpiEl.innerHTML =
+    met('', 'CA annuel estime', fE(ca), 'CA HT : ' + fE(caHT)) +
+    met('', 'Marge avant conditions', fE(margeActuelle), 'MB% actuel : ' + f1(mbAct) + '%') +
+    met(totalGain > 0 ? 'hi' : 'warn', 'Gain total conditions', fE(totalGain), details.length + ' condition(s) active(s)') +
+    met(mbApres > mbAct ? 'hi' : 'warn', 'Marge apres conditions', fE(margeApres), 'MB% apres : ' + f1(mbApres) + '% (+' + f1(gainMBPts) + ' pts)');
+
+  // Detail
+  var thS = 'padding:6px 10px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left';
+  var html = '<table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto"><thead><tr>' +
+    '<th style="'+thS+'">Type</th><th style="'+thS+'">Condition</th><th style="'+thS+'">Remise eff.</th><th style="'+thS+'">Gain annuel</th><th style="'+thS+'">Detail</th>' +
+    '</tr></thead><tbody>';
+  details.forEach(function(d) {
+    var bg = d.type==='UG'?'var(--danger-bg)':(d.type==='PALIER'?'var(--warn-bg)':'var(--accent-bg)');
+    var tc = d.type==='UG'?'var(--danger)':(d.type==='PALIER'?'var(--warn)':'var(--accent-text)');
+    var td = 'padding:7px 10px;border-bottom:0.5px solid var(--border);font-size:12px';
+    html += '<tr>' +
+      '<td style="'+td+';background:'+bg+';color:'+tc+';font-weight:600">'+d.type+'</td>' +
+      '<td style="'+td+'">'+d.label+'</td>' +
+      '<td style="'+td+';text-align:center;font-family:monospace">'+(d.remiseEff>0?f1(d.remiseEff)+'%':'-')+'</td>' +
+      '<td style="'+td+';font-family:monospace;font-weight:600;color:'+(d.gain>0?'var(--accent-text)':'var(--text-ter)')+'">'+fE(d.gain)+'</td>' +
+      '<td style="'+td+';color:var(--text-ter)">'+d.desc+'</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('cond-detail').innerHTML = html;
+
+  // Conclusion
+  var conEl = document.getElementById('cond-conclusion');
+  conEl.innerHTML = '<b>Synthese :</b> avec ces conditions, ton MB% passe de <b>' + f1(mbAct) + '%</b> a <b>' + f1(mbApres) + '%</b> (+' + f1(gainMBPts) + ' pts). ' +
+    'Gain annuel estime : <b>' + fE(totalGain) + '</b>. ' +
+    (gainMBPts >= 2 ? '<span class="badge ok">Conditions interessantes</span>' : gainMBPts >= 0.5 ? '<span class="badge warn">Gain modere</span>' : '<span class="badge ko">Impact faible — negocier davantage</span>');
+
+  document.getElementById('cond-result-card').style.display = 'block';
+
+  // Compare table: avant vs apres
+  var cmpHtml = '<thead><tr>' +
+    '<th style="'+thS+'">Indicateur</th>' +
+    '<th style="'+thS+'">Avant conditions</th>' +
+    '<th style="'+thS+'">Apres conditions</th>' +
+    '<th style="'+thS+'">Gain</th>' +
+    '</tr></thead><tbody>';
+  var rows2 = [
+    ['MB%', f1(mbAct)+'%', f1(mbApres)+'%', '+'+f1(gainMBPts)+' pts'],
+    ['Marge annuelle', fE(margeActuelle), fE(margeApres), '+'+fE(totalGain)],
+    ['CA HT', fE(caHT), fE(caHT), '—'],
+  ];
+  rows2.forEach(function(r) {
+    var tdS = 'padding:7px 10px;border-bottom:0.5px solid var(--border);font-size:12px';
+    cmpHtml += '<tr><td style="'+tdS+';font-weight:600">'+r[0]+'</td><td style="'+tdS+'">'+r[1]+'</td><td style="'+tdS+';color:var(--accent-text);font-weight:600">'+r[2]+'</td><td style="'+tdS+';color:var(--accent-text)">'+r[3]+'</td></tr>';
+  });
+  cmpHtml += '</tbody>';
+  document.getElementById('cond-compare-table').innerHTML = cmpHtml;
+  document.getElementById('cond-compare-card').style.display = 'block';
+}
+
+// ===== IMPORT CATALOGUE LABO GENERIQUE (PDF) =====
+function condImportCatalogueLabo() {
+  var status = document.getElementById('cond-pdf-status');
+  if (!condLaboActif || !condLabos[condLaboActif]) {
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  var labo = condLabos[condLaboActif];
+  // Fusionner produits (array) + catalogue (object clé→produit de l'onglet Catalogue)
+  var prodsFromProduits = labo.produits || [];
+  var prodsFromCatalogue = Object.values(labo.catalogue || {});
+  var merged = {};
+  prodsFromProduits.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k) merged[k]=p; });
+  prodsFromCatalogue.forEach(function(p){ var k=(p.ean&&p.ean.length>=8)?p.ean:(p.nom||''); if(k&&!merged[k]) merged[k]=p; });
+  var src = Object.values(merged);
+  if (src.length === 0) {
+    if (status) { status.textContent = 'Aucun produit dans le catalogue de ce labo — importez d\'abord via l\'onglet Catalogue → 🤖 Extraire produits (IA).'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+
+  var nb = 0;
+  var produits = src.map(function(p) {
+    nb++;
+    return {
+      nom: p.nom || '',
+      ean: p.ean || '',
+      format: p.format || '',
+      pu_catalogue: p.pu_catalogue || 0,
+      lppr: p.lppr || 0,
+      colisage: p.colisage || p.uc || 1,
+      tva: p.tva || 20,
+      famille: p.famille || '',
+      moy: p.moy || 0, pa_net: p.pa_net || 0,
+      pv_ttc: p.pv_ttc || 0, pv_ht: p.pv_ht || 0,
+      mbu: p.mbu || 0, mb_pct: p.mb_pct || 0,
+      rem_cat: p.rem_cat || 0,
+      mois: p.mois || new Array(12).fill(0)
+    };
+  });
+
+  labo.produits = produits;
+  labo.catalogueMaj = new Date().toISOString();
+  condSauvegarder();
+
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
+
+  if (status) {
+    status.textContent = nb + ' refs chargées depuis le catalogue (' + produits.length + ' produits)';
+    status.style.color = 'var(--accent-text)';
+  }
+  condUpdateDiag();
+}
+// ===== IMPORT XLSX CATALOGUE LABO =====
+function condImportCatalogueLaboXLSX(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('cond-pdf-status');
+  if (!condLaboActif || !condLabos[condLaboActif]) {
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (status) { status.textContent = 'Lecture XLSX...'; status.style.color = 'var(--text-sec)'; }
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      // Chercher l'onglet avec des données (éviter les onglets vides comme BExRepositorySheet)
+      var wsName = wb.SheetNames[0];
+      for (var si = 0; si < wb.SheetNames.length; si++) {
+        var ws2 = wb.Sheets[wb.SheetNames[si]];
+        var r2 = XLSX.utils.sheet_to_json(ws2, { header:1, defval:'', range: 0 });
+        if (r2 && r2.length > 2) { wsName = wb.SheetNames[si]; break; }
+      }
+      var ws = wb.Sheets[wsName];
+      var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // Trouver la ligne header — chercher dans les 20 premières lignes
+      var headerIdx = -1;
+      var colMap = {};
+      for (var ri = 0; ri < Math.min(rows.length, 20); ri++) {
+        var row = rows[ri];
+        if (!row) continue;
+        var rowStr = row.map(function(c){ return String(c||'').trim().toUpperCase(); });
+        // Header trouvé si la ligne contient à la fois LABO et CODE 13
+        var hasLabo = rowStr.some(function(c){ return c === 'LABO'; });
+        var hasCode = rowStr.some(function(c){ return c.indexOf('CODE 13') >= 0 || c === 'CODE13'; });
+        var hasGamme = rowStr.some(function(c){ return c.indexOf('GAMME') >= 0 || c.indexOf('D\u00c9SIGNATION') >= 0 || c.indexOf('LIBELLE') >= 0; });
+        if (hasLabo || hasCode || hasGamme) { headerIdx = ri; break; }
+      }
+      if (headerIdx < 0) throw new Error('Header non trouvé — vérifiez que le fichier a une colonne CODE 13 ou LABO');
+
+      // Mapper les colonnes
+      var headers = rows[headerIdx].map(function(h){ return String(h||'').trim().toUpperCase(); });
+      headers.forEach(function(h, i) {
+        if (h === 'LABO') colMap.labo = i;
+        if (h === 'CODE 13' || h.indexOf('CODE 13') >= 0) colMap.ean = i;
+        if (h === 'T.V.A' || h === 'TVA') colMap.tva = i;
+        if (h.indexOf('GAMME') >= 0) colMap.gamme = i;
+        if (h === 'COLISAGE') colMap.colisage = i;
+        if (h.indexOf('PRIX TARIF HT') >= 0 || h.indexOf('PRIX NET') >= 0 && h.indexOf('RENDU') < 0) colMap.pu_catalogue = i;
+        if (h.indexOf('RENDU OFFICINE') >= 0 || h.indexOf('PRIX NET') >= 0 && h.indexOf('RENDU') >= 0) colMap.prix_net_rendu = i;
+        if (h.indexOf('PRIX TARIF') >= 0) colMap.pu_catalogue = i;
+        if (h.indexOf('DÉSIGNATION') >= 0 || h.indexOf('DESIGNATION') >= 0 || h.indexOf('LIBELLÉ') >= 0 || h.indexOf('LIBELLE') >= 0) colMap.nom = i;
+      });
+
+      // Si pas de colonne désignation trouvée, utiliser gamme
+      if (colMap.nom === undefined && colMap.gamme !== undefined) colMap.nom = colMap.gamme;
+
+      // Remplacer le catalogue existant
+      var existing = [];
+      var eansDejaPresents = {};
+
+      var nb = 0;
+      for (var ri2 = headerIdx + 1; ri2 < rows.length; ri2++) {
+        var row2 = rows[ri2];
+        if (!row2 || row2.every(function(c){ return !c; })) continue;
+
+        var ean = colMap.ean !== undefined ? String(row2[colMap.ean] || '').trim().replace(/\D/g,'') : '';
+        var nom = colMap.nom !== undefined ? String(row2[colMap.nom] || '').trim() : '';
+        var labo = colMap.labo !== undefined ? String(row2[colMap.labo] || '').trim() : '';
+        var famille = colMap.gamme !== undefined ? String(row2[colMap.gamme] || '').trim() : '';
+        var colisage = colMap.colisage !== undefined ? (parseInt(row2[colMap.colisage]) || 1) : 1;
+        var pu = colMap.pu_catalogue !== undefined ? (parseFloat(String(row2[colMap.pu_catalogue]).replace(',','.')) || 0) : 0;
+        var prixNetRendu = colMap.prix_net_rendu !== undefined ? (parseFloat(String(row2[colMap.prix_net_rendu]).replace(',','.')) || 0) : 0;
+        var tvaRaw = colMap.tva !== undefined ? (parseFloat(String(row2[colMap.tva]).replace(',','.').replace('%','')) || 0.055) : 0.055;
+        var tva = tvaRaw > 0 && tvaRaw < 1 ? Math.round(tvaRaw * 1000) / 10 : tvaRaw; // 0.055 → 5.5
+
+        if (!ean && !nom) continue;
+        if (ean && ean.length < 10) ean = '';
+        if (ean && eansDejaPresents[ean]) continue;
+        if (!nom) nom = labo + ' ' + ean;
+
+        existing.push({
+          nom: nom, ean: ean, labo: labo,
+          famille: famille,
+          format: '', colisage: colisage,
+          pu_catalogue: pu, prix_net_rendu: prixNetRendu, lppr: 0,
+          tva: tva,
+          moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0,
+          rem_cat: 0, mois: new Array(12).fill(0)
+        });
+        if (ean) eansDejaPresents[ean] = true;
+        nb++;
+      }
+
+      condLabos[condLaboActif].produits = existing;
+      condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
+      condSauvegarder();
+      condSauvegarderProduitsGitHub(condLaboActif);
+
+      var majEl = document.getElementById('cond-catalogue-maj');
+      if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
+
+      if (status) {
+        status.textContent = nb + ' refs ajoutées depuis XLSX (total : ' + existing.length + ' produits) — sync GitHub ☁';
+        status.style.color = 'var(--accent-text)';
+      }
+      condUpdateDiag();
+    } catch(err) {
+      if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
+
+// ===== IMPORT AVENANT TARIFS LABO =====
+async function condImportAvenantLabo(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('cond-pdf-status');
+  if (!condLaboActif || !condLabos[condLaboActif]) {
+    if (status) { status.textContent = 'Erreur : aucun labo sélectionné.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  var existing = condLabos[condLaboActif].produits || [];
+  if (existing.length === 0) {
+    if (status) { status.textContent = 'Importez d\'abord le catalogue complet avant un avenant.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+
+  if (status) { status.textContent = 'Lecture avenant (passe 1/4)...'; status.style.color = 'var(--text-sec)'; }
+
+  var b64 = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  var promptAvenant = 'Avenant/mise à jour de tarifs labo. Extrais UNIQUEMENT les produits avec leur nouveau prix avec : ean (EAN/GTIN 13 chiffres uniquement), nom (désignation), pu_catalogue (nouveau prix unitaire HT catalogue, nombre décimal), lppr (tarif remboursement LPPR TTC si présent, sinon ne pas inclure), colisage (UNITE DE COMMANDE si présente, sinon ne pas inclure). Si tu vois une date de validité, inclus-la dans "date_validite" (format YYYY-MM-DD). Réponds UNIQUEMENT en JSON valide. Format: {"date_validite":"2026-03-01","produits":[{"nom":"...","ean":"...","pu_catalogue":0,"lppr":0}]}';
+  var prompts = [
+    promptAvenant + ' PAGES 1-2.',
+    promptAvenant + ' PAGES 3-4.',
+    promptAvenant + ' PAGES 5-6 si présentes.',
+    promptAvenant + ' PAGES 7+ si présentes.'
+  ];
+
+  var allRefs = {};
+  var allDateValidite = '';
+
+  try {
+    for (var pi = 0; pi < 4; pi++) {
+      if (status) status.textContent = 'Lecture avenant (passe ' + (pi+1) + '/4)...';
+      var resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 16000,
+          messages: [{ role: 'user', content: [
+            { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
+            { type:'text', text: prompts[pi] }
+          ]}]
+        })
+      });
+      var data = await resp.json();
+      if (data.error) { if (status) { status.textContent = 'Erreur API: ' + data.error.message; status.style.color = 'var(--danger)'; } return; }
+      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      if (!raw || raw.length < 10) continue;
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+        var txt = jsonMatch[0].replace(/,\s*$/, '');
+        var opens = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var openb = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        for (var k=0; k<opens; k++) txt += ']';
+        for (var k=0; k<openb; k++) txt += '}';
+        try { parsed = JSON.parse(txt); } catch(e2) { continue; }
+      }
+      (parsed.produits||[]).forEach(function(p) {
+        if (!p.nom && !p.ean) return;
+        var key = (p.ean && p.ean.length >= 10) ? p.ean : p.nom;
+        allRefs[key] = p;
+      });
+      if (parsed.date_validite && !allDateValidite) allDateValidite = parsed.date_validite;
+    }
+
+    var refs = Object.values(allRefs);
+    if (refs.length === 0) throw new Error('Aucun produit trouvé dans l\'avenant');
+
+    // Mettre à jour UNIQUEMENT les produits existants
+    var nb = 0;
+    refs.forEach(function(r) {
+      var ean = (r.ean && r.ean.length >= 10) ? r.ean : '';
+      var prod = existing.find(function(p) {
+        if (ean && p.ean === ean) return true;
+        if (!ean && r.nom && p.nom && p.nom.toLowerCase().indexOf(r.nom.toLowerCase().slice(0,10)) >= 0) return true;
+        return false;
+      });
+      if (prod) {
+        if (r.pu_catalogue > 0) prod.pu_catalogue = r.pu_catalogue;
+        if (r.lppr !== undefined && r.lppr >= 0) prod.lppr = r.lppr;
+        if (r.colisage > 0) prod.colisage = r.colisage;
+        nb++;
+      }
+    });
+
+    condLabos[condLaboActif].produits = existing;
+    condLabos[condLaboActif].catalogueMaj = new Date().toISOString();
+    if (allDateValidite) {
+      condLabos[condLaboActif].tarifValidite = allDateValidite;
+      var ve = document.getElementById('cond-tarif-validite');
+      if (ve) { ve.value = allDateValidite; condCheckValidite(); }
+    }
+    condSauvegarder();
+    condSauvegarderProduitsGitHub(condLaboActif);
+
+    var majEl = document.getElementById('cond-catalogue-maj');
+    if (majEl) majEl.textContent = new Date().toLocaleDateString('fr-FR');
+
+    if (status) {
+      status.textContent = nb + ' produits mis à jour sur ' + refs.length + ' dans l\'avenant';
+      status.style.color = 'var(--accent-text)';
+    }
+    condUpdateDiag();
+
+  } catch(err) {
+    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--danger)'; }
+  }
+  input.value = '';
+}
+
+// ===== IMPORT PDF LGPI POUR COND =====
+async function condImportPDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('cond-pdf-status');
+  status.textContent = 'Lecture PDF...';
+  status.style.color = 'var(--text-sec)';
+
+  var b64 = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
+            { type:'text', text:'Etat des ventes LGPI pour un labo. Extrais le CA TTC mensuel total (pas par produit, le total du mois). Je veux les 12 derniers mois. Reponds UNIQUEMENT en JSON : {"mois":["Jun25","Jul25","Aou25","Sep25","Oct25","Nov25","Dec25","Jan26","Fev26","Mar26","Avr26","Mai26"],"ca":[v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12]} Les valeurs sont des nombres decimaux.' }
+          ]
+        }]
+      })
+    });
+    var data = await resp.json();
+    var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+    var parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    if (parsed.ca && parsed.ca.length === 12) {
+      parsed.ca.forEach(function(v, i) {
+        var el = document.getElementById('cond-v-' + i);
+        if (el) el.value = v.toFixed(2);
+      });
+      condUpdateVentes();
+      status.textContent = 'Import OK — CA total ' + parsed.ca.reduce(function(a,b){return a+b;},0).toFixed(0) + ' \u20ac';
+      status.style.color = 'var(--color-text-success)';
+    }
+  } catch(err) {
+    status.textContent = 'Erreur : ' + err.message;
+    status.style.color = 'var(--color-text-danger)';
+  }
+  input.value = '';
+}
+
+// ===== SCENARIOS MC =====
+function calcScenario(mbTS, mbS, mbPS) {
+  var tvaR=parseFloat(document.getElementById('mc-tva').value)/100, tvaM=1+tvaR;
+  var kTS=tvaM/(1-mbTS/100), kS=tvaM/(1-mbS/100), kPS=tvaM/(1-mbPS/100);
+  var sumRot=0; mcProduits.forEach(function(p){sumRot+=p.rotMois;});
+  var rotMoy=mcProduits.length>0?sumRot/mcProduits.length:1;
+  var totCANew=0,totMBNew=0,totCAAct=0,totMBAct=0,nChg=0,nTS=0,nS=0,nPS=0;
+  mcProduits.forEach(function(p){
+    var sens=qualifierSensibilite(p,rotMoy);
+    var k=sens==='TS'?kTS:(sens==='S'?kS:kPS);
+    var osp=OSPHARM_PMC[p.ean]||null, pvOsp=null;
+    if(osp){if(sens==='TS')pvOsp=osp.v||osp.p;else if(sens==='S')pvOsp=osp.p||osp.pn;else pvOsp=osp.px||osp.pn;}
+    var pvCalc=p.paHT>0?Math.ceil(p.paHT*k*(1+tvaR)*20)/20:0;
+    var pvNew=(pvOsp&&pvOsp>0)?Math.round(pvOsp*20)/20:pvCalc;
+    var pvHT=pvNew/tvaM, pvActHT=p.pvActuel>0?p.pvActuel/tvaM:0;
+    totCANew+=p.rotMois*12*pvHT; totMBNew+=p.rotMois*12*(pvHT-p.paHT);
+    totCAAct+=p.rotMois*12*pvActHT; totMBAct+=p.rotMois*12*(pvActHT-p.paHT);
+    if(p.pvActuel>0&&pvNew>0&&Math.abs(pvNew-p.pvActuel)>0.05)nChg++;
+    if(sens==='TS')nTS++;else if(sens==='S')nS++;else nPS++;
+  });
+  return{mbNew:totCANew>0?totMBNew/totCANew*100:0,mbAct:totCAAct>0?totMBAct/totCAAct*100:0,
+    mrgNew:totMBNew,mrgAct:totMBAct,gain:totMBNew-totMBAct,nChg:nChg,nTS:nTS,nS:nS,nPS:nPS};
+}
+function fmtE(v){return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' \u20ac';}
+function updateScenarios(){
+  if(!mcProduits||mcProduits.length===0)return;
+  var tsV=parseFloat(document.getElementById('sc-ts').value);
+  var sV=parseFloat(document.getElementById('sc-s').value);
+  var psV=parseFloat(document.getElementById('sc-ps').value);
+  document.getElementById('sc-ts-val').textContent=tsV+'%';
+  document.getElementById('sc-s-val').textContent=sV+'%';
+  document.getElementById('sc-ps-val').textContent=psV+'%';
+  var scenarios=[
+    {label:'Conservateur',ts:Math.max(20,tsV-3),s:Math.max(25,sV-3),ps:Math.max(30,psV-4),bg:'var(--surface2)',tc:'var(--text-sec)'},
+    {label:'Equilibre',ts:tsV,s:sV,ps:psV,bg:'var(--warn-bg)',tc:'var(--warn)'},
+    {label:'Agressif',ts:Math.min(40,tsV+2),s:Math.min(50,sV+4),ps:Math.min(60,psV+6),bg:'var(--accent-bg)',tc:'var(--accent-text)'}
+  ];
+  var thS='padding:7px 10px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap';
+  var html='<div style="overflow-x:auto"><table id="cat-tbl" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:auto"><thead><tr>';
+  ['Scenario','MB% TS/S/PS','MB% apres','MB% avant','Marge apres','Marge avant','Gain marge','Produits affectes'].forEach(function(c){html+='<th style="'+thS+'">'+c+'</th>';});
+  html+='</tr></thead><tbody>';
+  scenarios.forEach(function(sc){
+    var r=calcScenario(sc.ts,sc.s,sc.ps);
+    var gc=r.gain>=0?'var(--accent-text)':'var(--danger)', gs=r.gain>=0?'+':'';
+    var td='padding:8px 10px;border-bottom:0.5px solid var(--border);vertical-align:middle';
+    html+='<tr style="background:'+sc.bg+'">';
+    html+='<td style="'+td+';font-weight:600;color:'+sc.tc+'">'+sc.label+'</td>';
+    html+='<td style="'+td+';font-family:monospace">'+sc.ts+'% / '+sc.s+'% / '+sc.ps+'%</td>';
+    html+='<td style="'+td+';font-size:15px;font-weight:700">'+r.mbNew.toFixed(1).replace('.',',')+'%</td>';
+    html+='<td style="'+td+';color:var(--text-sec)">'+r.mbAct.toFixed(1).replace('.',',')+'%</td>';
+    html+='<td style="'+td+';font-size:14px;font-weight:600">'+fmtE(r.mrgNew)+'</td>';
+    html+='<td style="'+td+';color:var(--text-sec)">'+fmtE(r.mrgAct)+'</td>';
+    html+='<td style="'+td+';font-size:14px;font-weight:700;color:'+gc+'">'+gs+fmtE(r.gain)+'<br><span style="font-size:10px">'+gs+r.mbNew.toFixed(1).replace('.',',')+' vs '+r.mbAct.toFixed(1).replace('.',',')+'%</span></td>';
+    html+='<td style="'+td+'">'+r.nChg+' produits<br><span style="font-size:10px;color:var(--text-ter)">'+r.nTS+' TS \u00b7 '+r.nS+' S \u00b7 '+r.nPS+' PS</span></td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  document.getElementById('mc-scenarios-table').innerHTML=html;
+  document.getElementById('mc-scenario-card').style.display='block';
+}
+
+// ===== EXPORT XLSX =====
+function exportMCXLSX(){
+  if(!mcProduits||mcProduits.length===0){alert('Aucun produit charge.');return;}
+  var mbTS=parseFloat(document.getElementById('mc-mb-ts').value)||28;
+  var mbS=parseFloat(document.getElementById('mc-mb-s').value)||35;
+  var mbPS=parseFloat(document.getElementById('mc-mb-ps').value)||42;
+  var tvaR=parseFloat(document.getElementById('mc-tva').value)/100, tvaM=1+tvaR;
+  var kTS=tvaM/(1-mbTS/100), kS=tvaM/(1-mbS/100), kPS=tvaM/(1-mbPS/100);
+  var sumRot=0; mcProduits.forEach(function(p){sumRot+=p.rotMois;});
+  var rotMoy=mcProduits.length>0?sumRot/mcProduits.length:1;
+  var labo=document.getElementById('mc-labo').value||'LABO';
+  var date=new Date().toISOString().slice(0,10);
+  var headers=['EAN','Libelle','Sensibilite','Rotation u/mois','PA HT','MB% actuel','PV actuel','K','MB% applique','PV nouveau','Ecart PV','PMC Quartier','PMC Prox','Max Zone','Panel Nat.','Source PV'];
+  var data=[headers];
+  mcProduits.forEach(function(p){
+    var sens=qualifierSensibilite(p,rotMoy);
+    var k=sens==='TS'?kTS:(sens==='S'?kS:kPS);
+    var mbAppl=sens==='TS'?mbTS:(sens==='S'?mbS:mbPS);
+    var osp=OSPHARM_PMC[p.ean]||null, pvOsp=null, srcLabel='Calcul K';
+    if(osp){
+      if(sens==='TS'){if(osp.v&&osp.v>0){pvOsp=osp.v;srcLabel='PMC Quartier';}else if(osp.p&&osp.p>0){pvOsp=osp.p;srcLabel='PMC Prox';}}
+      else if(sens==='S'){if(osp.p&&osp.p>0){pvOsp=osp.p;srcLabel='PMC Prox';}else if(osp.pn&&osp.pn>0){pvOsp=osp.pn;srcLabel='Panel Nat.';}}
+      else{if(osp.px&&osp.px>0){pvOsp=osp.px;srcLabel='Max Zone';}else if(osp.pn&&osp.pn>0){pvOsp=osp.pn;srcLabel='Panel Nat.';}}
+    }
+    var pvCalc=p.paHT>0?Math.ceil(p.paHT*k*(1+tvaR)*20)/20:0;
+    var pvNew=(pvOsp&&pvOsp>0)?Math.round(pvOsp*20)/20:pvCalc;
+    var pvHT=pvNew/tvaM, pvActHT=p.pvActuel>0?p.pvActuel/tvaM:0;
+    var mbuAct=pvActHT>0?pvActHT-p.paHT:0, mbActPct=pvActHT>0?mbuAct/pvActHT*100:0;
+    var diff=p.pvActuel>0?parseFloat((pvNew-p.pvActuel).toFixed(2)):null;
+    function f2(v){return v!=null?parseFloat(v.toFixed(2)):'';}
+    function f3(v){return v!=null?parseFloat(v.toFixed(3)):'';}
+    data.push([p.ean,p.libelle||'',sens==='TS'?'Tres sensible':(sens==='S'?'Sensible':'Peu sensible'),
+      parseFloat(p.rotMois.toFixed(2)),p.paHT>0?f3(p.paHT):'',p.pvActuel>0?parseFloat(mbActPct.toFixed(1)):'',
+      p.pvActuel>0?f2(p.pvActuel):'',f3(k),mbAppl,pvNew>0?f2(pvNew):'',diff,
+      osp&&osp.v?f2(osp.v):'',osp&&osp.p?f2(osp.p):'',osp&&osp.px?f2(osp.px):'',osp&&osp.pn?f2(osp.pn):'',srcLabel]);
+  });
+  var wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[{wch:14},{wch:40},{wch:14},{wch:12},{wch:10},{wch:10},{wch:10},{wch:8},{wch:12},{wch:12},{wch:10},{wch:12},{wch:10},{wch:10},{wch:10},{wch:14}];
+  var cMap={'Tres sensible':'FDEAEA','Sensible':'FEF3E2','Peu sensible':'E8F5EE'};
+  for(var ri=0;ri<data.length;ri++){
+    var bg=ri===0?'1A1A18':(cMap[data[ri][2]]||'FFFFFF');
+    for(var ci=0;ci<headers.length;ci++){
+      var ref=XLSX.utils.encode_cell({r:ri,c:ci});
+      if(!ws[ref])ws[ref]={v:'',t:'s'};
+      ws[ref].s={fill:{fgColor:{rgb:bg}},font:{bold:(ri===0||ci===2),color:{rgb:ri===0?'FFFFFF':'000000'}},alignment:{horizontal:ci<=1?'left':'center'}};
+    }
+    if(ri>0){
+      var srcRef=XLSX.utils.encode_cell({r:ri,c:15});
+      if(!ws[srcRef])ws[srcRef]={v:data[ri][15],t:'s'};
+      ws[srcRef].s={fill:{fgColor:{rgb:'D4EDDA'}},font:{bold:true,color:{rgb:'0D4A32'}},alignment:{horizontal:'center'}};
+      var ospCol=data[ri][15]==='PMC Quartier'?11:(data[ri][15]==='PMC Prox'?12:(data[ri][15]==='Max Zone'?13:-1));
+      if(ospCol>=0){var oRef=XLSX.utils.encode_cell({r:ri,c:ospCol});if(!ws[oRef])ws[oRef]={v:data[ri][ospCol],t:'n'};ws[oRef].s={fill:{fgColor:{rgb:'D4EDDA'}},font:{bold:true,color:{rgb:'0D4A32'}},alignment:{horizontal:'center'}};}
+    }
+  }
+  ws['!freeze']={xSplit:0,ySplit:1};
+  XLSX.utils.book_append_sheet(wb,ws,'Pricing '+labo);
+  XLSX.writeFile(wb,'MC_'+labo+'_'+date+'.xlsx');
+}
+
+// ===== IMPORT PDF LGPI DIAGNOSTIC PRODUITS =====
+async function condImportPDFDiag(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+
+  var status = document.getElementById('cond-pdf-status');
+  if (status) { status.textContent = 'Lecture PDF (passe 1/2)...'; status.style.color = 'var(--text-sec)'; }
+
+  var b64 = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  var allProds = {};
+  var allTotauxMois = new Array(12).fill(0);
+  var lgpiTotaux = null;
+
+  var promptBase = 'Pour chaque ligne produit extrais : nom (max 25 cars), ean (13 chiffres ou vide), stock (entier), moy (colonne Moy. — decimal 2 chiffres), pa_net (PA Cat Net — decimal), pv_ttc (PV TTC — decimal), mois (12 entiers dans cet ordre : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si cellule vide). Ignore les lignes de sous-total. UNIQUEMENT JSON sans texte ni markdown. Format strict : {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0.00,"pa_net":0.00,"pv_ttc":0.00,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}';
+  var prompts = [
+    'Etat des ventes LGPI — PAGE 1 uniquement. ' + promptBase,
+    'Etat des ventes LGPI — PAGE 2 uniquement. ' + promptBase,
+    'Etat des ventes LGPI — PAGES 3 et 4 uniquement. ' + promptBase,
+    'Etat des ventes LGPI — PAGES 5 et 6 (si elles existent, sinon renvoie {"produits":[]}). ' + promptBase
+  ];
+
+  try {
+    for (var pi = 0; pi < 4; pi++) {
+      if (status) status.textContent = 'Lecture PDF (passe ' + (pi+1) + '/4)...';
+      var resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type:'document', source:{type:'base64', media_type:'application/pdf', data:b64} },
+              { type:'text', text: prompts[pi] }
+            ]
+          }]
+        })
+      });
+      var data = await resp.json();
+      var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { console.warn('Pass ' + (pi+1) + ': no JSON found'); continue; }
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+        // Try to repair truncated JSON by closing arrays/objects
+        var txt = jsonMatch[0];
+        var opens = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var openb = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        txt = txt.replace(/,\s*$/, '');
+        for (var k=0; k<opens; k++) txt += ']';
+        for (var k=0; k<openb; k++) txt += '}';
+        try { parsed = JSON.parse(txt); } catch(e2) { console.warn('Pass ' + (pi+1) + ': JSON repair failed', e2.message); continue; }
+      }
+      console.log("Passe " + (pi+1) + " parsed:", JSON.stringify({nbProduits:(parsed.produits||[]).length,totaux_mois:parsed.totaux_mois,total_ventes_pa_net:parsed.total_ventes_pa_net}));
+      (parsed.produits||[]).forEach(function(p) {
+        var key = p.ean && p.ean.length >= 10 ? p.ean : p.nom;
+        if (!key) return;
+        allProds[key] = p;
+      });
+      // Récupérer totaux_mois si présents (source la plus fiable pour CA mensuel)
+      // Ordre PDF : totaux_mois[0]=mois le plus récent (ex: jun26), totaux_mois[11]=juil25
+      // Ordre app  : allTotauxMois[0]=Jun25, allTotauxMois[11]=Mai26 → appIdx = 11 - pdfIdx
+      if (parsed.totaux_mois && parsed.totaux_mois.length === 12) {
+        parsed.totaux_mois.forEach(function(v, pdfIdx) {
+          var appIdx = 11 - pdfIdx;
+          if ((v||0) > 0) allTotauxMois[appIdx] = (allTotauxMois[appIdx]||0) + (v||0);
+        });
+      }
+      // Récupérer total_ventes_pa_net (récapitulatif dernière page LGPI)
+      if (parsed.total_ventes_pa_net && parsed.total_ventes_pa_net > 0) {
+        lgpiTotaux = { valPA: parsed.total_ventes_pa_net };
+      }
+    }
+
+    var prods = Object.values(allProds);
+    if (prods.length === 0) throw new Error('Aucun produit extrait');
+    // v3.86 : normaliser PA net — si > 500 c'est en centimes, diviser par 1000
+    prods.forEach(function(p) {
+      if (p.pa_net && p.pa_net > 500) p.pa_net = p.pa_net / 1000;
+      if (p.pv_ttc && p.pv_ttc > 500) p.pv_ttc = p.pv_ttc / 1000;
+    });
+
+    // Merger avec NUTRICO_CATALOGUE : UNIQUEMENT pour NUTRI&CO (v3.84)
+    var _isNutrico = condLabos[condLaboActif] && (condLabos[condLaboActif].nom || '').toUpperCase().indexOf('NUTRI') >= 0;
+    if (_isNutrico && typeof NUTRICO_CATALOGUE !== 'undefined') {
+      var eansDansProds = {};
+      prods.forEach(function(p){ if (p.ean && p.ean.length >= 10) eansDansProds[p.ean] = true; });
+      Object.keys(NUTRICO_CATALOGUE).forEach(function(ean) {
+        if (!eansDansProds[ean]) {
+          var cat = NUTRICO_CATALOGUE[ean];
+          prods.push({ nom: cat.nom, ean: ean, moy: 0, pa_net: 0, pv_ttc: 0, mois: new Array(12).fill(0) });
+        }
+      });
+    }
+
+    // Compute math client-side
+    var tvaFactor = 1 + ((condLabos[condLaboActif] || {}).tva || 5.5) / 100;
+    var totCAHT = 0, totMarge = 0;
+    prods.forEach(function(p){
+      p.pv_ht  = p.pv_ttc > 0 ? p.pv_ttc / tvaFactor : 0;
+      p.mbu    = p.pv_ht - (p.pa_net || 0);
+      p.mb_pct = p.pv_ht > 0 ? p.mbu / p.pv_ht * 100 : 0;
+      if (!p.rem_cat) p.rem_cat = 30; // NUTRI&CO default
+      totCAHT  += (p.moy||0) * 12 * p.pv_ht;
+      totMarge += (p.moy||0) * 12 * p.mbu;
+    });
+    var mbGlobal = totCAHT > 0 ? totMarge / totCAHT * 100 : 0;
+
+    // Reconstruction CA mensuel TTC depuis les colonnes mois par produit (qté × PV TTC)
+    // PDF order: [jun26(0),mai26(1),...,juil25(11)] → app order: appIdx = 11 - pdfIdx
+    // Les totaux_mois du PDF sont des quantités (unités), pas du CA → on les ignore pour le CA
+    var ventesMensuelles = new Array(12).fill(0);
+    prods.forEach(function(p){
+      if (!p.mois || p.mois.length !== 12) return;
+      var pvTTC = p.pv_ttc || 0;
+      if (pvTTC <= 0) return;
+      for (var appIdx = 0; appIdx < 12; appIdx++) {
+        var pdfIdx = 11 - appIdx;
+        ventesMensuelles[appIdx] += (p.mois[pdfIdx] || 0) * pvTTC;
+      }
+    });
+
+    // CA TTC annuel = somme des CA mensuels reconstuits depuis les produits
+    var caTTCproduits = prods.reduce(function(s,p){return s+(p.moy||0)*12*(p.pv_ttc||0);},0);
+    var totalVentesMensuelles = ventesMensuelles.reduce(function(s,v){return s+v;},0);
+
+    // ventesFinales : CA TTC par mois depuis colonnes produits (source la plus précise)
+    // Si les colonnes mois sont renseignées → utiliser ventesMensuelles directement
+    // Sinon normaliser depuis moy×PV×12
+    var ventesFinales;
+    if (totalVentesMensuelles > 0) {
+      ventesFinales = ventesMensuelles.map(function(v){ return Math.round(v); });
+    } else if (caTTCproduits > 0) {
+      var moyMois = Math.round(caTTCproduits / 12);
+      ventesFinales = new Array(12).fill(moyMois);
+    } else {
+      ventesFinales = new Array(12).fill(0);
+    }
+
+    // Fill CA grid
+    ventesFinales.forEach(function(v, i) {
+      var el = document.getElementById('cond-v-' + i);
+      if (el) el.value = v > 0 ? v.toFixed(0) : 0;
+    });
+    ventesMensuelles = ventesFinales;
+
+    // Update identity fields - compute CA TTC from moy*pvTTC*12 (not from PDF extraction)
+    var tvaR = parseFloat(document.getElementById('cond-tva').value) / 100;
+    var caTTC_calc = 0;
+    prods.forEach(function(p){ caTTC_calc += (p.moy||0) * 12 * (p.pv_ttc||0); });
+    var caTTC = caTTC_calc > 0 ? caTTC_calc : totCAHT * (1 + tvaR);
+    // NB: cond-ca-annuel sera mis à jour plus bas avec caTTC2 (après lgpiTotaux)
+    document.getElementById('cond-mb-actuel').value = mbGlobal.toFixed(1);
+    document.getElementById('cond-marge-actuelle').value = Math.round(totMarge);
+
+    // Build alertes diagnostiques
+    var alertes = [];
+    var pertes = prods.filter(function(p){ return (p.moy||0) > 0 && p.mb_pct < 0; });
+    if (pertes.length > 0) {
+      alertes.push({ sev:'danger', titre:'\u26a0 ' + pertes.length + ' produit(s) vendu(s) \u00e0 perte',
+        desc: pertes.map(function(p){ return '<b>'+p.nom+'</b> : PV HT '+p.pv_ht.toFixed(2)+'\u20ac vs PA net '+p.pa_net.toFixed(2)+'\u20ac \u2192 MB% <b style="color:var(--danger)">'+p.mb_pct.toFixed(1)+'%</b>. Corriger en urgence.'; }).join('<br>') });
+    }
+    var critiques = prods.filter(function(p){ return (p.moy||0) > 0 && p.mb_pct >= 0 && p.mb_pct < 10; });
+    if (critiques.length > 0) {
+      alertes.push({ sev:'danger', titre:'MB% critique (< 10%) sur '+critiques.length+' produit(s)',
+        desc: critiques.map(function(p){ return '<b>'+p.nom+'</b> : MB% <b>'+p.mb_pct.toFixed(1)+'%</b> — quasi \u00e0 l\'\u00e9quilibre.'; }).join('<br>') });
+    }
+    var faibles = prods.filter(function(p){ return (p.moy||0) >= 0.5 && p.mb_pct >= 10 && p.mb_pct < 20; });
+    if (faibles.length > 0) {
+      var gainPot = faibles.reduce(function(s,p){ return s + (p.moy||0)*12*p.pv_ht*(0.30-p.mb_pct/100); }, 0);
+      alertes.push({ sev:'warn', titre:'MB% faible (10\u201320%) sur '+faibles.length+' produit(s) \u00e0 rotation \u2265 0,5/mois',
+        desc: faibles.map(function(p){ var g=(p.moy||0)*12*p.pv_ht*(0.30-p.mb_pct/100); return '<b>'+p.nom+'</b> : MB% '+p.mb_pct.toFixed(1)+'% (rot. '+(p.moy||0).toFixed(2)+'/mois) \u2014 passage \u00e0 30% : +'+Math.round(g)+'\u20ac/an.'; }).join('<br>') + '<br><b>Gain potentiel total : +'+Math.round(gainPot)+'\u20ac/an</b>' });
+    }
+    var nbActifs = prods.filter(function(p){ return (p.moy||0) > 0; }).length;
+    var diagSev = mbGlobal >= 35 ? 'accent' : mbGlobal >= 28 ? 'warn' : 'danger';
+    var diagLabel = mbGlobal >= 35 ? 'Correct' : mbGlobal >= 28 ? 'Passable' : mbGlobal >= 20 ? 'Insuffisant — action requise' : 'Critique — action urgente';
+    alertes.unshift({ sev: diagSev,
+      titre: 'Diagnostic global : ' + diagLabel,
+      desc: '<b>'+prods.length+' produits</b> au catalogue | <b>'+nbActifs+' actifs</b> | CA HT annuel : <b>'+Math.round(totCAHT).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')+'\u20ac</b> | Marge : <b>'+Math.round(totMarge).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')+'\u20ac</b> | MB% : <b>'+mbGlobal.toFixed(1)+'%</b>'
+    });
+
+    // Fusionner avec les produits existants non presents dans ce nouvel import LGPI
+    // (ex: produits jamais vendus, donc absents des exports de ventes, mais presents au catalogue)
+    var ancienProds = condLabos[condLaboActif].produits || [];
+    var nouveauxEans = {};
+    prods.forEach(function(p){ if (p.ean) nouveauxEans[p.ean] = true; });
+    var conserves = ancienProds.filter(function(p){ return p.ean && !nouveauxEans[p.ean]; });
+    var prodsFusionnes = prods.concat(conserves);
+
+    condLabos[condLaboActif].alertes = alertes;
+    condLabos[condLaboActif].produits = prodsFusionnes;
+    condSauvegarderProduitsGitHub(condLaboActif);
+
+    // Calculer CA et marge sur l'exercice Jan→dateEval (mois de l'année civile)
+    // PDF order: mois[0]=jun26, mois[1]=mai26, ..., mois[11]=juil25
+    // App ventes: [0]=Jun25...[7]=Jan26...[11]=Mai26
+    // Pour date 03/06/2026 : moisEcoules=6, idxJan=7, mois exercice = indices 7..11 (Jan→Mai)
+    var dateEvalStr = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
+    var dateEvalObj = new Date(dateEvalStr);
+    var moisEcoulesEx = dateEvalObj.getMonth() + 1; // 1=jan, 6=juin
+    var idxJanEx = 12 - moisEcoulesEx + 1; // index de janvier dans ventes12
+    // Nb de mois de l'exercice avec données (jan → mois avant dateEval)
+    var nbMoisEx = Math.max(0, 12 - idxJanEx); // = moisEcoulesEx - 1
+
+    var caHTex = 0, margeEx = 0;
+    prods.forEach(function(p) {
+      if (!p.mois || p.mois.length < 12) return;
+      var pvHT = p.pv_ttc > 0 ? p.pv_ttc / tvaFactor : 0;
+      // mois PDF: [0]=mois le plus récent...
+      // app index appIdx → pdfIdx = 11 - appIdx
+      for (var appIdx = idxJanEx; appIdx < 12; appIdx++) {
+        var pdfIdx = 11 - appIdx;
+        var qte = p.mois[pdfIdx] || 0;
+        caHTex   += qte * pvHT;
+        margeEx  += qte * (pvHT - (p.pa_net||0));
+      }
+    });
+    var mbExercice = caHTex > 0 ? margeEx / caHTex * 100 : mbGlobal;
+    var margeExercice = margeEx;
+
+    condLabos[condLaboActif].mbActuel = parseFloat(mbExercice.toFixed(1));
+    condLabos[condLaboActif].margeActuelle = Math.round(margeExercice);
+    condLabos[condLaboActif].mbGlobal12m = parseFloat(mbGlobal.toFixed(1)); // garder 12 mois glissants
+
+    // CA 12 mois glissants TTC
+    // Source 1 : somme de ventesFinales (qté×PV TTC depuis colonnes mois par produit)
+    // Source 2 : moy×PV×12 si colonnes mois absentes
+    var caTTC2 = ventesFinales.reduce(function(s,v){return s+(v||0);},0);
+    if (caTTC2 <= 0) {
+      caTTC2 = prods.reduce(function(s,p){return s+(p.moy||0)*12*(p.pv_ttc||0);},0);
+    }
+    if (caTTC2 <= 0) caTTC2 = caTTC;
+    condLabos[condLaboActif].caAnnuel = Math.round(caTTC2);
+    // Mettre à jour le champ CA affiché avec la valeur finale (après lgpiTotaux)
+    document.getElementById('cond-ca-annuel').value = Math.round(caTTC2);
+    // Calcul valeur stock immobilisé (stock × PA net)
+    var stockImmoVal = 0, stockImmoQte = 0, totRotation = 0;
+    prods.forEach(function(p){
+      var s = p.stock||0;
+      stockImmoQte += s;
+      stockImmoVal += s * (p.pa_net||0);
+      totRotation += p.moy || 0;
+    });
+    condLabos[condLaboActif].stockImmoQte = stockImmoQte;
+    condLabos[condLaboActif].stockImmoVal = Math.round(stockImmoVal * 100) / 100;
+    // Couverture réelle = stock total / rotation mensuelle totale
+    var couvertureReelle = (totRotation > 0) ? stockImmoQte / totRotation : 0;
+    condLabos[condLaboActif].couvertureReelle = Math.round(couvertureReelle * 10) / 10;
+    condLabos[condLaboActif].totRotation = Math.round(totRotation * 10) / 10;
+    // Date de l'état des ventes = date de référence pour la rupture
+    condLabos[condLaboActif].lastOrder = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
+    condLabos[condLaboActif].orderCoverage = couvertureReelle;
+
+    // Save to historique
+    var dateImport = document.getElementById('cond-date-eval').value || new Date().toISOString().slice(0,10);
+    if (!condLabos[condLaboActif].historique) condLabos[condLaboActif].historique = [];
+    // Check if same date already exists - update it
+    var existIdx = condLabos[condLaboActif].historique.findIndex(function(h){ return h.date === dateImport; });
+    var histEntry = {
+      date: dateImport,
+      mbGlobal: parseFloat(mbGlobal.toFixed(1)),
+      margeAn: Math.round(totMarge),
+      caAn: Math.round(caTTC2),
+      nbProduits: prods.length,
+      nbActifs: prods.filter(function(p){ return (p.moy||0) > 0; }).length,
+      ventes: ventesMensuelles.slice()
+    };
+    // Sauvegarde complete des produits de cette evaluation sur GitHub (snapshot date)
+    condSauvegarderSnapshotGitHub(condLaboActif, dateImport, prods);
+    if (existIdx >= 0) {
+      condLabos[condLaboActif].historique[existIdx] = histEntry;
+    } else {
+      condLabos[condLaboActif].historique.push(histEntry);
+      // Keep max 24 entries
+      if (condLabos[condLaboActif].historique.length > 24) {
+        condLabos[condLaboActif].historique.shift();
+      }
+    }
+    // Sort by date
+    condLabos[condLaboActif].historique.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
+    condUpdateVentes();
+    condUpdateDiag();
+    condCalc();
+    condAfficherHistorique();
+    condSauvegarder();
+    // Rafraîchir le calendrier Workflow
+    wfRenderCalendrier();
+
+    if (status) {
+      status.textContent = prods.length + ' produits analys\u00e9s — MB% global : ' + mbGlobal.toFixed(1) + '%';
+      status.style.color = mbGlobal >= 28 ? 'var(--color-text-success)' : 'var(--color-text-danger)';
+    }
+  } catch(err) {
+    if (status) { status.textContent = 'Erreur : ' + err.message; status.style.color = 'var(--color-text-danger)'; }
+    console.error('condImportPDFDiag:', err);
+  }
+  input.value = '';
+}
+
+// ===== PRIX NETS =====
+var pnLignes = [];
+var pnNextId = 1;
+
+function pnCalcLigne(pa, r1, r2, ug, ugx, rfa, pv, tvaR, l_mb_cible) {
+  l_mb_cible = l_mb_cible || 35;
+  var paR1  = pa * (1 - r1/100);
+  var paR2  = paR1 * (1 - r2/100);
+  var ugRem = (ug > 0 && ugx > 0) ? ug / (ugx + ug) : 0;
+  var paUG  = paR2 * (1 - ugRem);
+  var net   = paUG * (1 - rfa/100);
+  var tvaM  = 1 + tvaR;
+  var netTTC = net * tvaM;
+  var mb    = (pv > 0 && tvaM > 0) ? ((pv/tvaM - net) / (pv/tvaM) * 100) : null;
+  var pvCible = null;
+  if (l_mb_cible > 0 && l_mb_cible < 100) {
+    var tvaM2 = 1 + tvaR;
+    pvCible = net * tvaM2 / (1 - l_mb_cible/100);
+  }
+  return { paR1:paR1, paR2:paR2, ugRem:ugRem*100, net:net, netTTC:netTTC, mb:mb, pvCible:pvCible };
+}
+
+function pnF2(v){ return (+v).toFixed(2).replace('.',','); }
+function pnF1(v){ return (+v).toFixed(1).replace('.',','); }
+
+// Update only result cells (not inputs) to avoid focus loss
+function pnUpdateResults(id) {
+  var l = pnLignes.find(function(x){ return x.id === id; });
+  if (!l) return;
+  var tvaR = parseFloat(document.getElementById('pn-tva').value) / 100;
+  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR, l.mb_cible);
+  var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
+
+  // Update intermediate PA hints
+  var r1hint = document.getElementById('pn-hint-r1-'+id);
+  var r2hint = document.getElementById('pn-hint-r2-'+id);
+  var ughint = document.getElementById('pn-hint-ug-'+id);
+  if (r1hint) r1hint.textContent = l.pa > 0 ? pnF2(c.paR1) : '';
+  if (r2hint) r2hint.textContent = l.pa > 0 ? pnF2(c.paR2) : '';
+  if (ughint) ughint.textContent = c.ugRem > 0 ? '-'+pnF1(c.ugRem)+'%' : '';
+
+  // Update result cells
+  var netEl = document.getElementById('pn-net-'+id);
+  var netTTCEl = document.getElementById('pn-netttc-'+id);
+  var mbEl = document.getElementById('pn-mb-'+id);
+  if (netEl) netEl.textContent = l.pa > 0 ? pnF2(c.net) : '-';
+  if (netTTCEl) netTTCEl.textContent = l.pa > 0 ? pnF2(c.netTTC) : '-';
+  if (mbEl) { mbEl.textContent = c.mb !== null ? pnF1(c.mb)+'%' : '-'; mbEl.style.color = mbClr; }
+  var pvCibleEl = document.getElementById('pn-pvcible-'+id);
+  if (pvCibleEl) pvCibleEl.textContent = c.pvCible !== null ? pnF2(c.pvCible) : '-';
+
+  pnUpdateSynthese();
+}
+
+function pnAjouterLigne(data) {
+  var id = pnNextId++;
+  var l = { id:id, nom:'', pa:0, r1:0, r2:0, ug:0, ugx:0, rfa:0, pv:0, mb_cible:35 };
+  if (data) { Object.keys(data).forEach(function(k){ l[k]=data[k]; }); }
+  pnLignes.push(l);
+  var tbody = document.getElementById('pn-tbody');
+  if (!tbody) return;
+
+  var tvaR = parseFloat(document.getElementById('pn-tva').value) / 100;
+  var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR, l.mb_cible);
+  var mbClr = c.mb===null ? 'var(--text-ter)' : c.mb>=35 ? 'var(--accent-text)' : c.mb>=28 ? 'var(--warn)' : 'var(--danger)';
+
+  // Column widths
+  var W = { nom:100, pa:62, r1:42, r2:42, ug:38, ugx:38, rfa:38, pv:52, mb_cible:48 };
+  var inBase = 'font-size:11px;padding:4px;border:1px solid var(--border);border-radius:4px;text-align:center;font-family:"DM Mono",monospace;width:';
+  function inp(key, type, ph, step, bg) {
+    var s = inBase + W[key] + 'px;background:' + (bg||'var(--surface2)') + ';';
+    if (key === 'nom') s = inBase.replace('text-align:center','text-align:left') + W[key] + 'px;background:var(--surface2);';
+    return '<input type="'+type+'" id="pn-inp-'+key+'-'+id+'" value="'+(l[key]||'')+'" placeholder="'+ph+'" '+(step?'step="'+step+'"':'')+' min="0" style="'+s+'" oninput="pnOnInput('+id+',\''+key+'\',this)">';
+  }
+  var td = 'padding:3px 4px;border-bottom:0.5px solid var(--border);';
+
+  var html = '<tr id="pn-row-'+id+'">';
+  html += '<td style="'+td+'">'+inp('nom','text','Produit',null,null)+'</td>';
+  html += '<td style="'+td+'">'+inp('pa','number','0.00','0.001',null)+'</td>';
+  html += '<td style="'+td+';background:var(--surface2)">'+inp('r1','number','0','0.1','var(--surface2)')+'<br><span id="pn-hint-r1-'+id+'" style="font-size:9px;color:var(--text-ter)">'+(l.pa>0?pnF2(c.paR1):'')+'</span></td>';
+  html += '<td style="'+td+';background:var(--surface2)">'+inp('r2','number','0','0.1','var(--surface2)')+'<br><span id="pn-hint-r2-'+id+'" style="font-size:9px;color:var(--text-ter)">'+(l.pa>0?pnF2(c.paR2):'')+'</span></td>';
+  html += '<td style="'+td+';background:#fffbf0">'+inp('ug','number','0','1','#fffbf0')+'</td>';
+  html += '<td style="'+td+';background:#fffbf0">'+inp('ugx','number','-','1','#fffbf0')+'<br><span id="pn-hint-ug-'+id+'" style="font-size:9px;color:var(--warn)">'+(c.ugRem>0?'-'+pnF1(c.ugRem)+'%':'')+'</span></td>';
+  html += '<td style="'+td+';background:#f0fff5">'+inp('rfa','number','0','0.1','#f0fff5')+'</td>';
+  html += '<td style="'+td+';background:#e8f5ee;text-align:center"><span id="pn-net-'+id+'" style="font-family:monospace;font-weight:700;color:var(--accent-text);font-size:13px">'+(l.pa>0?pnF2(c.net):'-')+'</span></td>';
+  html += '<td style="'+td+';background:#e8f5ee;text-align:center"><span id="pn-netttc-'+id+'" style="font-family:monospace;font-weight:600;color:var(--accent-text)">'+(l.pa>0?pnF2(c.netTTC):'-')+'</span></td>';
+  html += '<td style="'+td+';background:#f0fff8">'+inp('pv','number','PV','0.01','#f0fff8')+'</td>';
+  html += '<td id="pn-mb-'+id+'" style="'+td+';background:#f0fff8;text-align:center;font-weight:600;color:'+mbClr+'">'+(c.mb!==null?pnF1(c.mb)+'%':'-')+'</td>';
+  html += '<td style="'+td+';background:#1a3a50">'+inp('mb_cible','number','35','0.5','#1a3a50',99)+'</td>';
+  html += '<td id="pn-pvcible-'+id+'" style="'+td+';background:#1a3a50;text-align:center;font-family:monospace;font-weight:700;color:#7ec8e3;font-size:13px">'+(c.pvCible!==null?pnF2(c.pvCible):'-')+'</td>';
+  html += '<td style="'+td+';text-align:center;width:20px;min-width:20px"><button type="button" onclick="pnSupprimerLigne('+id+')" style="font-size:13px;color:var(--text-ter);background:none;border:none;cursor:pointer;padding:0 4px">\u00d7</button></td>';
+  html += '</tr>';
+
+  tbody.insertAdjacentHTML('beforeend', html);
+  pnUpdateSynthese();
+}
+
+function pnOnInput(id, key, el) {
+  var l = pnLignes.find(function(x){ return x.id === id; });
+  if (!l) return;
+  l[key] = (key === 'nom') ? el.value : (parseFloat(el.value)||0);
+  if (key === 'mb_cible' && l[key] <= 0) l[key] = 35;
+  pnUpdateResults(id);
+}
+
+function pnSupprimerLigne(id) {
+  pnLignes = pnLignes.filter(function(x){ return x.id !== id; });
+  var row = document.getElementById('pn-row-' + id);
+  if (row) row.remove();
+  pnUpdateSynthese();
+}
+
+function pnViderTout() {
+  pnLignes = [];
+  var tbody = document.getElementById('pn-tbody');
+  if (tbody) tbody.innerHTML = '';
+  var syn = document.getElementById('pn-synthese');
+  if (syn) syn.style.display = 'none';
+}
+
+function pnRecalcAll() {
+  pnLignes.forEach(function(l){ pnUpdateResults(l.id); });
+  pnUpdateSynthese();
+}
+
+function pnAjouterDepuisSaisie() {
+  var g = function(i){ return document.getElementById(i); };
+  var nom = g('pn-q-nom') ? g('pn-q-nom').value : '';
+  pnAjouterLigne({ mb_cible: 35,
+    nom: nom,
+    pa:  g('pn-q-pa')  ? parseFloat(g('pn-q-pa').value)||0  : 0,
+    r1:  g('pn-q-r1')  ? parseFloat(g('pn-q-r1').value)||0  : 0,
+    r2:  g('pn-q-r2')  ? parseFloat(g('pn-q-r2').value)||0  : 0,
+    ug:  g('pn-q-ug')  ? parseFloat(g('pn-q-ug').value)||0  : 0,
+    ugx: g('pn-q-ugx') ? parseFloat(g('pn-q-ugx').value)||0 : 0,
+    rfa: g('pn-q-rfa') ? parseFloat(g('pn-q-rfa').value)||0 : 0
+  });
+  ['pn-q-nom','pn-q-pa','pn-q-r1','pn-q-r2','pn-q-ug','pn-q-ugx','pn-q-rfa'].forEach(function(i){
+    var e = g(i); if(e) e.value = '';
+  });
+  var n = g('pn-q-nom'); if(n) n.focus();
+}
+
+function pnUpdateSynthese() {
+  var syn = document.getElementById('pn-synthese');
+  if (!syn) return;
+  if (pnLignes.length === 0) { syn.style.display='none'; return; }
+  var tvaR = parseFloat(document.getElementById('pn-tva').value)/100;
+  var totPA=0, totNet=0, totMB=0, nMB=0, n=0;
+  pnLignes.forEach(function(l){
+    if (l.pa <= 0) return;
+    var c = pnCalcLigne(l.pa, l.r1, l.r2, l.ug, l.ugx, l.rfa, l.pv, tvaR, l.mb_cible);
+    totPA += l.pa; totNet += c.net; n++;
+    if (c.mb !== null) { totMB += c.mb; nMB++; }
+  });
+  if (n === 0) { syn.style.display='none'; return; }
+  var gain = totPA > 0 ? (totPA-totNet)/totPA*100 : 0;
+  var mbM  = nMB > 0 ? totMB/nMB : null;
+  function fE(v){ return v.toFixed(2).replace('.',',') + ' \u20ac'; }
+  var mbCls = mbM===null ? '' : mbM>=35 ? 'hi' : mbM>=28 ? 'warn' : 'danger';
+  document.getElementById('pn-kpis').innerHTML =
+    '<div class="met"><p class="lbl">Produits</p><p class="val" style="font-size:18px">'+pnLignes.length+'</p></div>'+
+    '<div class="met warn"><p class="lbl">PA Cat. HT moyen</p><p class="val" style="font-size:15px">'+fE(totPA/n)+'</p></div>'+
+    '<div class="met hi"><p class="lbl">Prix net HT moyen</p><p class="val" style="font-size:15px">'+fE(totNet/n)+'</p><p class="sub">gain : -'+pnF1(gain)+'%</p></div>'+
+    (mbM!==null ? '<div class="met '+mbCls+'"><p class="lbl">MB% moyen</p><p class="val" style="font-size:15px">'+pnF1(mbM)+'%</p><p class="sub">sur '+nMB+' produit(s)</p></div>'
+    : '<div class="met"><p class="lbl">MB%</p><p class="val">-</p><p class="sub">saisir PV TTC</p></div>');
+  syn.style.display = 'block';
+}
+
+var pnInited = false;
+
+
+// ===== COMMANDE =====
+var cmdPaliers = [];
+var cmdPalierId = 1;
+var cmdProduitsSource = []; // produits charges depuis condLabos
+
+function cmdInit() {
+  cmdUpdateRotEquiv();
+  // Ensure condLabos is loaded from localStorage
+  if (Object.keys(condLabos).length === 0) {
+    try {
+      var saved = localStorage.getItem('cond_labos');
+      if (saved) { condLabos = JSON.parse(saved); condNextId = Math.max.apply(null, Object.keys(condLabos).map(Number)) + 1; }
+    } catch(e) {}
+  }
+  // Populate labo selector from condLabos
+  var sel = document.getElementById('cmd-labo-sel');
+  if (!sel) return;
+  // Clear except first option
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var labo = condLabos[id];
+    if (!labo || !labo.nom) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = labo.nom + (labo.produits ? ' (' + labo.produits.length + ' produits)' : '');
+    sel.appendChild(opt);
+  });
+  // Paliers chargés par cmdChargeLabo selon le labo sélectionné
+}
+
+function cmdAjouterPalier(data) {
+  var id = cmdPalierId++;
+  var p = { id:id, label:'', refs_min:1, refs_max:999, rem:30, ug_offerts:0, ug_achetes:0, categorie:'' };
+  if (data) Object.keys(data).forEach(function(k){ p[k]=data[k]; });
+  cmdPaliers.push(p);
+  cmdRenderPaliers();
+}
+
+function cmdSupprimerPalier(id) {
+  cmdPaliers = cmdPaliers.filter(function(p){ return p.id !== id; });
+  cmdRenderPaliers();
+  var _s = document.getElementById('cmd-labo-sel');
+  if (_s && _s.value) cmdSauvegarderPaliers(parseInt(_s.value) || _s.value);
+}
+
+function cmdUpdatePalier(id, key, val) {
+  var p = cmdPaliers.find(function(x){ return x.id === id; });
+  if (p) p[key] = (key === 'label' || key === 'categorie') ? val : +val;
+}
+
+function cmdRenderPaliers() {
+  var container = document.getElementById('cmd-paliers-list');
+  if (!container) return;
+  container.innerHTML = cmdPaliers.map(function(p) {
+    var inS = 'font-size:11px;padding:3px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);font-family:"DM Mono",monospace;';
+    return '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--surface2);padding:6px 8px;border-radius:var(--radius-sm)">' +
+      '<input type="text" value="' + p.label + '" placeholder="Libelle" style="' + inS + 'width:130px;text-align:left;font-family:DM Sans,sans-serif" oninput="cmdUpdatePalier(' + p.id + ',\'label\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">ref</span>' +
+      '<input type="number" value="' + p.refs_min + '" min="1" style="' + inS + 'width:40px" oninput="cmdUpdatePalier(' + p.id + ',\'refs_min\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">a</span>' +
+      '<input type="number" value="' + p.refs_max + '" min="1" style="' + inS + 'width:40px" oninput="cmdUpdatePalier(' + p.id + ',\'refs_max\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">rem%</span>' +
+      '<input type="number" value="' + p.rem + '" min="0" max="60" step="0.5" style="' + inS + 'width:40px" oninput="cmdUpdatePalier(' + p.id + ',\'rem\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">UG</span>' +
+      '<input type="number" value="' + p.ug_offerts + '" min="0" style="' + inS + 'width:32px" placeholder="off" oninput="cmdUpdatePalier(' + p.id + ',\'ug_offerts\',this.value)">' +
+      '<span style="font-size:10px;color:var(--text-ter)">/</span>' +
+      '<input type="number" value="' + p.ug_achetes + '" min="0" style="' + inS + 'width:32px" placeholder="ach" oninput="cmdUpdatePalier(' + p.id + ',\'ug_achetes\',this.value)">' +
+      '<input type="text" value="' + (p.categorie||'') + '" placeholder="cat." style="' + inS + 'width:70px;text-align:left;font-family:DM Sans,sans-serif" oninput="cmdUpdatePalier(' + p.id + ',\'categorie\',this.value)">' +
+      '<button type="button" onclick="cmdSupprimerPalier(' + p.id + ')" style="font-size:11px;color:var(--danger);background:none;border:none;cursor:pointer">\u00d7</button>' +
+      '</div>';
+  }).join('');
+}
+
+function cmdSauvegarderPaliers(id) {
+  // Sauvegarder les paliers du labo actif
+  if (!id || !condLabos[id]) return;
+  condLabos[id].cmdPaliers = cmdPaliers.map(function(p) {
+    return { label:p.label, refs_min:p.refs_min, refs_max:p.refs_max, rem:p.rem, ug_offerts:p.ug_offerts, ug_achetes:p.ug_achetes, categorie:p.categorie||'' };
+  });
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+}
+
+function cmdChargeLabo() {
+  var sel = document.getElementById('cmd-labo-sel');
+  if (!sel) return;
+  var idStr = sel.value;
+  var id = idStr ? (parseInt(idStr) || idStr) : null;
+  if (!id || !condLabos[id] || !condLabos[id].produits) {
+    cmdProduitsSource = [];
+    return;
+  }
+  cmdProduitsSource = condLabos[id].produits || [];
+  document.getElementById('cmd-result-card').style.display = 'none';
+  var _cb = document.getElementById('cmd-confirm-btn'); if (_cb) _cb.style.display = 'none';
+  cmdDerniereSimulation = null;
+
+  // Charger les paliers spécifiques au labo
+  var laboData = condLabos[id];
+  cmdPaliers = [];
+  cmdPalierId = 1;
+  if (laboData.cmdPaliers && laboData.cmdPaliers.length > 0) {
+    // Paliers sauvegardés pour ce labo
+    laboData.cmdPaliers.forEach(function(p) { cmdAjouterPalier(p); });
+  } else {
+    // Paliers vides par défaut — pas de conditions pré-remplies
+    // L'utilisateur saisit les conditions de ce labo
+  }
+  cmdRenderPaliers();
+}
+
+function cmdUpdateRotEquiv() {
+  var el = document.getElementById('cmd-rot-min');
+  var out = document.getElementById('cmd-rot-equiv');
+  if (!el || !out) return;
+  var v = parseFloat(el.value) || 0;
+  if (v <= 0) { out.textContent = ''; return; }
+  var mois = 1 / v;
+  out.textContent = '= ' + mois.toFixed(1).replace('.', ',') + ' mois pour 1 unite commandee';
+}
+function cmdGenerer() {
+  if (cmdProduitsSource.length === 0) {
+    alert('Chargez d\'abord un labo avec des produits (via Cond. commerciales > Importer PDF LGPI).');
+    return;
+  }
+  // Sauvegarder les paliers du labo actif avant de calculer
+  var _selCmd = document.getElementById('cmd-labo-sel');
+  if (_selCmd && _selCmd.value) cmdSauvegarderPaliers(parseInt(_selCmd.value) || _selCmd.value);
+  var moisCible = parseFloat(document.getElementById('cmd-mois').value) || 2;
+  var rotMin    = parseFloat(document.getElementById('cmd-rot-min').value) || 0;
+  var stockMode = document.getElementById('cmd-stock-mode').value;
+
+  // Récupérer marche_id par EAN depuis localStorage catalogue
+  var sel = document.getElementById('cmd-labo-sel');
+  var laboId = sel ? (parseInt(sel.value) || sel.value) : null;
+  var marcheByEan = {};
+  var remisesNegociees = {}; // marche_id -> remise négociée au RDV
+  try {
+    // Relire condLabos depuis localStorage pour être sûr d'avoir les dernières valeurs
+    try {
+      var _fresh = localStorage.getItem('cond_labos');
+      if (_fresh) condLabos = JSON.parse(_fresh);
+    } catch(e) {}
+    var laboData = condLabos[laboId] || condLabos[parseInt(laboId)];
+    // Remises négociées par marché (saisies dans Cond. commerciales)
+    var marchesNeg = laboData ? (laboData.marches_negocies || []) : [];
+    marchesNeg.forEach(function(m){ if (m.marche_id) remisesNegociees[m.marche_id.trim()] = parseFloat(m.rem)||0; });
+
+    // marche_id par EAN depuis catalogue
+    var catalogue = laboData ? (laboData.catalogue || {}) : {};
+    var colisageByEan = {};
+    var tvaByEan = {};
+    Object.keys(catalogue).forEach(function(ean) {
+      marcheByEan[ean] = catalogue[ean].marche_id || '';
+      colisageByEan[ean] = catalogue[ean].colisage || 1;
+      if (catalogue[ean].tva !== undefined) tvaByEan[ean] = catalogue[ean].tva;
+    });
+    var prods_ = laboData ? (laboData.produits || []) : [];
+    prods_.forEach(function(p){ if (p.ean && p.marche_id) marcheByEan[p.ean] = p.marche_id; if (p.ean && p.colisage) colisageByEan[p.ean] = p.colisage; if (p.ean && p.tva !== undefined) tvaByEan[p.ean] = p.tva; });
+  } catch(e) {}
+  var laboTva = 1 + ((condLabos[laboId] || condLabos[parseInt(laboId)] || {}).tva || 5.5) / 100;
+
+  function getMarcheDef(prod) {
+    var ean = prod.ean || '';
+    var mid = marcheByEan[ean] || prod.marche_id || '';
+    if (mid) {
+      var _mls = getMarchesLabo(laboId);
+      return _mls.find(function(m){ return m.id === mid; }) || null;
+    }
+    return null;
+  }
+
+  // UG marché général : paliers cumulatifs par tranches sur la qté commandée
+  // 6+1, 12+3, 24+8 → sur chaque tranche : floor(q/24)*8 + floor((q%24)/12)*3 + floor((q%12)/6)*1
+  function calcUGGeneral(qte) {
+    var t24 = Math.floor(qte / 24);
+    var r24 = qte % 24;
+    var t12 = Math.floor(r24 / 12);
+    var r12 = r24 % 12;
+    var t6  = Math.floor(r12 / 6);
+    return t24 * 8 + t12 * 3 + t6 * 1;
+  }
+
+  var prods = cmdProduitsSource.filter(function(p){ return (p.moy||0) >= rotMin; });
+  var nRefs = prods.length;
+
+  // Pre-calcul : determiner quels produits auront reellement qte>0 (besoin - stock > 0, apres arrondi colisage)
+  // pour que le palier de remise se base sur le nombre REEL de lignes commandees, pas sur le catalogue eligible.
+  var prodsAvecQte = prods.filter(function(p) {
+    var moy = p.moy || 0;
+    var besoin = moy * moisCible;
+    var stock = stockMode === 'deduct' ? (p.stock || 0) : 0;
+    var qte = Math.max(0, Math.ceil(besoin - stock));
+    return qte > 0;
+  });
+
+  // Nb de refs marché général (sur les produits reellement commandes) pour déterminer remise
+  var nRefsGeneral = prodsAvecQte.filter(function(p){ var md = getMarcheDef(p); return !md || md.id === 'general'; }).length;
+  // Paliers par nombre de references (ex: MAM 25/30%, 35/33%, 43/36%, 50/40%)
+  var laboObjPaliers = condLabos[laboId] || condLabos[parseInt(laboId)] || {};
+  var paliersRefs = laboObjPaliers.paliers_references || null;
+  var remGeneral;
+  if (paliersRefs && paliersRefs.length > 0) {
+    var sorted = paliersRefs.slice().sort(function(a,b){ return a.nb_refs - b.nb_refs; });
+    remGeneral = 0;
+    sorted.forEach(function(pl){ if (nRefsGeneral >= pl.nb_refs) remGeneral = pl.remise; });
+  } else {
+    remGeneral = nRefsGeneral >= 30 ? 30 : 25;
+  }
+
+  var lignes = [];
+  var totQteCde = 0, totCA = 0, totUG = 0, totCAHT_cmd = 0, totMarge_cmd = 0;
+
+  prods.forEach(function(p) {
+    var moy   = p.moy || 0;
+    var besoin = moy * moisCible;
+    var stock  = stockMode === 'deduct' ? (p.stock || 0) : 0;
+    var qte    = Math.max(0, Math.ceil(besoin - stock));
+    if (qte <= 0) return;
+
+    // Arrondir qte au multiple de colisage immédiatement supérieur
+    var colisage = colisageByEan[p.ean||''] || p.colisage || 1;
+    if (colisage > 1 && qte > 0) {
+      qte = Math.ceil(qte / colisage) * colisage;
+    }
+
+    var marcheDef = getMarcheDef(p);
+    // Si pas de marche_id catalogue mais remise générale négociée → traiter comme général
+    if (!marcheDef && remisesNegociees['general'] !== undefined) {
+      var _mls2 = getMarchesLabo(laboId);
+      marcheDef = _mls2.length > 0 ? _mls2[0] : null;
+    }
+    var rem, ugObtenues, ugLabel, palierLabel;
+
+    if (marcheDef) {
+      // Remise : priorité à la remise négociée au RDV, sinon remise catalogue
+      if (marcheDef.id === 'general') {
+        rem = remisesNegociees['general'] !== undefined ? remisesNegociees['general'] : remGeneral;
+        ugObtenues = calcUGGeneral(qte);
+        var t24=Math.floor(qte/24), r24=qte%24, t12=Math.floor(r24/12), r12=r24%12, t6=Math.floor(r12/6);
+        var parts = [];
+        if (t24 > 0) parts.push(t24+'×(24+8)');
+        if (t12 > 0) parts.push(t12+'×(12+3)');
+        if (t6  > 0) parts.push(t6+'×(6+1)');
+        ugLabel = parts.length ? parts.join(' + ') : '-';
+        var remSrc = remisesNegociees['general'] !== undefined ? ' (négocié)' : ' (' + nRefsGeneral + ' refs)';
+        palierLabel = 'Général ' + rem + '%' + remSrc;
+      } else {
+        rem = remisesNegociees[marcheDef.id] !== undefined ? remisesNegociees[marcheDef.id] : marcheDef.rem_30;
+        ugObtenues = marcheDef.ug_ach > 0 ? Math.floor(qte / marcheDef.ug_ach) * marcheDef.ug_off : 0;
+        ugLabel = marcheDef.ug_ach > 0 ? marcheDef.ug_ach + '+' + marcheDef.ug_off : '-';
+        var remSrc2 = remisesNegociees[marcheDef.id] !== undefined ? ' (négocié)' : '';
+        palierLabel = marcheDef.label + ' ' + rem + '%' + remSrc2;
+      }
+    } else {
+      // Pas de marche_id catalogue → utiliser remise négociée 'general' si disponible
+      if (remisesNegociees['general'] !== undefined) {
+        rem = remisesNegociees['general'];
+        ugObtenues = calcUGGeneral(qte);
+        var t24=Math.floor(qte/24), r24=qte%24, t12=Math.floor(r24/12), r12=r24%12, t6=Math.floor(r12/6);
+        var parts = [];
+        if (t24 > 0) parts.push(t24+'×(24+8)');
+        if (t12 > 0) parts.push(t12+'×(12+3)');
+        if (t6  > 0) parts.push(t6+'×(6+1)');
+        ugLabel = parts.length ? parts.join(' + ') : '-';
+        palierLabel = 'Général ' + rem + '% (négocié)';
+      } else if (paliersRefs && paliersRefs.length > 0) {
+        // Remise par paliers de nombre de references (ex: MAM)
+        rem = remGeneral;
+        ugObtenues = 0;
+        ugLabel = '-';
+        palierLabel = 'Palier ' + rem + '% (' + nRefsGeneral + ' refs)';
+      } else {
+        // Fallback cmdPaliers legacy
+        var cat = (p.categorie||'').toLowerCase();
+        var cp = null;
+        if (cat) cp = cmdPaliers.find(function(pl){ return pl.categorie && cat.indexOf(pl.categorie.toLowerCase()) >= 0; });
+        if (!cp) cp = cmdPaliers.find(function(pl){ return !pl.categorie && nRefs >= pl.refs_min && nRefs <= pl.refs_max; });
+        rem = cp ? cp.rem : 0;
+        var ugAch = cp ? cp.ug_achetes : 0;
+        var ugOff = cp ? cp.ug_offerts : 0;
+        ugObtenues = (ugAch > 0) ? Math.floor(qte / ugAch) * ugOff : 0;
+        ugLabel = ugAch > 0 ? ugAch + '+' + ugOff : '-';
+        palierLabel = cp ? cp.label : '-';
+      }
+    }
+
+    var qteTotal = qte + ugObtenues;
+    var paCat    = p.pa_net || p.paCat || 0;
+    var paNet    = paCat * (1 - rem/100);
+    var pvTTC    = p.pv_ttc || 0;
+    var prodTva  = tvaByEan[p.ean||''] !== undefined ? (1 + tvaByEan[p.ean||''] / 100) : laboTva;
+    var pvHT     = pvTTC > 0 ? pvTTC / prodTva : 0;
+    var mb       = (pvHT > 0 && paNet > 0) ? (pvHT - paNet) / pvHT * 100 : null;
+    var caCde    = qte * paNet;
+
+    totQteCde += qte; totCA += caCde; totUG += ugObtenues;
+    totCAHT_cmd += qte * pvHT;
+    totMarge_cmd += qte * (pvHT - paNet);
+
+    lignes.push({
+      nom: p.nom||'', ean: p.ean||'',
+      marche: marcheDef ? marcheDef.label : '',
+      colisage: colisage,
+      tva: tvaByEan[p.ean||''] !== undefined ? tvaByEan[p.ean||''] : ((condLabos[laboId]||condLabos[parseInt(laboId)]||{}).tva||5.5),
+      moy:moy, besoin:besoin, stock:p.stock||0, qte:qte,
+      palierLabel:palierLabel, rem:rem,
+      ugLabel:ugLabel, ugObtenues:ugObtenues, qteTotal:qteTotal,
+      paCat:paCat, paNet:paNet, pvTTC:pvTTC, mb:mb, caCde:caCde
+    });
+  });
+
+  lignes.sort(function(a,b){ return b.caCde - a.caCde; });
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u20ac'; }
+  function f1(v){ return v.toFixed(1).replace('.',','); }
+  function f2(v){ return v.toFixed(2).replace('.',','); }
+
+  var franco = parseFloat(document.getElementById('cmd-franco').value) || 0;
+  var totCAnetHT = lignes.reduce(function(s,l){ return s + l.qte*(l.paNet||0); }, 0);
+  var francoOK = franco <= 0 || totCAnetHT >= franco;
+  var fHint = document.getElementById('cmd-franco-hint');
+  if (fHint) {
+    if (franco <= 0) { fHint.textContent = ''; }
+    else if (francoOK) { fHint.textContent = '\u2713 Franco atteint (' + Math.round(totCAnetHT) + ' \u20ac HT net)'; fHint.style.color = 'var(--accent-text)'; }
+    else { fHint.textContent = '\u26a0 ' + Math.round(franco-totCAnetHT) + ' \u20ac manquants (' + Math.round(totCAnetHT) + ' / ' + franco + ' \u20ac)'; fHint.style.color = 'var(--danger)'; }
+  }
+
+  // Résumé par marché
+  var marchesSummary = {};
+  lignes.forEach(function(l){
+    var k = l.marche || 'Marché général';
+    if (!marchesSummary[k]) marchesSummary[k] = { refs:0, ca:0, ug:0 };
+    marchesSummary[k].refs++; marchesSummary[k].ca += l.caCde; marchesSummary[k].ug += l.ugObtenues;
+  });
+  var summaryHtml = Object.keys(marchesSummary).map(function(k){
+    var s = marchesSummary[k];
+    return '<b>'+k+'</b> : '+s.refs+' refs — '+fE(s.ca)+(s.ug>0?' — <span style="color:var(--accent-text)">+'+s.ug+' UG</span>':'');
+  }).join('<br>');
+
+  var mbCmdPondere = totCAHT_cmd > 0 ? totMarge_cmd / totCAHT_cmd * 100 : 0;
+  var mbCmdClr = mbCmdPondere >= 35 ? 'var(--accent-text)' : mbCmdPondere >= 28 ? 'var(--warn)' : 'var(--danger)';
+  var kpiEl = document.getElementById('cmd-kpis');
+  kpiEl.innerHTML =
+    '<div class="met hi"><p class="lbl">Références à commander</p><p class="val">'+lignes.length+'</p><p class="sub">sur '+nRefs+' actifs (\u2265'+rotMin+' u/mois)</p></div>'+
+    '<div class="met warn"><p class="lbl">CA commande (PA net HT)</p><p class="val">'+fE(totCA)+'</p><p class="sub">'+totQteCde+' unités payantes</p></div>'+
+    '<div class="met"><p class="lbl">MB% moyen pondéré</p><p class="val" style="color:'+mbCmdClr+'">'+mbCmdPondere.toFixed(1).replace('.',',')+' %</p><p class="sub">sur CA de cette commande</p></div>'+
+    '<div class="met hi"><p class="lbl">UG totales obtenues</p><p class="val">'+totUG+'</p><p class="sub">unités gratuites</p></div>'+
+    '<div class="met" style="'+(francoOK?'background:var(--accent-bg)':'background:var(--danger-bg)')+'"><p class="lbl">Franco</p><p class="val" style="font-size:14px;color:'+(francoOK?'var(--accent-text)':'var(--danger)')+'">'+(francoOK?'\u2713 OK':'\u26a0 '+Math.round(franco-totCAnetHT)+'\u20ac manquants')+'</p></div>';
+
+  var thS = 'padding:6px 8px;background:var(--surface2);font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;text-align:left';
+  var thSR = thS+';text-align:right';
+  var html = '<thead><tr>'+
+    '<th style="'+thS+'">Produit</th>'+
+    '<th style="'+thS+'">EAN</th>'+
+    '<th style="'+thS+'">Marché</th>'+
+    '<th style="'+thSR+'">Rot./mois</th>'+
+    '<th style="'+thSR+'">Besoin '+moisCible+'m</th>'+
+    '<th style="'+thSR+'">Stock</th>'+
+    '<th style="'+thSR+'">Qté à cder</th>'+
+    '<th style="'+thSR+'">Colis.</th>'+
+    '<th style="'+thSR+'">TVA%</th>'+
+    '<th style="'+thSR+'">Rem%</th>'+
+    '<th style="'+thSR+'">UG</th>'+
+    '<th style="'+thSR+'">Qté totale</th>'+
+    '<th style="'+thSR+'">PA cat HT</th>'+
+    '<th style="'+thSR+'">PA net HT</th>'+
+    '<th style="'+thSR+'">PV TTC</th>'+
+    '<th style="'+thSR+'">CA cde</th>'+
+    '<th style="'+thSR+'">MB%</th>'+
+    '</tr></thead><tbody>';
+
+  lignes.forEach(function(l,i){
+    var bg = i%2===0?'#fff':'var(--surface2)';
+    var td  = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:12px;background:'+bg;
+    var tdR = td+';text-align:right;font-family:monospace';
+    var mbClr = l.mb===null?'':l.mb>=35?';color:var(--accent-text);font-weight:600':l.mb>=28?';color:var(--warn)':';color:var(--danger)';
+    var ugBadge = l.ugObtenues>0
+      ? '<span style="background:var(--accent-bg);color:var(--accent-text);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">+'+l.ugObtenues+'</span><br><span style="font-size:9px;color:var(--text-ter)">'+l.ugLabel+'</span>'
+      : '-';
+    html += '<tr>'+
+      '<td style="'+td+';max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+l.nom+'">'+l.nom+'</td>'+
+      '<td style="'+td+';font-size:10px;color:var(--text-ter);font-family:monospace">'+(l.ean||'-')+'</td>'+
+      '<td style="'+td+';font-size:10px;color:var(--text-sec)">'+(l.marche||'-')+'</td>'+
+      '<td style="'+tdR+'">'+f1(l.moy)+'</td>'+
+      '<td style="'+tdR+'">'+f1(l.besoin)+'</td>'+
+      '<td style="'+tdR+';color:'+(l.stock>0?'var(--warn)':'var(--text-ter)')+'">'+l.stock+'</td>'+
+      '<td style="'+tdR+';font-weight:600">'+l.qte+'</td>'+
+      '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+(l.colisage>1?'×'+l.colisage:'-')+'</td>'+
+      '<td style="'+tdR+';color:var(--text-ter);font-size:10px">'+l.tva+'%</td>'+
+      '<td style="'+tdR+';font-weight:600;color:var(--accent-text)">'+l.rem+'%</td>'+
+      '<td style="'+tdR+'">'+ugBadge+'</td>'+
+      '<td style="'+tdR+';font-weight:700;color:var(--accent-text)">'+l.qteTotal+'</td>'+
+      '<td style="'+tdR+';color:var(--text-ter)">'+( l.paCat>0?f2(l.paCat):'-')+'</td>'+
+      '<td style="'+tdR+'">'+( l.paNet>0?f2(l.paNet):'-')+'</td>'+
+      '<td style="'+tdR+';color:var(--text-sec)">'+( l.pvTTC>0?f2(l.pvTTC):'-')+'</td>'+
+      '<td style="'+tdR+';font-weight:600">'+( l.caCde>0?fE(l.caCde):'-')+'</td>'+
+      '<td style="'+tdR+mbClr+'">'+( l.mb!==null?f1(l.mb)+'%':'-')+'</td>'+
+      '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('cmd-table').innerHTML = html;
+
+  var conEl = document.getElementById('cmd-conclusion');
+  // Calcul couverture réelle de la commande
+  var totRotation = lignes.reduce(function(s,l){ return s + (l.moy||0); }, 0);
+  var totQteCmd = lignes.reduce(function(s,l){ return s + (l.qte||0); }, 0);
+  var couvertureCommande = totRotation > 0 ? totQteCmd / totRotation : moisCible;
+
+  conEl.innerHTML = '<p class="nego-title">Synthèse commande</p><div class="nego-body">'+
+    'Couverture <b>'+couvertureCommande.toFixed(1).replace('.',',')+' mois</b> sur <b>'+lignes.length+' références</b> | '+
+    'CA total : <b>'+fE(totCA)+'</b> | UG totales : <b>'+totUG+' unités</b><br><br>'+
+    summaryHtml+'</div>';
+  conEl.style.display = 'block';
+  document.getElementById('cmd-result-card').style.display = 'block';
+
+  // Stocker la simulation en mémoire pour confirmation ultérieure
+  var selCmd = document.getElementById('cmd-labo-sel');
+  var laboId = selCmd ? (parseInt(selCmd.value) || selCmd.value) : null;
+  cmdDerniereSimulation = {
+    laboId: laboId,
+    montant: Math.round(totCA),
+    couverture: Math.round(couvertureCommande * 10) / 10,
+    lignes: lignes.length,
+    ugTotal: totUG
+  };
+
+  // Afficher bouton de confirmation
+  var confirmEl = document.getElementById('cmd-confirm-btn');
+  if (confirmEl) {
+    confirmEl.style.display = 'block';
+    confirmEl.innerHTML = '<button type="button" onclick="cmdConfirmerCommande()" style="margin-top:12px;font-size:13px;padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">✓ Confirmer et enregistrer cette commande</button>' +
+      '<p style="font-size:11px;color:var(--text-ter);margin-top:6px">Cela enregistrera la date de commande et mettra à jour le calendrier dans Workflow.</p>';
+  }
+}
+
+var cmdDerniereSimulation = null;
+
+function cmdConfirmerCommande() {
+  if (!cmdDerniereSimulation) return;
+  var s = cmdDerniereSimulation;
+  if (!s.laboId || !condLabos[s.laboId]) return;
+
+  var today = new Date().toISOString().slice(0,10);
+  condLabos[s.laboId].lastOrder = today;
+  condLabos[s.laboId].lastOrderAmount = s.montant;
+  condLabos[s.laboId].orderCoverage = s.couverture;
+
+  // Mettre à jour les champs dans Cond. commerciales si ce labo est actif
+  if (condLaboActif == s.laboId) {
+    var loEl = document.getElementById('cond-last-order');
+    var laEl = document.getElementById('cond-last-order-amount');
+    var ocEl = document.getElementById('cond-order-coverage');
+    if (loEl) loEl.value = today;
+    if (laEl) laEl.value = s.montant;
+    if (ocEl) ocEl.value = s.couverture;
+    condUpdateOrderStatus();
+  }
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+  wfRenderCalendrier();
+
+  // Feedback visuel
+  var confirmEl = document.getElementById('cmd-confirm-btn');
+  if (confirmEl) {
+    var laboNom = condLabos[s.laboId].nom || 'ce labo';
+    confirmEl.innerHTML = '<div style="padding:10px 16px;background:#e8f5ee;border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-text)">✓ Commande <b>' + laboNom + '</b> enregistrée — ' + s.montant + '€ · ' + s.couverture + ' mois · ' + new Date(today).toLocaleDateString("fr-FR") + '</div>';
+  }
+  cmdDerniereSimulation = null;
+}
+
+// ===== WORKFLOW =====
+var wfLaboActif = null;
+var wfInited = false;
+
+function wfInit() {
+  var sel = document.getElementById('wf-labo-sel');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var labo = condLabos[id];
+    if (!labo || !labo.nom) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = labo.nom;
+    sel.appendChild(opt);
+  });
+}
+
+function wfChargeLabo() {
+  var sel = document.getElementById('wf-labo-sel');
+  wfLaboActif = sel ? (sel.value || null) : null;
+  wfRender();
+}
+
+function wfRender() {
+  var stepsEl = document.getElementById('wf-steps');
+  var launchEl = document.getElementById('wf-launch');
+  if (!stepsEl) return;
+
+  var labo = wfLaboActif ? (condLabos[wfLaboActif] || condLabos[parseInt(wfLaboActif)]) : null;
+
+  var steps = [
+    {
+      num: 1,
+      titre: 'Créer le labo dans Cond. commerciales',
+      desc: 'Aller dans Cond. commerciales → + Nouveau labo → saisir le nom.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() { return !!labo && !!labo.nom; },
+      checkLabel: function() { return labo && labo.nom ? labo.nom + ' — créé le ' + (labo.dateEval||'') : 'Labo non créé'; }
+    },
+    {
+      num: 2,
+      titre: 'Importer le catalogue labo (PDF)',
+      desc: 'Dans Cond. commerciales → bouton "Importer catalogue labo (PDF)" → uploader le listing produits du labo. Claude extrait EAN, nom, format, PU catalogue.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() { return labo && labo.produits && labo.produits.length > 0; },
+      checkLabel: function() { return labo && labo.produits ? labo.produits.length + ' produits chargés' : 'Aucun produit'; }
+    },
+    {
+      num: 3,
+      titre: 'Importer l\'état des ventes 12 mois (PDF LGPI)',
+      desc: 'Dans Cond. commerciales → bouton "Importer PDF LGPI (diagnostic)" → uploader l\'état des ventes LGPI. Claude enrichit les produits avec PA HT, rotation mensuelle et PV TTC.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() {
+        if (!labo || !labo.produits) return false;
+        return labo.produits.some(function(p){ return (p.moy||0) > 0 && (p.pa_net||0) > 0; });
+      },
+      checkLabel: function() {
+        if (!labo || !labo.produits) return 'Pas de données ventes';
+        var actifs = labo.produits.filter(function(p){ return (p.moy||0) > 0; }).length;
+        return actifs + ' produits avec rotation — CA ' + (labo.caAnnuel ? Math.round(labo.caAnnuel) + '€ TTC' : 'non calculé');
+      }
+    },
+    {
+      num: 4,
+      titre: 'Saisir les marchés ouverts et remises négociées',
+      desc: 'Dans Cond. commerciales → section "Marchés ouverts" → + Marché → saisir le nom, l\'ID marché (general / prot / isolat / barres) et la remise négociée lors du RDV. Ces remises s\'appliquent dans la commande indépendamment du nombre de références.',
+      action: "showTab('cond')",
+      actionLabel: 'Aller à Cond. commerciales',
+      check: function() { return labo && labo.marches_negocies && labo.marches_negocies.length > 0; },
+      checkLabel: function() {
+        if (!labo || !labo.marches_negocies || !labo.marches_negocies.length) return 'Aucun marché saisi';
+        return labo.marches_negocies.map(function(m){ return (m.label||m.marche_id) + ' : ' + m.rem + '%'; }).join(' | ');
+      }
+    },
+    {
+      num: 5,
+      titre: 'Classifier les produits par marché (onglet Catalogue)',
+      desc: 'Dans l\'onglet Catalogue → choisir le labo → auto-classifier ou affecter manuellement chaque produit à son marché (général, protéines, isolat, barres). → Sauvegarder.',
+      action: "showTab('cat')",
+      actionLabel: 'Aller au Catalogue',
+      check: function() {
+        if (!labo || !labo.catalogue) return false;
+        var keys = Object.keys(labo.catalogue);
+        return keys.length > 0 && keys.some(function(k){ return labo.catalogue[k].marche_id; });
+      },
+      checkLabel: function() {
+        if (!labo || !labo.catalogue) return 'Catalogue non classifié';
+        var total = Object.keys(labo.catalogue).length;
+        var classes = Object.keys(labo.catalogue).filter(function(k){ return labo.catalogue[k].marche_id; }).length;
+        return classes + '/' + total + ' produits avec marché affecté';
+      }
+    },
+    {
+      num: 6,
+      titre: 'Générer la commande',
+      desc: 'Dans l\'onglet Commande → choisir le labo → définir la couverture cible (mois) et le franco → Calculer la commande. Les remises et UG s\'appliquent par marché.',
+      action: "showTab('cmd')",
+      actionLabel: 'Aller à la Commande',
+      check: function() { return false; }, // toujours proposer
+      checkLabel: function() { return 'Prêt à générer'; },
+      alwaysAction: true
+    }
+  ];
+
+  var allDone = steps.slice(0,5).every(function(s){ return s.check(); });
+  if (launchEl) launchEl.style.display = allDone ? 'block' : 'none';
+
+  var html = '';
+  steps.forEach(function(s) {
+    var done = s.check();
+    var color = done ? 'var(--accent)' : (s.alwaysAction ? 'var(--accent)' : 'var(--border-med)');
+    var bgNum = done ? 'var(--accent)' : 'var(--surface2)';
+    var clrNum = done ? '#fff' : 'var(--text-sec)';
+    var bgCard = done ? 'var(--accent-bg)' : '#fff';
+    var borderCard = done ? 'var(--accent)' : 'var(--border)';
+
+    html += '<div style="display:flex;gap:14px;margin-bottom:12px;padding:14px;background:' + bgCard + ';border:1px solid ' + borderCard + ';border-radius:var(--radius);align-items:flex-start">' +
+      '<div style="min-width:32px;height:32px;border-radius:50%;background:' + bgNum + ';color:' + clrNum + ';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">' +
+        (done ? '✓' : s.num) +
+      '</div>' +
+      '<div style="flex:1">' +
+        '<p style="font-size:13px;font-weight:600;margin-bottom:4px;color:' + (done ? 'var(--accent-text)' : 'var(--text)') + '">' + s.titre + '</p>' +
+        '<p style="font-size:11px;color:var(--text-sec);margin-bottom:8px;line-height:1.6">' + s.desc + '</p>' +
+        '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;background:' + (done ? 'rgba(26,107,74,.15)' : 'var(--surface2)') + ';color:' + (done ? 'var(--accent-text)' : 'var(--text-ter)') + '">' +
+            (labo ? s.checkLabel() : '— Choisir un labo') +
+          '</span>' +
+          (!done || s.alwaysAction ? '<button type="button" onclick="' + s.action + '" style="font-size:11px;padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500">' + s.actionLabel + '</button>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  stepsEl.innerHTML = html;
+
+  // Calendrier tous labos
+  wfRenderCalendrier();
+}
+
+function cmdImprimer() {
+  var laboNom = (document.getElementById('cmd-labo-sel').selectedOptions[0]||{}).text || 'Commande';
+  var date = new Date().toLocaleDateString('fr-FR');
+  var kpis = document.getElementById('cmd-kpis').innerHTML;
+  // Reconstruire le tableau proprement pour l'impression
+  var moisCible = parseFloat(document.getElementById('cmd-mois').value) || 2;
+  var tbl = document.getElementById('cmd-table');
+  var rows = tbl.querySelectorAll('tbody tr');
+  var tableHtml = '<table><thead><tr>' +
+    '<th>Produit</th><th>Marché</th><th>Rot./mois</th><th>Besoin '+moisCible+'m</th><th>Stock</th><th>Qté à cder</th><th>Colis.</th><th>TVA%</th><th>Rem%</th><th>UG</th><th>Qté totale</th><th>PA cat HT</th><th>PA net HT</th><th>PV TTC</th><th>CA cde</th><th>MB%</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function(row) {
+    tableHtml += '<tr>';
+    row.querySelectorAll('td').forEach(function(td) {
+      tableHtml += '<td>' + td.innerHTML + '</td>';
+    });
+    tableHtml += '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+  var table = tableHtml;
+  var conclusion = document.getElementById('cmd-conclusion').innerHTML;
+  var w = window.open('', '_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + laboNom + ' — ' + date + '</title><style>' +
+    'body{font-family:DM Sans,Arial,sans-serif;font-size:12px;color:#1a1a18;padding:24px;max-width:1100px;margin:0 auto}' +
+    'h1{font-size:16px;font-weight:700;margin-bottom:4px}' +
+    '.sub{font-size:11px;color:#6b6a64;margin-bottom:20px}' +
+    '.kpis{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}' +
+    '.kpi{background:#f5f4f0;border-radius:8px;padding:10px 16px;min-width:140px}' +
+    '.kpi .lbl{font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#9e9d96;margin-bottom:4px}' +
+    '.kpi .val{font-size:18px;font-weight:700}' +
+    'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px}' +
+    'th{padding:6px 8px;background:#1a1a18 !important;color:#fff !important;text-align:left;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    'th:not(:first-child):not(:nth-child(2)){text-align:right}' +
+    'td{padding:5px 8px;border-bottom:0.5px solid #e0e0e0}' +
+    'td:not(:first-child):not(:nth-child(2)){text-align:right;font-family:monospace}' +
+    'tr:nth-child(even){background:#f9f9f7}' +
+    'thead tr{background:#1a1a18 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    '.conclusion{background:#e8f5ee;border-radius:8px;padding:12px 16px;font-size:11px;line-height:1.7}' +
+    '.footer{margin-top:24px;font-size:10px;color:#9e9d96;border-top:1px solid #e0e0e0;padding-top:8px}' +
+    '@media print{body{padding:12px}button{display:none}}' +
+    '</style></head><body>' +
+    '<h1>Commande — ' + laboNom + '</h1>' +
+    '<div class="sub">Générée le ' + date + ' · Pharmacie Michelet</div>' +
+    '<div class="kpis">' + kpis + '</div>' +
+    table +
+    '<div class="conclusion">' + conclusion + '</div>' +
+    '<div class="footer">Calculateur Pharmacie Michelet · calculateur-pharmacie.vercel.app</div>' +
+    '</body></html>');
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 400);
+}
+
+// ===== MARCHE A LA CARTE — reconstituer un marché par mots-clés et le confronter à une offre =====
+var decCarteLabo = null;
+function decAfficherCarte(labo) {
+  var el = document.getElementById('dec-carte');
+  if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
+  decCarteLabo = labo;
+  var laboNomU = (labo || '').toUpperCase();
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:6px">🔍 Marché à la carte <span style="font-weight:400;color:var(--text-ter)">— reconstituer un marché par mots-clés et tester une offre du délégué</span></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mots-clés produits (virgules)</label><input id="dec-carte-kw" placeholder="ex: ABSOFOAM" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:200px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise proposée (%)</label><input id="dec-carte-rem" type="number" value="35" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Remise actuelle estimée (%)</label><input id="dec-carte-rem0" type="number" value="21" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Mini de commande (€ HT net)</label><input id="dec-carte-min" type="number" value="1000" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:80px"></div>'
+    + (function(){ var ech = decCarteEcheance45fdm(); return '<div><label style="font-size:10px;color:var(--text-ter);display:block">Délai de paiement (j) — 45 j fdm → ' + ech.date.toLocaleDateString('fr-FR') + '</label><input id="dec-carte-pay" type="number" value="' + ech.jours + '" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'; })()
+    + '<div><label style="font-size:10px;color:var(--text-ter);display:block">Franco offre (€ net)</label><input id="dec-carte-franco" type="number" value="100" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);width:70px"></div>'
+    + '<button type="button" onclick="decCarteCalculer()" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Calculer</button>'
+    + '<button type="button" onclick="decCartePlan()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📦 Plan de commande (horizon cash)</button>'
+    + (laboNomU.indexOf('MARQUE VERTE') >= 0 || laboNomU.indexOf('MARQUEVERTE') >= 0 ? '<button type="button" onclick="decCarteOffreGB()" style="font-size:12px;padding:6px 14px;background:var(--surface3,#ddd);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-weight:600">📋 Offre SDAV gamme blanche (avr-juin 2026)</button>' : '')
+    + '<div style="width:100%"><label style="font-size:10px;color:var(--text-ter);display:block;margin-top:4px">📥 Importer un bon de commande SDAV (PDF) — tout labo</label><input type="file" accept=".pdf" onchange="decCarteImportBonSDAV(this)" style="font-size:11px"></div>'
+    + '</div><div id="dec-carte-res" style="margin-top:8px"></div>';
+}
+function decCarteCalculer() {
+  var res = document.getElementById('dec-carte-res');
+  if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
+  var kwRaw = (document.getElementById('dec-carte-kw').value || '').toUpperCase();
+  var kws = kwRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  if (kws.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Saisis au moins un mot-clé.</span>'; return; }
+  var rem  = parseFloat(document.getElementById('dec-carte-rem').value) || 0;
+  var rem0 = parseFloat(document.getElementById('dec-carte-rem0').value) || 0;
+  var minC = parseFloat(document.getElementById('dec-carte-min').value) || 0;
+  var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 0;
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var match = decOspharmProds[decCarteLabo].filter(function(p) {
+    var L = (p.lib || '').toUpperCase();
+    return kws.some(function(k){ return L.indexOf(k) >= 0; });
+  });
+  if (match.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucun produit ne contient « ' + kws.join(', ') + ' » dans cet import.</span>'; return; }
+  var vol = 0, ca = 0, marge = 0;
+  match.forEach(function(p){ vol += p.qte; ca += p.caht; marge += p.marge; });
+  var volAn = vol * f, caAn = ca * f, margeAn = marge * f;
+  var achatsAn = Math.max(caAn - margeAn, 0); // règle d'or : achats = CA − marge, jamais la colonne Ospharm
+  var brutAn = rem0 < 100 ? achatsAn / (1 - rem0 / 100) : achatsAn;
+  var netNouveauAn = brutAn * (1 - rem / 100);
+  var ecoAn = achatsAn - netNouveauAn;
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Réfs reconnues</td><td style="padding:3px 6px;font-weight:600">' + match.length + ' réf. — ' + match.slice(0,6).map(function(p){return p.lib;}).join(' · ') + (match.length > 6 ? ' …' : '') + '</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Volume annualisé</td><td style="padding:3px 6px;font-weight:600">' + Math.round(volAn) + ' u/an</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">CA HT annualisé</td><td style="padding:3px 6px;font-weight:600">' + Math.round(caAn).toLocaleString('fr') + ' €/an (marge ' + Math.round(margeAn).toLocaleString('fr') + ' €)</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Achats actuels estimés (CA − marge)</td><td style="padding:3px 6px;font-weight:600">' + Math.round(achatsAn).toLocaleString('fr') + ' €/an</td></tr>'
+    + '<tr><td style="padding:3px 6px;color:var(--text-ter)">Achats à ' + rem + '% (tarif brut reconstitué via remise actuelle ' + rem0 + '%)</td><td style="padding:3px 6px;font-weight:600">' + Math.round(netNouveauAn).toLocaleString('fr') + ' €/an <span style="color:' + (ecoAn >= 0 ? 'var(--accent-text)' : 'var(--danger)') + '">(' + (ecoAn >= 0 ? 'économie' : 'surcoût') + ' ' + Math.abs(Math.round(ecoAn)).toLocaleString('fr') + ' €/an)</span></td></tr>';
+  if (minC > 0) {
+    var nbCmd = netNouveauAn / minC;
+    var moisParCmd = nbCmd > 0 ? 12 / nbCmd : 999;
+    var ok = moisParCmd <= 4, moyen = moisParCmd <= 8;
+    html += '<tr><td style="padding:3px 6px;color:var(--text-ter)">Mini de commande ' + Math.round(minC).toLocaleString('fr') + ' € net</td>'
+      + '<td style="padding:3px 6px;font-weight:700;color:' + (ok ? 'var(--accent-text)' : (moyen ? 'var(--warn)' : 'var(--danger)')) + '">'
+      + (nbCmd >= 1 ? nbCmd.toFixed(1) + ' commande(s)/an possibles — 1 commande mini = ' + (moisParCmd >= 99 ? '99+' : moisParCmd.toFixed(1)) + ' mois de ventes'
+                    : '⚠️ ton rythme annuel (' + Math.round(netNouveauAn).toLocaleString('fr') + ' €) est SOUS le mini : 1 commande = ' + (moisParCmd >= 99 ? '99+' : moisParCmd.toFixed(1)) + ' mois de stock')
+      + '</td></tr>';
+    if (payJ > 0) {
+      var caMois = caAn / 12;
+      var encaisse = caMois * (payJ / 30);
+      var ecartT = encaisse - minC;
+      var moisCouv = caMois > 0 ? minC / caMois : 999;
+      html += '<tr><td style="padding:3px 6px;color:var(--text-ter)">Trésorerie (paiement à ' + Math.round(payJ) + ' j)</td>'
+        + '<td style="padding:3px 6px;font-weight:700;color:' + (ecartT >= 0 ? 'var(--accent-text)' : 'var(--danger)') + '">'
+        + (ecartT >= 0
+          ? '✓ encaissé à l\u2019échéance ≈ ' + Math.round(encaisse).toLocaleString('fr') + ' € ≥ commande — tu ne décaisses jamais : règle du cash respectée'
+          : 'encaissé à l\u2019échéance ≈ ' + Math.round(encaisse).toLocaleString('fr') + ' € → avance de trésorerie de ' + Math.abs(Math.round(ecartT)).toLocaleString('fr') + ' € — cash intégralement récupéré vers le mois ' + (moisCouv >= 99 ? '99+' : moisCouv.toFixed(1)))
+        + '</td></tr>';
+    }
+  }
+  html += '</table>';
+  // ===== CONCLUSION en français clair =====
+  if (minC > 0 && payJ > 0) {
+    var caMoisC = caAn / 12;
+    var moisVentesCmd = netNouveauAn > 0 ? minC / (netNouveauAn / 12) : 999;
+    var gainCmd = minC * ((1 - rem0 / 100) / Math.max(1 - rem / 100, 0.01) - 1);
+    var encC = caMoisC * (payJ / 30);
+    var ecartC = encC - minC;
+    if (ecartC >= 0) {
+      html += '<div style="margin-top:8px;padding:10px 12px;background:var(--accent-bg);border-radius:var(--radius-sm);font-size:12px">'
+        + '<strong>✅ OUI — cette offre respecte ta règle du cash.</strong> À l\u2019échéance de la facture (' + Math.round(payJ) + ' j), tes ventes auront déjà ré-encaissé ≈ ' + Math.round(encC).toLocaleString('fr') + ' €, soit plus que la commande de ' + Math.round(minC).toLocaleString('fr') + ' € : tu ne décaisses jamais un euro de ta poche. Gain estimé sur la commande : <strong>' + Math.round(gainCmd).toLocaleString('fr') + ' €</strong>.'
+        + (moisVentesCmd > 8 ? ' <span style="color:var(--warn)">Attention tout de même : la commande représente ' + moisVentesCmd.toFixed(1) + ' mois de ventes — vérifie les dates de péremption à la livraison.</span>' : '')
+        + '</div>';
+    } else {
+      var joursNecessaires = Math.ceil(minC / caMoisC * 30);
+      var nbLivr = Math.min(Math.ceil(minC / Math.max(encC, 1)), 12);
+      var montantLivr = Math.round(minC / nbLivr);
+      html += '<div style="margin-top:8px;padding:10px 12px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px">'
+        + '<strong>❌ NON EN L\u2019ÉTAT — cette offre ne respecte pas ta règle du cash à ' + Math.round(payJ) + ' jours.</strong> Quand la facture tombera, tu n\u2019auras ré-encaissé que ≈ ' + Math.round(encC).toLocaleString('fr') + ' € : tu avancerais <strong>' + Math.abs(Math.round(ecartC)).toLocaleString('fr') + ' €</strong> de ta poche, récupérés seulement vers le mois ' + (minC / caMoisC).toFixed(1) + '.'
+        + '<div style="margin-top:6px"><strong>Pour la rendre acceptable, demande au délégué l\u2019un des deux :</strong><br>'
+        + '· un paiement à <strong>' + joursNecessaires + ' jours</strong> (au lieu de ' + Math.round(payJ) + ') — à cette échéance tes ventes couvrent la commande<br>'
+        + '· ou un fractionnement en <strong>' + nbLivr + ' livraisons de ≈ ' + montantLivr.toLocaleString('fr') + ' €</strong> espacées, chacune payée à ' + Math.round(payJ) + ' j</div>'
+        + '<div style="margin-top:6px;padding:6px 8px;background:#fff;border-radius:4px">🗣 <em>« Ta remise à ' + rem + '%, je la veux. Mais ' + Math.round(minC).toLocaleString('fr') + ' € d\u2019un coup, c\u2019est ' + moisVentesCmd.toFixed(1) + ' mois de mes ventes et ' + Math.abs(Math.round(ecartC)).toLocaleString('fr') + ' € d\u2019avance de trésorerie. Donne-moi ' + joursNecessaires + ' jours de paiement ou ' + nbLivr + ' livraisons, et on signe. »</em></div>'
+        + '<div style="margin-top:6px;color:var(--text-ter)">S\u2019il ne bouge sur rien : déroger à ta règle te coûte ' + Math.abs(Math.round(ecartC)).toLocaleString('fr') + ' € avancés pendant ~' + Math.max(0, (minC / caMoisC - payJ / 30)).toFixed(1) + ' mois, pour gagner ' + Math.round(gainCmd).toLocaleString('fr') + ' € — rentable sur le papier, mais c\u2019est ta trésorerie qui tranche.</div>'
+        + '</div>';
+    }
+  }
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Encaissements estimés en CA HT (prudent : le TTC rentre en caisse). Annualisation sur la période sélectionnée (' + (decGetPeriode() === 'encours' ? 'année en cours, ' + decMoisEchus() + ' mois échus' : '12 derniers mois') + '). Repère : 1 commande ≤ 4 mois de ventes = confortable, > 8 mois = sur-stock probable.</div>';
+  res.innerHTML = html;
+}
+
+function decCartePlan() {
+  var res = document.getElementById('dec-carte-res');
+  if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
+  var kwRaw = (document.getElementById('dec-carte-kw').value || '').toUpperCase();
+  var kws = kwRaw.split(',').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  if (kws.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Saisis les mots-clés des gammes de l\u2019offre (virgules).</span>'; return; }
+  var rem  = parseFloat(document.getElementById('dec-carte-rem').value) || 0;
+  var rem0 = parseFloat(document.getElementById('dec-carte-rem0').value) || 0;
+  var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 60;
+  var franco = parseFloat(document.getElementById('dec-carte-franco').value) || 0;
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var match = decOspharmProds[decCarteLabo].filter(function(p) {
+    var L = (p.lib || '').toUpperCase();
+    return p.qte > 0 && kws.some(function(k){ return L.indexOf(k) >= 0; });
+  }).sort(function(a,b){ return b.caht - a.caht; });
+  if (match.length === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucun produit vendu ne correspond à ces mots-clés.</span>'; return; }
+  var hz = payJ / 360; // fraction d'année couverte par l'horizon de paiement
+  var totCmd = 0, caHz = 0, lignes = '';
+  match.forEach(function(p) {
+    var qteAn = p.qte * f, caAn = p.caht * f, margeAn = p.marge * f;
+    var qteCmd = Math.ceil(qteAn * hz);
+    if (qteCmd < 1) return;
+    var achatsAn = Math.max(caAn - margeAn, 0);
+    var brutAn = rem0 < 100 ? achatsAn / (1 - rem0 / 100) : achatsAn;
+    var netUnit = qteAn > 0 ? (brutAn * (1 - rem / 100)) / qteAn : 0;
+    var mCmd = qteCmd * netUnit;
+    totCmd += mCmd; caHz += caAn * hz;
+    lignes += '<tr><td style="padding:3px 10px;border-top:1px solid var(--border)">' + p.lib + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + mCmd.toFixed(2).replace('.', ',') + ' €</td></tr>';
+  });
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📦 Plan de commande — horizon ' + Math.round(payJ) + ' jours (= ta consommation d\u2019ici l\u2019échéance)</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">Produit</td><td style="padding:3px 10px;text-align:right">Qté/an</td><td style="padding:3px 10px;text-align:right">Qté à commander</td><td style="padding:3px 10px;text-align:right">Montant net (à ' + rem + '%)</td></tr>'
+    + lignes
+    + '<tr><td style="padding:5px 10px;border-top:2px solid var(--border);font-weight:700">TOTAL commande</td><td></td><td></td><td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(totCmd).toLocaleString('fr') + ' €</td></tr>'
+    + '</table>';
+  // Verdicts : franco puis cash
+  if (franco > 0) {
+    html += totCmd >= franco
+      ? '<div style="margin-top:6px;font-size:12px;color:var(--accent-text);font-weight:600">✓ Franco ' + Math.round(franco) + ' € atteint (' + Math.round(totCmd).toLocaleString('fr') + ' €) — pas de frais de port.</div>'
+      : '<div style="margin-top:6px;font-size:12px;color:var(--warn);font-weight:600">⚠️ Franco ' + Math.round(franco) + ' € non atteint (' + Math.round(totCmd).toLocaleString('fr') + ' €) : allonge l\u2019horizon (champ délai), ajoute des gammes de l\u2019offre aux mots-clés, ou passe ce réassort au fil de l\u2019eau via CERP.</div>';
+  }
+  var coussin = caHz - totCmd;
+  html += '<div style="margin-top:6px;padding:10px 12px;background:' + (coussin >= 0 ? 'var(--accent-bg)' : '#fdecec') + ';border-radius:var(--radius-sm);font-size:12px">'
+    + (coussin >= 0
+      ? '<strong>✅ Règle du cash respectée par construction.</strong> Cette commande = ta consommation jusqu\u2019à l\u2019échéance : d\u2019ici le paiement, ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € pour ' + Math.round(totCmd).toLocaleString('fr') + ' € décaissés — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong> (ta marge). Tu ne sors jamais de cash.'
+      : '<strong>⚠️ Anomalie :</strong> le montant dépasse l\u2019encaissement prévu sur l\u2019horizon — vérifie les remises saisies.')
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Quantités arrondies à l\u2019unité supérieure — ajuste aux multiples du bon de commande à la saisie. Prix nets estimés depuis tes achats réels (CA − marge) et les remises saisies.</div>';
+  res.innerHTML = html;
+}
+
+// ===== OFFRE SDAV MARQUE VERTE — Gamme blanche avril-juin 2026 (bon UPP, franco 100 € net, 45 j fdm) =====
+var OFFRE_SDAV_MV_GB = [
+["3401099222675","ABSO Compresses non-tissé 10x10 Bt10",40,0.82,0.71,0.39],
+["3401099222736","ABSO Compresses non-tissé 10x10 Bt25",12,1.64,1.43,0.89],
+["3401099222965","ABSO Compresses non-tissé 10x10 Bt50",12,2.78,2.42,1.58],
+["3401099222385","ABSO Compresses non-tissé 7,5x7,5 Bt10",40,0.61,0.53,0.29],
+["3401099222446","ABSO Compresses non-tissé 7,5x7,5 Bt25",12,1.22,1.06,0.59],
+["3401099222507","ABSO Compresses non-tissé 7,5x7,5 Bt50",12,2.06,1.79,1.13],
+["3401099222095","ABSO Compresses gaze 10x10 Bt10",40,0.84,0.77,0.54],
+["3401099222156","ABSO Compresses gaze 10x10 Bt25",12,1.69,1.55,1.13],
+["3401099222217","ABSO Compresses gaze 10x10 Bt50",12,2.86,2.63,2.23],
+["3401099221784","ABSO Compresses gaze 7,5x7,5 Bt10",40,0.62,0.57,0.39],
+["3401099221845","ABSO Compresses gaze 7,5x7,5 Bt25",12,1.25,1.15,0.84],
+["3401099221906","ABSO Compresses gaze 7,5x7,5 Bt50",12,2.13,1.96,1.49],
+["3615370003727","ABSOPADS BIO Rectangles coton 8x10 Sachet 180",10,5.51,2.89,2.31],
+["3401560299465","ABSOPADS Rectangle coton 8x10 Sachet 200",10,5.51,2.89,2.31],
+["3401076975822","ABSO Bande extensible 4m x 10cm",20,0.77,0.27,0.15],
+["3401045035311","ABSO Bande extensible 4m x 15cm",20,1.31,0.46,0.25],
+["3401076975532","ABSO Bande extensible 4m x 5cm",20,0.43,0.15,0.09],
+["3401076975761","ABSO Bande extensible 4m x 7cm",20,0.64,0.22,0.12],
+["3401081632277","ABSO Bande crêpe 4m x 10cm",20,1.42,0.71,0.64],
+["3401081632338","ABSO Bande crêpe 4m x 15cm",20,2.11,1.05,0.95],
+["3401081632109","ABSO Bande crêpe 4m x 5cm",20,0.91,0.45,0.41],
+["3401081631966","ABSO Bande crêpe 4m x 7cm",20,1.12,0.55,0.50],
+["3401081631737","ABSO Bande crêpe 5m x 20cm",20,3.40,1.68,1.53],
+["3401072091052","ABSOPLAST Bande adh. élastique 2,5m x 10cm",1,8.03,4.81,3.61],
+["3401072090741","ABSOPLAST Bande adh. élastique 2,5m x 3cm",1,3.90,2.34,1.76],
+["3401072090802","ABSOPLAST Bande adh. élastique 2,5m x 6cm",1,5.30,3.17,2.38],
+["3401072090970","ABSOPLAST Bande adh. élastique 2,5m x 8cm",1,6.56,3.93,2.95],
+["3401042624587","ABSOPRESS Contention cohésive 3,5m x 10cm blanc",1,10.39,5.69,4.05],
+["3401042624648","ABSOPRESS Contention cohésive 3,5m x 10cm chair",1,10.39,5.69,4.05],
+["3401042624358","ABSOPRESS Contention cohésive 3m x 7cm blanc",1,8.16,4.46,3.18],
+["3401042624419","ABSOPRESS Contention cohésive 3m x 7cm chair",1,8.16,4.46,3.18],
+["3401079981318","ABSOPORE Sparadrap microporeux 5m x 2,5cm",20,0.99,0.59,0.50],
+["3401079981257","ABSOPORE Sparadrap microporeux 9,14m x 2,5cm",20,1.24,0.74,0.62],
+["3615370004007","ABSOTUB Bleu jersey 7,5cm x 10m",1,7.64,6.11,5.73],
+["3615370004014","ABSOTUB Jaune jersey 10,75cm x 10m",1,8.93,7.14,6.70],
+["3615370004236","ABSOTULLE GRAS Pansements gras 10x10 Bt10",12,8.45,3.38,2.37],
+["3401060122607","ABSODERM Pans. adhésifs 10x15 Bt10",1,9.75,3.92,2.34],
+["3401060122614","ABSODERM Pans. adhésifs 10x25 Bt10",1,14.68,5.89,3.08],
+["3401060213343","ABSODERM Pans. adhésifs 5x7 Bt10",1,2.73,1.09,0.76],
+["3401060122591","ABSODERM Pans. adhésifs 8x10 Bt10",1,5.30,2.13,1.38],
+["3401060122645","ABSOFILM Films adhésifs 10x12 Bt10",1,13.10,5.25,3.54],
+["3401060122652","ABSOFILM Films adhésifs 15x20 Bt10",1,18.29,7.34,4.94],
+["3615371700038","ABSOFILM+PAD 10x15 Bt5",1,10.86,4.36,3.26],
+["3615371700014","ABSOFILM+PAD 5x7 Bt5",1,4.57,1.83,1.37],
+["3615371700021","ABSOFILM+PAD 8x10 Bt5",1,7.35,2.95,2.20],
+["3401072091342","ABSOFIX Bande adhésive 10m x 10cm",1,5.84,3.21,2.63],
+["3401098218563","ABSOFIX Bande adhésive 10m x 5cm",1,3.74,2.06,1.68],
+["3401072091281","ABSOFIX Bande adhésive 2,5m x 10cm",1,2.40,1.32,1.08],
+["3401072091113","ABSOFIX Bande adhésive 5m x 5cm",1,2.40,1.32,1.08],
+["3401060034399","ABSOSOINS Set Plaies Chroniques Détersion Bt5",1,6.65,5.65,4.66],
+["3615370002218","ABSOSOINS Set Plaies Chroniques Méchage Bt5",1,6.65,5.65,4.66],
+["3401060034382","ABSOSOINS Set Plaies Chroniques Standard Bt5",1,6.65,5.65,4.66],
+["3401021211104","ABSOSOINS Set Post-op Grandes plaies Bt3",1,10.64,6.35,5.00],
+["3615370002201","ABSOSOINS Set Post-op Grandes + Ôte-agrafe Bt3",1,10.98,6.55,5.16],
+["3401021211272","ABSOSOINS Set Post-op Moyennes plaies Bt3",1,8.20,4.89,3.85],
+["3401561371832","ABSOSOINS Set Post-op Petites plaies Bt3",1,6.66,3.97,3.13],
+["3615370005509","ABSOSOINS Set perfusion Veines fragiles",1,11.99,8.39,5.76]
+];
+function decCarteEcheance45fdm(d) {
+  // Échéance « 45 jours fin de mois » : date du jour + 45 j, ramenée à la fin de ce mois-là
+  d = d || new Date();
+  var e = new Date(d.getTime() + 45 * 86400000);
+  var fin = new Date(e.getFullYear(), e.getMonth() + 1, 0);
+  var jours = Math.round((fin - d) / 86400000);
+  return { date: fin, jours: jours };
+}
+function decCarteNorm(s) {
+  return (s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ').trim();
+}
+function decCarteMatchTous(offre, prods) {
+  // Deux passes : 1) EAN exact pour TOUTES les lignes, 2) repli nom sur le reste
+  // (évite qu'une ligne similaire « vole » par nom un produit destiné à une ligne EAN ultérieure)
+  var used = {}, result = {};
+  offre.forEach(function(o, idx) {
+    for (var i = 0; i < prods.length; i++) {
+      if (used[i]) continue;
+      var e = (prods[i].ean || '');
+      if (e && e.slice(-13) === o[0]) { used[i] = true; result[idx] = prods[i]; return; }
+    }
+  });
+  offre.forEach(function(o, idx) {
+    if (result[idx]) return;
+    var toks = decCarteNorm(o[1]).split(' ').filter(function(t){ return t.length >= 2; });
+    var best = -1, bestScore = 0;
+    for (var j = 0; j < prods.length; j++) {
+      if (used[j]) continue;
+      var L = decCarteNorm(prods[j].lib);
+      var hit = 0;
+      toks.forEach(function(t){ if (L.indexOf(t) >= 0) hit++; });
+      var score = toks.length > 0 ? hit / toks.length : 0;
+      if (score > bestScore) { bestScore = score; best = j; }
+    }
+    if (best >= 0 && bestScore >= 0.7) { used[best] = true; result[idx] = prods[best]; }
+  });
+  return result;
+}
+// ===== IMPORT GÉNÉRIQUE D'UN BON DE COMMANDE SDAV (PDF) =====
+function decEan13Valide(ean) {
+  if (!/^\d{13}$/.test(ean)) return false;
+  var s = 0;
+  for (var i = 0; i < 12; i++) s += parseInt(ean[i], 10) * (i % 2 === 0 ? 1 : 3);
+  return (10 - (s % 10)) % 10 === parseInt(ean[12], 10);
+}
+function decCarteParseBonSDAV(text) {
+  var num = function(s){ return parseFloat(s.replace(',', '.')); };
+  // Format A (Marque Verte) : EAN Libellé Multiple Brut FDL Net (3 prix)
+  var reA = /(\d{13})\s+(.{3,140}?)\s+(\d{1,3})\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€/g;
+  // Format B (Théa) : EAN Libellé Multiple PrixCat PrixRemisé (2 prix, pas de fil de l'eau)
+  var reB = /(\d{13})\s+(.{3,140}?)\s+(\d{1,3})\s+(\d+,\d{2})\s*€\s+(\d+,\d{2})\s*€/g;
+  var out = [], vus = {}, m;
+  while ((m = reA.exec(text)) !== null) {
+    var ean = m[1];
+    if (vus[ean]) continue;
+    vus[ean] = true;
+    out.push([ean, m[2].replace(/\s+/g, ' ').trim(), parseInt(m[3], 10) || 1, num(m[4]), num(m[5]), num(m[6])]);
+  }
+  if (out.length === 0) {
+    while ((m = reB.exec(text)) !== null) {
+      var ean2 = m[1];
+      if (vus[ean2]) continue;
+      vus[ean2] = true;
+      var brut = num(m[4]), net = num(m[5]);
+      if (net > brut + 0.005) continue; // garde-fou : remisé doit être ≤ catalogue
+      // Pas de prix « fil de l'eau » distinct pour Théa : FDL = brut (gain = remise SDAV pure)
+      out.push([ean2, m[2].replace(/\s+/g, ' ').trim(), parseInt(m[3], 10) || 1, brut, brut, net]);
+    }
+  }
+  var fr = text.match(/Franco de port\s*:\s*(\d+)/i);
+  // Comptage croisé : tous les EAN-13 valides présents dans le texte (candidats produits)
+  var cands = {}, cm, reAll = /\b(\d{13})\b/g;
+  while ((cm = reAll.exec(text)) !== null) { if (decEan13Valide(cm[1])) cands[cm[1]] = true; }
+  return { lignes: out, franco: fr ? parseInt(fr[1], 10) : null, candidatsList: Object.keys(cands) };
+}
+var _pdfjsReady = false;
+function decCartePdfEnsure(cb) {
+  if (_pdfjsReady && window.pdfjsLib) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload = function() {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    _pdfjsReady = true;
+    cb();
+  };
+  s.onerror = function() { alert('Impossible de charger le lecteur PDF — vérifie ta connexion.'); };
+  document.head.appendChild(s);
+}
+function decCarteImportBonSDAV(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var res = document.getElementById('dec-carte-res');
+  if (res) res.innerHTML = '<span style="font-size:11px;color:var(--text-ter)">⏳ Lecture du bon de commande...</span>';
+  decCartePdfEnsure(function() {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      window.pdfjsLib.getDocument({ data: new Uint8Array(e.target.result) }).promise.then(function(pdf) {
+        var pages = [];
+        var chain = Promise.resolve();
+        for (var i = 1; i <= pdf.numPages; i++) {
+          (function(n) {
+            chain = chain.then(function() {
+              return pdf.getPage(n).then(function(page) {
+                return page.getTextContent().then(function(tc) {
+                  pages.push(tc.items.map(function(it){ return it.str; }).join(' '));
+                });
+              });
+            });
+          })(i);
+        }
+        chain.then(function() {
+          var parsed = decCarteParseBonSDAV(pages.join(' '));
+          if (parsed.lignes.length === 0) {
+            if (res) res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucune ligne produit reconnue dans ce PDF — est-ce bien un bon de commande SDAV (colonnes EAN / multiple / prix brut / FDL / net) ?</span>';
+            return;
+          }
+          decCarteOffreImp = parsed.lignes;
+          decCarteOffreTitre = '📥 ' + (file.name || 'Bon SDAV').replace(/\.pdf$/i, '') + ' (' + parsed.lignes.length + ' réf.)';
+          if (parsed.franco !== null) { var fEl = document.getElementById('dec-carte-franco'); if (fEl) fEl.value = parsed.franco; }
+          decCarteValidationImport(parsed);
+        });
+      }).catch(function(err) {
+        if (res) res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Erreur de lecture du PDF : ' + err.message + '</span>';
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function decCarteOffreGB() { decCarteOffreRender(OFFRE_SDAV_MV_GB, 'Offre SDAV gamme blanche'); }
+var decCarteOffreImp = null;
+var decCarteOffreTitre = '';
+function decCarteCatalogueEanMap() {
+  // Croisement avec le catalogue du labo (condLabos) : ean -> prix tarif
+  var map = {};
+  try {
+    var cible = (decCarteLabo || '').toUpperCase();
+    Object.keys(condLabos).forEach(function(k) {
+      var nom = ((condLabos[k] || {}).nom || '').toUpperCase();
+      if (!nom) return;
+      if (cible.indexOf(nom) >= 0 || nom.indexOf(cible) >= 0 || nom.split(' ').some(function(w){ return w.length > 4 && cible.indexOf(w) >= 0; })) {
+        (condLabos[k].produits || []).forEach(function(p) { if (p.ean) map[String(p.ean)] = p.pu_catalogue; });
+      }
+    });
+  } catch(e) {}
+  return map;
+}
+function decCarteValidationImport(parsed) {
+  var res = document.getElementById('dec-carte-res');
+  if (!res) return;
+  var tarifs = decCarteCatalogueEanMap();
+  var nbAnomalies = 0, lignes = '';
+  parsed.lignes.forEach(function(o, i) {
+    var pbs = [];
+    if (!decEan13Valide(o[0])) pbs.push('clé EAN invalide');
+    if (!(o[5] <= o[4] + 0.005 && o[4] <= o[3] + 0.005)) pbs.push('prix incohérents (net ≤ FDL ≤ brut attendu)');
+    var remI = o[3] > 0 ? 1 - o[5] / o[3] : 0;
+    if (remI < -0.005 || remI > 0.9) pbs.push('remise implicite ' + Math.round(remI * 100) + '% suspecte');
+    var tCat = tarifs[o[0]];
+    var catCell = '—';
+    if (tCat !== undefined) {
+      if (Math.abs(tCat - o[3]) <= Math.max(0.01, tCat * 0.01)) catCell = '<span style="color:var(--accent-text)">✓ ' + tCat.toFixed(2).replace('.', ',') + '</span>';
+      else { catCell = '<span style="color:var(--danger)">⚠ tarif ' + tCat.toFixed(2).replace('.', ',') + ' €</span>'; pbs.push('brut ≠ tarif catalogue'); }
+    }
+    if (pbs.length > 0) nbAnomalies++;
+    lignes += '<tr style="' + (pbs.length > 0 ? 'background:#fdecec' : '') + '">'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);font-family:monospace;font-size:10px">' + o[0] + (decEan13Valide(o[0]) ? ' <span style="color:var(--accent-text)">✓</span>' : ' <span style="color:var(--danger)">✗</span>') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + o[1] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">×' + o[2] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + o[3].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + o[4].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;font-weight:600">' + o[5].toFixed(2).replace('.', ',') + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(remI * 100) + '%</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + catCell + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);font-size:10px;color:var(--danger)">' + pbs.join(' · ') + '</td>'
+      + '</tr>';
+  });
+  var eansExtraits = {};
+  parsed.lignes.forEach(function(o){ eansExtraits[o[0]] = true; });
+  var manquants = (parsed.candidatsList || []).filter(function(e){ return !eansExtraits[e]; }).length;
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">🔎 Contrôle de l\u2019import — ' + parsed.lignes.length + ' lignes extraites'
+    + (parsed.franco !== null ? ' · franco détecté ' + parsed.franco + ' €' : '') + '</div>';
+  if (manquants > 0) html += '<div style="margin-top:4px;padding:8px 10px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px;color:var(--danger);font-weight:600">⚠️ ' + manquants + ' code(s) EAN présent(s) dans le PDF n\u2019ont PAS été extraits en ligne produit — compare avec le bon avant de valider.</div>';
+  if (nbAnomalies > 0) html += '<div style="margin-top:4px;padding:8px 10px;background:#fdecec;border-radius:var(--radius-sm);font-size:12px;color:var(--danger);font-weight:600">⚠️ ' + nbAnomalies + ' ligne(s) en anomalie (surlignées en rouge) — vérifie-les sur le PDF.</div>';
+  if (manquants === 0 && nbAnomalies === 0) html += '<div style="margin-top:4px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-text);font-weight:600">✓ Tous les contrôles passent : clés EAN valides, prix cohérents' + (Object.keys(tarifs).length > 0 ? ', tarifs conformes au catalogue' : '') + ', aucun EAN du PDF laissé de côté.</div>';
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto;margin-top:6px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">EAN (clé)</td><td style="padding:3px 10px">Libellé</td><td style="padding:3px 10px;text-align:right">Mult.</td><td style="padding:3px 10px;text-align:right">Brut</td><td style="padding:3px 10px;text-align:right">FDL</td><td style="padding:3px 10px;text-align:right">Net</td><td style="padding:3px 10px;text-align:right">Remise</td><td style="padding:3px 10px;text-align:right">Tarif catalogue</td><td style="padding:3px 10px">Anomalies</td></tr>'
+    + lignes + '</table></div>'
+    + '<div style="margin-top:8px"><button type="button" onclick="decCarteValiderImport()" style="font-size:12px;padding:8px 16px;background:' + (nbAnomalies > 0 || manquants > 0 ? 'var(--warn)' : 'var(--accent)') + ';color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:700">'
+    + (nbAnomalies > 0 || manquants > 0 ? '⚠️ Valider malgré les alertes et calculer' : '✓ Valider et calculer les quantités') + '</button></div>';
+  res.innerHTML = html;
+}
+function decCarteValiderImport() {
+  if (!decCarteOffreImp) return;
+  decCarteOffreRender(decCarteOffreImp, decCarteOffreTitre);
+}
+function decCarteOffreRender(OFFRE, TITRE) {
+  var res = document.getElementById('dec-carte-res');
+  if (!res || !decCarteLabo || !decOspharmProds[decCarteLabo]) return;
+  var payJ = parseFloat(document.getElementById('dec-carte-pay').value) || 75;
+  var franco = parseFloat(document.getElementById('dec-carte-franco').value) || 100;
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var hz = payJ / 360;
+  var prods = decOspharmProds[decCarteLabo];
+  var matches = decCarteMatchTous(OFFRE, prods);
+  var aFdlDistinct = OFFRE.some(function(o){ return Math.abs(o[3] - o[4]) > 0.005; });
+  var gainLabel = aFdlDistinct ? 'Gain vs fil de l\u2019eau' : 'Remise (\u20ac)';
+  var totBrut = 0, totFdl = 0, totNet = 0, caHz = 0, nbMatch = 0, sansVente = 0, multTropGrand = 0, lignes = '';
+  OFFRE.forEach(function(o, oIdx) {
+    var ean = o[0], lib = o[1], mult = o[2], brut = o[3], fdl = o[4], net = o[5];
+    var p = matches[oIdx] || null;
+    var qteAn = p ? p.qte * f : 0;
+    var q75 = qteAn * hz;
+    // Arrondi au multiple INFÉRIEUR : tout doit être vendu avant l'échéance
+    var qteCmd = Math.floor(q75 / mult) * mult;
+    if (qteCmd === 0) { if (q75 > 0) multTropGrand++; else sansVente++; return; }
+    nbMatch++;
+    var mNet = qteCmd * net, mFdl = qteCmd * fdl, mBrut = qteCmd * brut;
+    totNet += mNet; totFdl += mFdl; totBrut += mBrut;
+    if (p) caHz += (p.caht * f) * hz;
+    var remLigne = brut > 0 ? (1 - net / brut) * 100 : 0;
+    lignes += '<tr>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + lib + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(qteAn) + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + q75.toFixed(1) + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">×' + mult + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;font-weight:700">' + qteCmd + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;color:var(--text-ter)">' + Math.round(qteCmd / Math.max(qteAn / 360, 0.001)) + ' j</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + net.toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + mNet.toFixed(2).replace('.', ',') + ' €</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right">' + Math.round(remLigne) + '%</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);text-align:right;color:var(--accent-text);font-weight:600">+' + (mFdl - mNet).toFixed(2).replace('.', ',') + ' €</td>'
+      + '</tr>';
+  });
+  if (nbMatch === 0) { res.innerHTML = '<span style="font-size:11px;color:var(--danger)">Aucune ligne de l\u2019offre ne correspond à des ventes dans ton import. Si ton export Ospharm a une colonne EAN/CIP, réimporte le fichier (le rapprochement sera exact).</span>'; return; }
+  var remTot = totBrut > 0 ? (1 - totNet / totBrut) * 100 : 0;
+  var gainFdl = totFdl - totNet;
+  var dateEch = new Date(Date.now() + payJ * 86400000);
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:6px">📋 ' + TITRE + ' — commande aujourd\u2019hui, <span style="color:var(--accent-text)">facture payable vers le ' + dateEch.toLocaleDateString('fr-FR') + '</span> (' + Math.round(payJ) + ' j)</div>'
+    + '<div style="font-size:10px;color:var(--text-ter)">' + nbMatch + ' lignes avec ventes · ' + sansVente + ' réf. sans rotation ignorées' + (multTropGrand > 0 ? ' · ' + multTropGrand + ' réf. vendues mais multiple trop grand pour tout écouler avant l\u2019échéance (laisse-les au fil de l\u2019eau)' : '') + '</div>'
+    + '<table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto;margin-top:4px">'
+    + '<tr style="color:var(--text-ter)"><td style="padding:3px 10px">Produit (offre UPP)</td><td style="padding:3px 10px;text-align:right">Qté/an</td><td style="padding:3px 10px;text-align:right">Sorties ' + Math.round(payJ) + ' j</td><td style="padding:3px 10px;text-align:right">Mult.</td><td style="padding:3px 10px;text-align:right">Qté à commander</td><td style="padding:3px 10px;text-align:right">Écoulé en</td><td style="padding:3px 10px;text-align:right">Prix net</td><td style="padding:3px 10px;text-align:right">Montant net</td><td style="padding:3px 10px;text-align:right">Remise vs brut</td><td style="padding:3px 10px;text-align:right">' + gainLabel + '</td></tr>'
+    + lignes
+    + '<tr><td style="padding:5px 10px;border-top:2px solid var(--border);font-weight:700">TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td>'
+    + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + totNet.toFixed(2).replace('.', ',') + ' €</td>'
+    + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700">' + Math.round(remTot) + '%</td>'
+    + '<td style="padding:5px 10px;border-top:2px solid var(--border);text-align:right;font-weight:700;color:var(--accent-text)">+' + gainFdl.toFixed(2).replace('.', ',') + ' €</td></tr>'
+    + '</table></div>';
+  html += totNet >= franco
+    ? '<div style="margin-top:6px;font-size:12px;color:var(--accent-text);font-weight:600">✓ Franco ' + Math.round(franco) + ' € atteint (' + Math.round(totNet) + ' €) — pas de frais de port.</div>'
+    : '<div style="margin-top:6px;font-size:12px;color:var(--warn);font-weight:600">⚠️ Franco ' + Math.round(franco) + ' € non atteint (' + Math.round(totNet) + ' €) : allonge l\u2019horizon ou complète, sinon réassort fil de l\u2019eau.</div>';
+  var coussin = caHz - totNet;
+  html += '<div style="margin-top:6px;padding:10px 12px;background:' + (coussin >= 0 ? 'var(--accent-bg)' : '#fdecec') + ';border-radius:var(--radius-sm);font-size:12px">'
+    + (coussin >= 0
+      ? '<strong>✅ Tu ne sors pas de cash — et tout est vendu avant l\u2019échéance</strong> (quantités arrondies au multiple inférieur, colonne « écoulé en » ≤ ' + Math.round(payJ) + ' j) : ces produits auront ré-encaissé ≈ ' + Math.round(caHz).toLocaleString('fr') + ' € avant que tu ne paies ' + Math.round(totNet).toLocaleString('fr') + ' € — coussin de <strong>' + Math.round(coussin).toLocaleString('fr') + ' €</strong>.' + (aFdlDistinct ? 'Cash gagné vs fil de l\u2019eau : <strong>+' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong> , ' : 'Remise totale obtenue : <strong>' + Math.round(gainFdl).toLocaleString('fr') + ' €</strong>, soit ') + 'remise réelle ' + Math.round(remTot) + '% vs tarif brut.'
+      : '<strong>⚠️ Les arrondis aux multiples gonflent la commande au-delà de tes encaissements de l\u2019horizon</strong> (' + Math.round(caHz).toLocaleString('fr') + ' € encaissés pour ' + Math.round(totNet).toLocaleString('fr') + ' € à payer). Retire les lignes à faible rotation dont le multiple impose trop de stock.')
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Rapprochement offre↔ventes par EAN quand ton export en a une colonne, sinon par nom (score ≥ 70%). Qtés arrondies au multiple de commande supérieur. « Gain vs fil de l\u2019eau » = (prix FDL − prix net SDAV) × qté.</div>';
+  res.innerHTML = html;
+}
+
+function decAfficherResume(labo) {
+  var el = document.getElementById('dec-resume');
+  if (!el || !decOspharmProds || !decOspharmProds[labo]) return;
+  var selP = document.getElementById('dec-periode');
+  if (selP) selP.value = decGetPeriode();
+  var prods = decOspharmProds[labo];
+  var sorted = prods.slice().sort(function(a,b){ return b.caht - a.caht; });
+  var totCaht = 0, totMarge = 0, totStock = 0, totQte = 0;
+  for (var i = 0; i < prods.length; i++) {
+    totCaht    += prods[i].caht;
+    totMarge   += prods[i].marge;
+    totStock   += prods[i].stock;
+    totQte     += prods[i].qte;
+  }
+  var tauxMarge = totCaht > 0 ? (totMarge / totCaht) * 100 : 0;
+  var nbRefs = prods.filter(function(p){ return p.caht > 0; }).length;
+  var periode = decGetPeriode();
+  var mois = periode === 'encours' ? decMoisEchus() : 12;
+  var caAnnu = mois > 0 ? totCaht * 12 / mois : totCaht;
+  var margeAnnu = mois > 0 ? totMarge * 12 / mois : totMarge;
+  var html = '<strong style="font-size:13px">' + labo + '</strong>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">' + (periode === 'encours' ? 'ann\u00e9e en cours \u00b7 ' + mois + ' mois \u00e9chus' : 'ann\u00e9e liss\u00e9e \u00b7 12 mois') + '</span>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:8px 0 12px">';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">CA p\u00e9riode HT</span><br><strong>' + Math.round(totCaht).toLocaleString('fr') + ' \u20ac</strong></div>';
+  if (periode === 'encours') html += '<div><span style="font-size:10px;color:var(--text-ter)">CA annualis\u00e9</span><br><strong>' + Math.round(caAnnu).toLocaleString('fr') + ' \u20ac</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Marge totale</span><br><strong>' + Math.round(totMarge).toLocaleString('fr') + ' \u20ac</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Taux de marge</span><br><strong>' + tauxMarge.toFixed(1) + '%</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Références</span><br><strong>' + nbRefs + '</strong></div>';
+  html += '<div><span style="font-size:10px;color:var(--text-ter)">Stock (unités)</span><br><strong>' + Math.round(totStock).toLocaleString('fr') + '</strong></div>';
+  html += '</div>';
+  var th = 'padding:6px 8px;font-size:10px;font-weight:600;text-transform:uppercase;background:#e8f5f0;text-align:right;border-bottom:1px solid var(--border)';
+  var prodsN1 = (decOspharmProdsN1 && decOspharmProdsN1[labo]) ? decOspharmProdsN1[labo] : null;
+  var hasN1 = !!prodsN1;
+  html += '<div style="overflow-x:auto"><table style="width:auto;border-collapse:collapse;font-size:11px;table-layout:auto">';
+  html += '<thead><tr>';
+  html += '<th style="' + th + ';text-align:left">EAN</th>';
+  html += '<th style="' + th + ';text-align:left">Produit</th>';
+  if (!hasN1) html += '<th style="' + th + '">Qté</th>';
+  if (hasN1) {
+    html += '<th style="' + th + '">Qté N-1</th>';
+    html += '<th style="' + th + '">Qté N</th>';
+    html += '<th style="' + th + '">Évol %</th>';
+  }
+  html += '<th style="' + th + '">CA HT</th>';
+  html += '<th style="' + th + '">Marge</th>';
+  html += '<th style="' + th + '">Taux</th>';
+  html += '<th style="' + th + '">Stock</th>';
+  html += '</tr></thead><tbody>';
+  var totQteN1 = 0, totQteN1Found = false;
+  for (var i = 0; i < sorted.length; i++) {
+    var p = sorted[i];
+    var tm = p.caht > 0 ? (p.marge / p.caht * 100) : 0;
+    var bg = i % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);text-align:right;background:' + bg;
+    html += '<tr>';
+    html += '<td style="' + td + ';text-align:left;white-space:nowrap;font-family:monospace;font-size:10px;color:var(--text-ter)">' + (p.ean || '') + '</td>';
+    html += '<td style="' + td + ';text-align:left;white-space:nowrap">' + p.lib + '</td>';
+    if (!hasN1) html += '<td style="' + td + '">' + Math.round(p.qte).toLocaleString('fr') + '</td>';
+    if (hasN1) {
+      var qN1 = decTrouverQteN1(p, prodsN1);
+      if (qN1 !== null) { totQteN1 += qN1; totQteN1Found = true; }
+      var evol = (qN1 !== null && qN1 > 0) ? ((p.qte - qN1) / qN1 * 100) : null;
+      html += '<td style="' + td + (qN1 === null ? ';color:var(--text-ter)' : '') + '">' + (qN1 === null ? '—' : Math.round(qN1).toLocaleString('fr')) + '</td>';
+      html += '<td style="' + td + '">' + Math.round(p.qte).toLocaleString('fr') + '</td>';
+      if (evol === null) {
+        html += '<td style="' + td + ';color:var(--text-ter)">—</td>';
+      } else {
+        var evolColor = evol >= 0 ? 'var(--accent-text)' : '#c01c28';
+        html += '<td style="' + td + ';color:' + evolColor + ';font-weight:600">' + (evol >= 0 ? '+' : '') + evol.toFixed(1) + '%</td>';
+      }
+    }
+    html += '<td style="' + td + '">' + Math.round(p.caht).toLocaleString('fr') + ' €</td>';
+    html += '<td style="' + td + '">' + Math.round(p.marge).toLocaleString('fr') + ' €</td>';
+    html += '<td style="' + td + ';color:' + (tm >= 28 ? 'var(--accent-text)' : '#c01c28') + ';font-weight:600">' + tm.toFixed(1) + '%</td>';
+    html += '<td style="' + td + '">' + Math.round(p.stock).toLocaleString('fr') + '</td>';
+    html += '</tr>';
+  }
+  var tdT = 'padding:6px 8px;text-align:right;font-weight:700;border-top:2px solid var(--border);background:var(--surface2)';
+  html += '<tr>';
+  html += '<td style="' + tdT + '"></td>';
+  html += '<td style="' + tdT + ';text-align:left">TOTAL (' + nbRefs + ' réf.)</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
+  if (hasN1) {
+    var evolTot = (totQteN1Found && totQteN1 > 0) ? ((totQte - totQteN1) / totQteN1 * 100) : null;
+    html += '<td style="' + tdT + '">' + (totQteN1Found ? Math.round(totQteN1).toLocaleString('fr') : '—') + '</td>';
+    html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
+    html += '<td style="' + tdT + (evolTot === null ? '' : (';color:' + (evolTot >= 0 ? 'var(--accent-text)' : '#c01c28'))) + '">' + (evolTot === null ? '—' : (evolTot >= 0 ? '+' : '') + evolTot.toFixed(1) + '%') + '</td>';
+  }
+  html += '<td style="' + tdT + '">' + Math.round(totCaht).toLocaleString('fr') + ' €</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totMarge).toLocaleString('fr') + ' €</td>';
+  html += '<td style="' + tdT + ';color:' + (tauxMarge >= 28 ? 'var(--accent-text)' : '#c01c28') + '">' + tauxMarge.toFixed(1) + '%</td>';
+  html += '<td style="' + tdT + '">' + Math.round(totStock).toLocaleString('fr') + '</td>';
+  html += '</tr></tbody></table></div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+  decCurrentStats = { labo: labo, caht: caAnnu, caPeriode: totCaht, margeEur: margeAnnu, taux: tauxMarge, mois: mois, periode: periode, nbRefs: nbRefs };
+  decAfficherConditions(labo);
+  decAfficherCarte(labo);
+  decAfficherOffresSpec(labo);
+  decAfficherTheaAnalyse(labo);
+}
+
+
+// ===== DECISION RDV : CONDITIONS LABO + VERDICT =====
+var decCurrentStats = null;
+var decCondCurrent = null;
+
+function decGetPeriode() {
+  try { var p = localStorage.getItem('decPeriode'); return p === 'encours' ? 'encours' : 'lissee'; } catch(e) { return 'lissee'; }
+}
+function decMoisEchus(d) {
+  // Mois échus depuis le 1er janvier (en juin -> 5 : janv a mai). En janvier, repli sur 12.
+  d = d || new Date();
+  var m = d.getMonth();
+  return m === 0 ? 12 : m;
+}
+function decChangerPeriode() {
+  var sel = document.getElementById('dec-periode');
+  if (sel) { try { localStorage.setItem('decPeriode', sel.value); } catch(e) {} }
+  if (decCurrentStats) decAfficherResume(decCurrentStats.labo);
+}
+
+function decGetCondData() {
+  try { return JSON.parse(localStorage.getItem('decCondLabos') || '{}'); } catch(e) { return {}; }
+}
+function decSaveCondData(d) {
+  try { localStorage.setItem('decCondLabos', JSON.stringify(d)); } catch(e) {}
+}
+function decGetSeuils() {
+  var s = { caOui: 5000, remOui: 35 };
+  try {
+    var saved = JSON.parse(localStorage.getItem('decSeuils') || '{}');
+    if (saved.caOui > 0) s.caOui = saved.caOui;
+    if (saved.remOui > 0) s.remOui = saved.remOui;
+  } catch(e) {}
+  return s;
+}
+function decParseUG(str) {
+  // "12+2" -> 2/(12+2) = 14.3% ; "10" -> 10%
+  if (!str) return 0;
+  str = String(str).trim();
+  var m = str.match(/^(\d+)\s*\+\s*(\d+)$/);
+  if (m) {
+    var a = parseFloat(m[1]), o = parseFloat(m[2]);
+    return (a + o) > 0 ? (o / (a + o)) * 100 : 0;
+  }
+  var n = parseFloat(str.replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function decNormaliserCond(c) {
+  // Migration ancien format { remise:'30' } -> marches[]
+  c = c || {};
+  if (!c.marches || !c.marches.length) {
+    var rem = parseFloat(c.remise);
+    c.marches = [{ nom: 'G\u00e9n\u00e9ral', mots: '', remise: isNaN(rem) ? '' : rem }];
+  }
+  if (c.ug === undefined) c.ug = '';
+  if (c.rfa === undefined) c.rfa = '';
+  if (c.franco === undefined) c.franco = '';
+  if (c.seuilCA === undefined || c.seuilRem === undefined) {
+    var defS = decGetSeuils();
+    if (c.seuilCA === undefined) c.seuilCA = defS.caOui;
+    if (c.seuilRem === undefined) c.seuilRem = defS.remOui;
+  }
+  if (!c.marchesRetenus) c.marchesRetenus = [];
+  if (c.dateDebutEngagement === undefined) c.dateDebutEngagement = '';
+  if (c.dateFinEngagement === undefined) c.dateFinEngagement = '';
+  if (!c.offresSpec) c.offresSpec = [];
+  c.offresSpec.forEach(function(o) {
+    if ((o.seuils === undefined || o.remises === undefined) && o.paliers) {
+      var p = decParsePaliers(o.paliers);
+      o.seuils = p.map(function(x){ return x.seuil; }).join(', ');
+      o.remises = p.map(function(x){ return x.remise; }).join(', ');
+    }
+    if (o.seuils === undefined) o.seuils = '';
+    if (o.remises === undefined) o.remises = '';
+    delete o.paliers;
+  });
+  delete c.remise;
+  return c;
+}
+function decAffecterMarches(labo, marches, prodsOverride) {
+  // Affecte chaque produit Ospharm au 1er marche dont un mot-cle matche le libelle ;
+  // sinon au 1er marche sans mots-cles (fourre-tout). Retourne stats + remise ponderee par CA.
+  var prods = prodsOverride || ((typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : []);
+  var stats = [], motsM = [];
+  var idxDef = 0;
+  for (var j = 0; j < marches.length; j++) {
+    stats.push({ ca: 0, nb: 0 });
+    motsM.push(String(marches[j].mots || '').split(',').map(function(m){ return m.trim().toUpperCase(); }).filter(function(m){ return m.length > 0; }));
+  }
+  for (var j = 0; j < marches.length; j++) { if (motsM[j].length === 0) { idxDef = j; break; } }
+  var caTot = 0, caPond = 0;
+  for (var i = 0; i < prods.length; i++) {
+    var lib = String(prods[i].lib || '').toUpperCase();
+    var idx = idxDef;
+    for (var j = 0; j < marches.length; j++) {
+      var hit = false;
+      for (var k = 0; k < motsM[j].length; k++) { if (lib.indexOf(motsM[j][k]) !== -1) { hit = true; break; } }
+      if (hit) { idx = j; break; }
+    }
+    stats[idx].ca += prods[i].caht;
+    stats[idx].nb++;
+    caTot += prods[i].caht;
+    caPond += prods[i].caht * (parseFloat(marches[idx].remise) || 0);
+  }
+  return { stats: stats, caTot: caTot, remisePonderee: caTot > 0 ? caPond / caTot : (parseFloat(marches[idxDef].remise) || 0) };
+}
+function decPersist() {
+  if (!decCurrentStats || !decCondCurrent) return;
+  var all = decGetCondData();
+  all[decCurrentStats.labo] = decCondCurrent;
+  decSaveCondData(all);
+}
+function decUpdMarche(i, key, val) {
+  if (!decCondCurrent || !decCondCurrent.marches[i]) return;
+  decCondCurrent.marches[i][key] = val;
+  decPersist();
+  decRefreshAffectation();
+}
+function decUpdCond(key, val) {
+  if (!decCondCurrent) return;
+  decCondCurrent[key] = val;
+  decPersist();
+  decCalculerVerdict();
+}
+function decAddMarche() {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.marches.push({ nom: 'March\u00e9 ' + (decCondCurrent.marches.length + 1), mots: '', remise: '' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decDelMarche(i) {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.marches.splice(i, 1);
+  if (decCondCurrent.marches.length === 0) decCondCurrent.marches.push({ nom: 'G\u00e9n\u00e9ral', mots: '', remise: '' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decAddOffreSpec() {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.offresSpec.push({ titre: 'Offre volumes', mots: '', seuils: '84, 156', remises: '50, 55' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decUpdOffreSpec(i, key, val) {
+  if (!decCondCurrent || !decCondCurrent.offresSpec[i]) return;
+  decCondCurrent.offresSpec[i][key] = val;
+  decPersist();
+  if (decCurrentStats) decAfficherOffresSpec(decCurrentStats.labo);
+}
+function decDelOffreSpec(i) {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.offresSpec.splice(i, 1);
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decParseListe(str) {
+  return (str || '').split(',').map(function(s){ return parseFloat(s.replace(',', '.').trim()); }).filter(function(n){ return !isNaN(n); });
+}
+function decParsePaliersSR(seuils, remises) {
+  var s = decParseListe(seuils), r = decParseListe(remises), out = [];
+  for (var i = 0; i < Math.min(s.length, r.length); i++) out.push({ seuil: s[i], remise: r[i] });
+  return out;
+}
+// Compat ascendante (ancien format "seuil:remise, ...")
+function decAddMarcheRetenu() {
+  if (!decCondCurrent || !decCurrentStats) return;
+  var today = new Date().toISOString().slice(0,10);
+  decCondCurrent.marchesRetenus.push({ nom: '', dateDebut: today, dateFin: '', notes: '' });
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decUpdMarcheRetenu(i, key, val) {
+  if (!decCondCurrent || !decCondCurrent.marchesRetenus[i]) return;
+  decCondCurrent.marchesRetenus[i][key] = val;
+  decPersist();
+}
+function decDelMarcheRetenu(i) {
+  if (!decCondCurrent || !decCurrentStats) return;
+  decCondCurrent.marchesRetenus.splice(i, 1);
+  decPersist();
+  decRenderConditions(decCurrentStats.labo);
+}
+function decParsePaliers(str) {
+  var out = [];
+  (str || '').split(',').forEach(function(part) {
+    var m = part.match(/(\d+(?:[.,]\d+)?)\s*:\s*(\d+(?:[.,]\d+)?)/);
+    if (m) out.push({ seuil: parseFloat(m[1].replace(',','.')), remise: parseFloat(m[2].replace(',','.')) });
+  });
+  return out;
+}
+function decAfficherOffresSpec(labo) {
+  var el = document.getElementById('dec-offres-spec');
+  if (!el || !decCondCurrent) return;
+  var html = '';
+  (decCondCurrent.offresSpec || []).forEach(function(o) {
+    if (!o.mots || !o.titre) return;
+    var paliers = decParsePaliersSR(o.seuils, o.remises);
+    if (paliers.length === 0) return;
+    var obligatoires = decParseObligatoires(o.obligatoires);
+    html += decTheaAnalyseOffreSpecifique(o.titre, o.mots, paliers, labo, obligatoires);
+  });
+  el.innerHTML = html;
+  el.style.display = html ? 'block' : 'none';
+}
+function decRefreshAffectation() {
+  // Met a jour les CA captes par marche + le verdict, sans re-render (conserve le focus de saisie)
+  if (!decCurrentStats || !decCondCurrent) return;
+  var aff = decAffecterMarches(decCurrentStats.labo, decCondCurrent.marches);
+  for (var i = 0; i < decCondCurrent.marches.length; i++) {
+    var s = document.getElementById('dec-m-ca-' + i);
+    if (s) s.textContent = Math.round(aff.stats[i].ca).toLocaleString('fr') + ' \u20ac \u00b7 ' + aff.stats[i].nb + ' r\u00e9f.';
+  }
+  decCalculerVerdict();
+}
+// ===== PRE-REMPLISSAGE CONDITIONS DEPUIS L'OFFRE THEA =====
+function decTheaCondVierge(c) {
+  if (!c) return true;
+  var m = c.marches || [];
+  var aRemise = false;
+  for (var i = 0; i < m.length; i++) { if (String(m[i].mots || '').trim() || String(m[i].remise || '').trim() !== '') aRemise = true; }
+  return !aRemise && !String(c.ug || '').trim() && !String(c.rfa || '').trim() && !String(c.franco || '').trim();
+}
+function decTheaPrefillConditions(labo, force) {
+  if (String(labo || '').toUpperCase().indexOf('THEA') < 0) return false;
+  if (force && !confirm('Remplacer les conditions saisies par celles de l\u2019offre UPP Th\u00e9a (taux du palier recommand\u00e9) ?')) return false;
+  // Palier de r\u00e9f\u00e9rence : celui du plan d'action (palier sup. \u00e0 port\u00e9e sinon recommand\u00e9), d\u00e9faut March\u00e9 1
+  var a = decTheaAnalyse(labo);
+  var palier = (a && (a.nudge || a.reco)) ? (a.nudge || a.reco) : null;
+  var niveau = DEC_THEA_NIVEAUX[0];
+  if (palier) { for (var i = 0; i < DEC_THEA_NIVEAUX.length; i++) { if (DEC_THEA_NIVEAUX[i].nom === palier.nom) niveau = DEC_THEA_NIVEAUX[i]; } }
+  var t = niveau.taux;
+  var cond = {
+    marches: [
+      { nom: 'Th\u00e9alose 15ml',   mots: 'THEALOSE', remise: t.thealose },
+      { nom: 'Autres RX 0%',        mots: 'OFTAMAC, BLEPHADEMODEX, NUTROF UNO', remise: 0 },
+      { nom: 'Vitabact flacon',     mots: 'VITABACT', remise: t.vitabact_fl },
+      { nom: 'Monoprost',           mots: 'MONOPROST', remise: t.monoprost },
+      { nom: 'Nutrof Total',        mots: 'NUTROF', remise: t.nutrof180 },
+      { nom: 'Cromadoses',          mots: 'CROMA', remise: t.cromadoses },
+      { nom: 'Blepha',              mots: 'BLEPHA', remise: t.blepha },
+      { nom: 'OTC offre',           mots: 'LARMECRAN, MULTILARM, NAABAK, NUTRILARM, OPHTAKIT, THEALOZ, THEAPHY, ZAGRAPA, ZASPRAY, VITAMINE B12', remise: t.otc },
+      { nom: 'Hors offre',          mots: '', remise: 0 }
+    ],
+    ug: '', rfa: '', franco: 114,
+    seuilCA: decGetSeuils().caOui, seuilRem: 30,
+    prefillPalier: niveau.nom
+  };
+  if (!cond.offresSpec || cond.offresSpec.length === 0) {
+    cond.offresSpec = [{ titre: 'Offre Vitabact volumes (permanente)', mots: 'VITABACT', seuils: '84, 156', remises: '50, 55' }];
+  }
+  if (!cond.marchesRetenus || cond.marchesRetenus.length === 0) {
+    cond.marchesRetenus = [
+      { nom: 'March\u00e9 2 OTC (156u, 50% OTC)', dateDebut: '2026-02-16', dateFin: '2026-12-31', notes: 'Vitabact 50%, Monoprost 4%, Cromadoses 7%, Nutrof 30%, Th\u00e9alose 16,5%' },
+      { nom: 'Offre Vitabact volumes (84/156u)', dateDebut: '2026-02-16', dateFin: '2026-12-31', notes: '' }
+    ];
+  }
+  var all = decGetCondData();
+  all[labo] = cond;
+  decSaveCondData(all);
+  decCondCurrent = cond;
+  if (force && decCurrentStats) { decRenderConditions(labo); decAfficherOffresSpec(labo); }
+  return true;
+}
+
+function decAfficherConditions(labo) {
+  var all = decGetCondData();
+  if (String(labo || '').toUpperCase().indexOf('THEA') >= 0 && decTheaCondVierge(all[labo])) {
+    decTheaPrefillConditions(labo, false);
+  } else {
+    decCondCurrent = decNormaliserCond(all[labo]);
+  }
+  decRenderConditions(labo);
+  decRenderConditionsCommerciales(labo);
+}
+async function decImporterStockLGPI(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('dec-stock-status');
+  var labo = decCurrentStats ? decCurrentStats.labo : null;
+  if (!labo || !decOspharmProds || !decOspharmProds[labo]) {
+    if (status) { status.textContent = 'Importez d\'abord l\'export Ospharm pour ce labo.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (status) { status.textContent = 'Lecture export stock LGPI (Excel)...'; status.style.color = 'var(--text-sec)'; }
+
+  try {
+    var data = await file.arrayBuffer();
+    var wb = XLSX.read(data, { type: 'array' });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+    if (rows.length === 0) { if (status) { status.textContent = 'Fichier vide ou format non reconnu.'; status.style.color = 'var(--danger)'; } return; }
+
+    // Detecter les colonnes par leur libelle (insensible aux variations mineures)
+    var cols = Object.keys(rows[0]);
+    var colCip = cols.find(function(c){ return c.toLowerCase().indexOf('code cip') >= 0; });
+    var colRef = cols.find(function(c){ return c.toLowerCase().indexOf('code r') >= 0 && c.toLowerCase().indexOf('rent') >= 0; });
+    var colStockBoite = cols.find(function(c){ return c.toLowerCase().indexOf('stock') >= 0 && c.toLowerCase().indexOf('bo') >= 0; });
+
+    if (!colStockBoite) { if (status) { status.textContent = 'Colonne stock introuvable dans ce fichier.'; status.style.color = 'var(--danger)'; } return; }
+
+    var stockByEan = {};
+    var stockByCip = {};
+    rows.forEach(function(r) {
+      var stock = parseInt(r[colStockBoite]) || 0;
+      if (colRef) {
+        var ref = String(r[colRef] || '').replace(/\D/g, '');
+        if (ref.length >= 8) stockByEan[ref] = stock;
+      }
+      if (colCip) {
+        var cip = String(r[colCip] || '').replace(/\D/g, '');
+        if (cip) stockByCip[cip] = stock;
+      }
+    });
+
+    var maj = 0;
+    decOspharmProds[labo].forEach(function(p) {
+      if (!p.ean) return;
+      var pean = String(p.ean).replace(/\D/g, '');
+      if (stockByEan[pean] !== undefined) { p.stock = stockByEan[pean]; maj++; }
+      else if (stockByCip[pean] !== undefined) { p.stock = stockByCip[pean]; maj++; }
+    });
+
+    if (status) { status.textContent = '✓ Stock LGPI (a l\'instant T) mis a jour pour ' + maj + '/' + decOspharmProds[labo].length + ' produit(s) — plus fiable que le stock Ospharm.'; status.style.color = 'var(--accent-text)'; }
+    decAfficherResume(labo);
+  } catch(e) {
+    if (status) { status.textContent = 'Erreur : ' + e.message; status.style.color = 'var(--danger)'; }
+  }
+}
+function decRenderConditionsCommerciales(labo) {
+  var el = document.getElementById('dec-cond-commerciales');
+  if (!el) return;
+  var laboUp = String(labo || '').toUpperCase();
+  var laboObj = Object.values(condLabos).find(function(l) {
+    if (!l || !l.nom || !laboUp) return false;
+    var nomUp = l.nom.toUpperCase();
+    return laboUp.indexOf(nomUp) >= 0 || nomUp.indexOf(laboUp) >= 0;
+  }) || null;
+  if (!laboObj) { el.innerHTML = ''; el.style.display = 'none'; return; }
+
+  var marches = laboObj.marches_negocies || [];
+  var paliers = laboObj.paliers_references || [];
+  if (marches.length === 0 && paliers.length === 0) { el.innerHTML = ''; el.style.display = 'none'; return; }
+
+  var html = '<div style="font-size:12px;font-weight:600;margin-bottom:8px">📋 Conditions commerciales — ' + laboObj.nom + ' <span style="font-size:10px;color:var(--text-ter);font-weight:400">(valable toute l\'année, saisi dans l\'onglet Conditions commerciales)</span></div>';
+
+  if (marches.length > 0) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+    marches.forEach(function(m) {
+      html += '<span style="font-size:11px;background:var(--surface3);padding:3px 9px;border-radius:12px;color:var(--text-sec)">' + (m.label||'?') + ' <strong style="color:var(--accent-text)">' + (m.rem||0) + '%</strong></span>';
+    });
+    html += '</div>';
+  }
+
+  if (paliers.length > 0) {
+    var sortedP = paliers.slice().sort(function(a,b){ return a.nb_refs - b.nb_refs; });
+    html += '<div style="font-size:10px;color:var(--text-ter);margin-bottom:4px">Paliers par nombre de références :</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    sortedP.forEach(function(p) {
+      html += '<span style="font-size:11px;background:var(--surface3);padding:3px 9px;border-radius:12px;color:var(--text-sec)">' + p.nb_refs + ' réf. → <strong style="color:var(--accent-text)">' + p.remise + '%</strong></span>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div style="margin-top:8px"><button type="button" onclick="showTab(\'cond\')" style="font-size:10px;padding:3px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-sec);cursor:pointer">→ Modifier dans Conditions commerciales</button></div>';
+
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+function decRenderConditions(labo) {
+  var el = document.getElementById('dec-conditions');
+  if (!el || !decCondCurrent) return;
+  var c = decCondCurrent;
+  var seuils = decGetSeuils();
+  var esc = function(v){ return String(v == null ? '' : v).replace(/"/g, '&quot;'); };
+  var aff = decAffecterMarches(labo, c.marches);
+  var inp = 'font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff';
+  var lbl = 'font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px';
+  var html = '<strong style="font-size:12px">Conditions \u2014 ' + labo + '</strong>';
+  html += '<span style="font-size:10px;color:var(--text-ter);margin-left:8px">march\u00e9s n\u00e9goci\u00e9s en d\u00e9but d\u2019ann\u00e9e \u2014 sauvegard\u00e9s pour ce labo</span>';
+  if (String(labo || '').toUpperCase().indexOf('THEA') >= 0) {
+    html += '<button type="button" onclick="decTheaPrefillConditions(decCurrentStats.labo, true)" style="margin-left:10px;font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);color:var(--accent-text);cursor:pointer">\u21ba Pr\u00e9-remplir (offre UPP)</button>';
+    if (c.prefillPalier) html += '<span style="font-size:10px;color:var(--accent-text);margin-left:8px">pr\u00e9-rempli : taux du ' + c.prefillPalier + ' (palier objectif) \u2014 ajustable</span>';
+  }
+  for (var i = 0; i < c.marches.length; i++) {
+    var m = c.marches[i];
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px">';
+    html += '<div><label style="' + lbl + '">March\u00e9</label><input type="text" value="' + esc(m.nom) + '" style="' + inp + ';width:120px" oninput="decUpdMarche(' + i + ',\'nom\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(m.mots) + '" placeholder="ex: WHEY, PROTEINE" style="' + inp + ';width:190px" oninput="decUpdMarche(' + i + ',\'mots\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Remise (%)</label><input type="number" min="0" max="80" step="0.5" value="' + esc(m.remise) + '" style="' + inp + ';width:80px" oninput="decUpdMarche(' + i + ',\'remise\',this.value)"></div>';
+    html += '<span id="dec-m-ca-' + i + '" style="font-size:11px;color:var(--text-sec);padding-bottom:7px">' + Math.round(aff.stats[i].ca).toLocaleString('fr') + ' \u20ac \u00b7 ' + aff.stats[i].nb + ' r\u00e9f.</span>';
+    if (String(labo || '').toUpperCase().indexOf('THEA') >= 0) {
+      var pal = theaPaliersPourMarche(m.nom, m.mots);
+      if (pal) {
+        html += '<div style="font-size:10px;color:var(--text-ter);padding-bottom:7px">Paliers UPP&nbsp;: ' + pal.map(function(p, pi) {
+          var actif = Math.abs(p - parseFloat(m.remise)) < 0.05;
+          return '<span style="' + (actif ? 'font-weight:700;color:var(--accent-text)' : '') + '">M' + (pi+1) + ' ' + p + '%</span>';
+        }).join(' / ') + '</div>';
+      }
+    }
+    if (c.marches.length > 1) html += '<button type="button" onclick="decDelMarche(' + i + ')" title="Supprimer ce march\u00e9" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
+    html += '</div>';
+  }
+  html += '<button type="button" onclick="decAddMarche()" style="margin-top:8px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ March\u00e9</button>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:14px;padding-top:8px;border-top:1px dashed var(--border)">\ud83c\udfaf Offres volumes sp\u00e9cifiques (produit ou groupe de produits, paliers ind\u00e9pendants de l\u2019engagement g\u00e9n\u00e9ral)</div>';
+  (c.offresSpec || []).forEach(function(o, i) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:6px">';
+    html += '<div><label style="' + lbl + '">Titre</label><input type="text" value="' + esc(o.titre) + '" placeholder="ex: Offre Vitabact volumes" style="' + inp + ';width:180px" oninput="decUpdOffreSpec(' + i + ',\'titre\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Mots-cl\u00e9s produits (virgules)</label><input type="text" value="' + esc(o.mots) + '" placeholder="ex: VITABACT" style="' + inp + ';width:160px" oninput="decUpdOffreSpec(' + i + ',\'mots\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Paliers (unit\u00e9s/an, virgules)</label><input type="text" value="' + esc(o.seuils) + '" placeholder="84, 156" style="' + inp + ';width:130px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'seuils\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Remises (%, virgules)</label><input type="text" value="' + esc(o.remises) + '" placeholder="50, 55" style="' + inp + ';width:130px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'remises\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Obligatoires (ex: 4:TOUT|1:HYDRA,CICA)</label><input type="text" value="' + esc(o.obligatoires) + '" placeholder="4:TOUT" style="' + inp + ';width:170px;font-family:monospace;font-size:11px" oninput="decUpdOffreSpec(' + i + ',\'obligatoires\',this.value)"></div>';
+    html += '<button type="button" onclick="decDelOffreSpec(' + i + ')" title="Supprimer" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
+    html += '</div>';
+  });
+  html += '<button type="button" onclick="decAddOffreSpec()" style="margin-top:6px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ Offre volumes sp\u00e9cifique</button>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:14px;padding-top:8px;border-top:1px dashed var(--border)">\ud83d\udcc5 March\u00e9s retenus (historique \u2014 marche choisi, p\u00e9riode de validit\u00e9, pour s\u2019y retrouver plus tard)</div>';
+  (c.marchesRetenus || []).forEach(function(mr, i) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:6px">';
+    html += '<div><label style="' + lbl + '">March\u00e9 retenu</label><input type="text" value="' + esc(mr.nom) + '" placeholder="ex: March\u00e9 2 OTC (156u)" style="' + inp + ';width:200px" oninput="decUpdMarcheRetenu(' + i + ',\'nom\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">D\u00e9but</label><input type="date" value="' + esc(mr.dateDebut) + '" style="' + inp + ';width:140px" oninput="decUpdMarcheRetenu(' + i + ',\'dateDebut\',this.value)"></div>';
+    html += '<div><label style="' + lbl + '">Fin</label><input type="date" value="' + esc(mr.dateFin) + '" style="' + inp + ';width:140px" oninput="decUpdMarcheRetenu(' + i + ',\'dateFin\',this.value)"></div>';
+    html += '<div style="flex:1;min-width:160px"><label style="' + lbl + '">Notes</label><input type="text" value="' + esc(mr.notes) + '" placeholder="ex: 4% Monoprost, 30% Nutrof..." style="' + inp + ';width:100%" oninput="decUpdMarcheRetenu(' + i + ',\'notes\',this.value)"></div>';
+    html += '<button type="button" onclick="decDelMarcheRetenu(' + i + ')" title="Supprimer" style="font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--danger);cursor:pointer;margin-bottom:1px">\u2715</button>';
+    html += '</div>';
+  });
+  html += '<button type="button" onclick="decAddMarcheRetenu()" style="margin-top:6px;font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer">+ March\u00e9 retenu</button>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
+  html += '<div><label style="' + lbl + '">UG (ex: 12+2 ou %)</label><input type="text" value="' + esc(c.ug) + '" placeholder="12+2" style="' + inp + ';width:100px" oninput="decUpdCond(\'ug\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">RFA (%)</label><input type="number" min="0" max="30" step="0.5" value="' + esc(c.rfa) + '" style="' + inp + ';width:100px" oninput="decUpdCond(\'rfa\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">Palier impos\u00e9 / franco (\u20ac)</label><input type="number" min="0" step="10" value="' + esc(c.franco) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'franco\',this.value)"></div>';
+  html += '</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
+  html += '<div><label style="' + lbl + '">Seuil CA annuel OUI (\u20ac) \u2014 ce labo</label><input id="dec-s-ca" type="number" min="0" step="500" value="' + esc(c.seuilCA) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'seuilCA\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">Remise totale mini OUI (%) \u2014 ce labo</label><input id="dec-s-rem" type="number" min="0" max="80" step="1" value="' + esc(c.seuilRem) + '" style="' + inp + ';width:110px" oninput="decUpdCond(\'seuilRem\',this.value)"></div>';
+  html += '</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">';
+  html += '<div><label style="' + lbl + '">Engagement march\u00e9 \u2014 d\u00e9but</label><input type="date" value="' + esc(c.dateDebutEngagement) + '" style="' + inp + ';width:150px" oninput="decUpdCond(\'dateDebutEngagement\',this.value)"></div>';
+  html += '<div><label style="' + lbl + '">Engagement march\u00e9 \u2014 fin</label><input type="date" value="' + esc(c.dateFinEngagement) + '" style="' + inp + ';width:150px" oninput="decUpdCond(\'dateFinEngagement\',this.value)"></div>';
+  if (c.dateDebutEngagement && c.dateFinEngagement) {
+    var dD = new Date(c.dateDebutEngagement), dF = new Date(c.dateFinEngagement), dN = new Date();
+    var moisTotal = (dF.getFullYear()-dD.getFullYear())*12 + (dF.getMonth()-dD.getMonth());
+    var moisRestants = Math.max(0, (dF.getFullYear()-dN.getFullYear())*12 + (dF.getMonth()-dN.getMonth()));
+    var enCours = dN >= dD && dN <= dF;
+    html += '<span style="font-size:11px;color:var(--text-sec);padding-bottom:7px">Dur\u00e9e totale : <strong>' + moisTotal + ' mois</strong>' + (enCours ? ' \u00b7 reste <strong>' + moisRestants + ' mois</strong>' : (dN < dD ? ' \u00b7 pas encore commenc\u00e9' : ' \u00b7 \u00e9chu')) + '</span>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+  decCalculerVerdict();
+}
+function decAnalysePalier() {
+  // Cherche le labo correspondant dans condLabos (Conditions commerciales) par nom approche
+  var laboNom = (decCurrentStats && decCurrentStats.labo) ? decCurrentStats.labo : '';
+  var laboNomUp = String(laboNom || '').toUpperCase();
+  var laboObj = Object.values(condLabos).find(function(l) {
+    if (!l || !l.nom || !laboNomUp) return false;
+    var nomUp = l.nom.toUpperCase();
+    return laboNomUp.indexOf(nomUp) >= 0 || nomUp.indexOf(laboNomUp) >= 0;
+  }) || null;
+  if (!laboObj) return null;
+
+  var resultats = [];
+
+  // 1) Paliers par nombre de references (ex: MAM)
+  if (laboObj.paliers_references && laboObj.paliers_references.length > 0 && decCurrentStats.nbRefs) {
+    var pr = laboObj.paliers_references.slice().sort(function(a,b){ return a.nb_refs - b.nb_refs; });
+    var actRefs = decCurrentStats.nbRefs;
+    var palierActuel = null, palierSuivant = null;
+    for (var i = 0; i < pr.length; i++) {
+      if (actRefs >= pr[i].nb_refs) palierActuel = pr[i];
+      else { palierSuivant = pr[i]; break; }
+    }
+    if (palierSuivant) {
+      var ecartPct = (palierSuivant.nb_refs - actRefs) / palierSuivant.nb_refs * 100;
+      resultats.push({
+        type: 'references',
+        actuel: palierActuel,
+        suivant: palierSuivant,
+        valeurActuelle: actRefs,
+        ecartPct: ecartPct,
+        atteignable: ecartPct <= 20,
+        unite: 'réf.'
+      });
+    } else if (palierActuel) {
+      resultats.push({ type: 'references', actuel: palierActuel, suivant: null, valeurActuelle: actRefs, ecartPct: 0, atteignable: false, unite: 'réf.', maxAtteint: true });
+    }
+  }
+
+  // 2) Paliers par CA (seuilCA defini dans Decision RDV ou marches_negocies avec seuils CA)
+  // Si periode d'engagement definie (dateDebut/dateFin), projeter le CA sur la duree REELLE restante
+  // au lieu de l'annualisation fixe sur 12 mois (decCurrentStats.caht).
+  if (decCondCurrent && decCondCurrent.seuilCA) {
+    var caBase = decCurrentStats.caht; // CA annualise (12 mois) par defaut
+    var caProjType = '12 mois (par defaut)';
+    var c2 = decCondCurrent;
+    if (c2.dateDebutEngagement && c2.dateFinEngagement && decCurrentStats.caPeriode && decCurrentStats.mois > 0) {
+      var dD2 = new Date(c2.dateDebutEngagement), dF2 = new Date(c2.dateFinEngagement);
+      var moisTotalEng = Math.max(1, (dF2.getFullYear()-dD2.getFullYear())*12 + (dF2.getMonth()-dD2.getMonth()));
+      // CA moyen mensuel observe (sur la periode d'import Ospharm) x duree totale de l'engagement
+      var caMoyenMensuel = decCurrentStats.caPeriode / decCurrentStats.mois;
+      caBase = caMoyenMensuel * moisTotalEng;
+      caProjType = moisTotalEng + ' mois (dur\u00e9e r\u00e9elle de l\'engagement)';
+    }
+    var caActuel = caBase;
+    var caSeuil = parseFloat(decCondCurrent.seuilCA);
+    if (!isNaN(caSeuil) && caSeuil > 0) {
+      var ecartCaPct = (caSeuil - caActuel) / caSeuil * 100;
+      if (caActuel < caSeuil) {
+        resultats.push({
+          type: 'ca',
+          valeurActuelle: caActuel,
+          suivant: { seuil: caSeuil },
+          ecartPct: ecartCaPct,
+          atteignable: ecartCaPct <= 20,
+          unite: '€',
+          projType: caProjType
+        });
+      }
+    }
+  }
+
+  return resultats.length > 0 ? resultats : null;
+}
+
+function decRenderPalierAnalyse() {
+  var analyses = decAnalysePalier();
+  var container = document.getElementById('dec-palier-analyse');
+  if (!container) return;
+  if (!analyses || analyses.length === 0) { container.innerHTML = ''; container.style.display = 'none'; return; }
+
+  var html = '<div style="font-size:12px;font-weight:600;margin-bottom:8px">📊 Analyse de palier (vs Conditions commerciales)</div>';
+  analyses.forEach(function(a) {
+    if (a.type === 'references') {
+      if (a.maxAtteint) {
+        html += '<div style="font-size:12px;color:var(--accent-text);margin-bottom:6px">✓ Palier maximum atteint : ' + a.actuel.remise + '% (' + a.valeurActuelle + ' ' + a.unite + ')</div>';
+      } else {
+        var col = a.atteignable ? 'var(--accent-text)' : 'var(--text-sec)';
+        var icone = a.atteignable ? '🎯' : '○';
+        html += '<div style="font-size:12px;color:' + col + ';margin-bottom:6px;padding:8px;background:' + (a.atteignable ? 'var(--accent-bg)' : 'var(--surface2)') + ';border-radius:var(--radius-sm)">';
+        html += icone + ' Palier actuel : <strong>' + (a.actuel ? a.actuel.remise + '%' : '0%') + '</strong> (' + a.valeurActuelle + ' ' + a.unite + ') → ';
+        html += 'Palier suivant : <strong>' + a.suivant.remise + '%</strong> à ' + a.suivant.nb_refs + ' ' + a.unite;
+        html += ' — écart : <strong>' + a.ecartPct.toFixed(1) + '%</strong>';
+        if (a.atteignable) html += ' <strong>→ ATTEIGNABLE</strong> (≤20% d\'écart, soit ' + Math.ceil(a.suivant.nb_refs - a.valeurActuelle) + ' ' + a.unite + ' à ajouter)';
+        html += '</div>';
+      }
+    } else if (a.type === 'ca') {
+      var col2 = a.atteignable ? 'var(--accent-text)' : 'var(--text-sec)';
+      var icone2 = a.atteignable ? '🎯' : '○';
+      html += '<div style="font-size:12px;color:' + col2 + ';margin-bottom:6px;padding:8px;background:' + (a.atteignable ? 'var(--accent-bg)' : 'var(--surface2)') + ';border-radius:var(--radius-sm)">';
+      html += icone2 + ' CA projeté (' + a.projType + ') : <strong>' + Math.round(a.valeurActuelle).toLocaleString('fr') + ' €</strong> → Seuil : <strong>' + Math.round(a.suivant.seuil).toLocaleString('fr') + ' €</strong>';
+      html += ' — écart : <strong>' + a.ecartPct.toFixed(1) + '%</strong>';
+      if (a.atteignable) html += ' <strong>→ ATTEIGNABLE</strong> (≤20% d\'écart, soit ' + Math.round(a.suivant.seuil - a.valeurActuelle).toLocaleString('fr') + ' € à générer)';
+      html += '</div>';
+    }
+  });
+  container.innerHTML = html;
+  container.style.display = 'block';
+}
+
+function decCalculerVerdict() {
+  var el = document.getElementById('dec-verdict');
+  if (!el || !decCurrentStats || !decCondCurrent) return;
+  var labo = decCurrentStats.labo;
+  var ca = decCurrentStats.caht;
+  var perimOffre = false;
+  var prodsBase = null;
+  var fctVerd = decCurrentStats.mois > 0 ? 12 / decCurrentStats.mois : 1;
+  if (String(labo || '').toUpperCase().indexOf('THEA') >= 0 && typeof decTheaEstEligible === 'function') {
+    var tousProds = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+    prodsBase = tousProds.filter(function(p){ return decTheaEstEligible(p.lib); });
+    if (prodsBase.length > 0) {
+      perimOffre = true;
+      var caP = 0;
+      for (var pv = 0; pv < prodsBase.length; pv++) caP += (prodsBase[pv].caht || 0);
+      ca = caP * fctVerd; // CA annualisé du périmètre offre uniquement
+    } else { prodsBase = null; }
+  }
+  function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+  var aff = decAffecterMarches(labo, decCondCurrent.marches, prodsBase);
+  var remPond = aff.remisePonderee;
+  var ugPct = decParseUG(decCondCurrent.ug);
+  var rfa = parseFloat(decCondCurrent.rfa) || 0;
+  var franco = parseFloat(decCondCurrent.franco) || 0;
+  var caOui = parseFloat(decCondCurrent.seuilCA);
+  var remOui = parseFloat(decCondCurrent.seuilRem);
+  if (isNaN(caOui)) caOui = 5000;
+  if (isNaN(remOui)) remOui = 35;
+  var remTot = remPond + ugPct + rfa;
+  var caOk = ca >= caOui;
+  var remOk = remTot >= remOui;
+  // 1) Faisabilité du palier impose : achats annuels = CA annualise x (1 - taux de marge)
+  var achatsAn = ca * (1 - (decCurrentStats.taux || 0) / 100);
+  var achatsMois = achatsAn / 12;
+  var palierHtml = '';
+  if (franco > 0 && achatsMois > 0) {
+    var nbMois = franco / achatsMois;
+    var pOk = nbMois <= 3;
+    var pCol = pOk ? 'var(--accent-text)' : 'var(--danger)';
+    var pTxt;
+    if (nbMois <= 1) pTxt = 'Palier ' + Math.round(franco).toLocaleString('fr') + ' \u20ac franchissable \u00e0 chaque commande mensuelle (achats \u2248 ' + Math.round(achatsMois).toLocaleString('fr') + ' \u20ac/mois).';
+    else if (pOk) pTxt = 'Palier ' + Math.round(franco).toLocaleString('fr') + ' \u20ac franchissable en groupant \u2248 ' + nbMois.toFixed(1) + ' mois d\u2019achats (' + Math.round(achatsMois).toLocaleString('fr') + ' \u20ac/mois).';
+    else pTxt = 'Palier ' + Math.round(franco).toLocaleString('fr') + ' \u20ac \u00e9lev\u00e9 : il faudrait grouper \u2248 ' + nbMois.toFixed(1) + ' mois d\u2019achats (' + Math.round(achatsMois).toLocaleString('fr') + ' \u20ac/mois) \u2192 risque de surstock, n\u00e9gocier le palier ou le franco.';
+    palierHtml = '<div style="font-size:12px;font-weight:600;color:' + pCol + ';margin-bottom:6px">' + (pOk ? '\u2713 ' : '\u26a0 ') + pTxt + '</div>';
+  }
+  // 2) Marge projetee : gain UG + RFA applique a la marge actuelle (cout d'achat reduit)
+  var tAct = decCurrentStats.taux || 0;
+  var tProj = (1 - (1 - tAct / 100) * (1 - ugPct / 100) * (1 - rfa / 100)) * 100;
+  var margeProjHtml = '';
+  if (ugPct > 0 || rfa > 0) {
+    var margeEurProj = ca * tProj / 100;
+    margeProjHtml = '<div style="font-size:11px;margin-top:4px;color:var(--text-sec)">Marge projet\u00e9e avec conditions : <strong>' + tProj.toFixed(1) + '%</strong> (vs ' + tAct.toFixed(1) + '% actuels) soit \u2248 ' + Math.round(margeEurProj).toLocaleString('fr') + ' \u20ac/an (+' + Math.round(margeEurProj - decCurrentStats.margeEur).toLocaleString('fr') + ' \u20ac).</div>';
+  }
+  var verdict, bg, fg, expl = [];
+  if (caOk && remOk) {
+    verdict = 'OUI'; bg = 'var(--accent-bg)'; fg = 'var(--accent-text)';
+    expl.push('CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac \u2265 ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac et remise totale ' + remTot.toFixed(1) + '% \u2265 ' + remOui + '%.');
+  } else if (ca < caOui / 2 && remTot < remOui - 10) {
+    verdict = 'NON'; bg = 'var(--danger-bg)'; fg = 'var(--danger)';
+    expl.push('CA faible (' + Math.round(ca).toLocaleString('fr') + ' \u20ac < ' + Math.round(caOui / 2).toLocaleString('fr') + ' \u20ac) et conditions insuffisantes (' + remTot.toFixed(1) + '% < ' + (remOui - 10) + '%).');
+  } else {
+    verdict = 'PEUT-\u00caTRE'; bg = 'var(--warn-bg)'; fg = 'var(--warn)';
+    if (!caOk) expl.push('CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac sous le seuil de ' + Math.round(caOui).toLocaleString('fr') + ' \u20ac \u2192 n\u00e9gocier UG/RFA pour compenser.');
+    if (!remOk) expl.push('Remise totale ' + remTot.toFixed(1) + '% : il manque ' + (remOui - remTot).toFixed(1) + ' pt(s) pour un OUI.');
+  }
+  var det = (perimOffre ? '<strong>P\u00e9rim\u00e8tre offre</strong> : CA annualis\u00e9 ' + Math.round(ca).toLocaleString('fr') + ' \u20ac (produits cit\u00e9s uniquement) \u00b7 ' : '') + 'Remise pond\u00e9r\u00e9e ' + remPond.toFixed(1) + '%' + (ugPct > 0 ? ' + UG ' + ugPct.toFixed(1) + '%' : '') + (rfa > 0 ? ' + RFA ' + rfa.toFixed(1) + '%' : '') + ' = <strong>' + remTot.toFixed(1) + '%</strong>';
+  var html = '<div style="padding:12px;border-radius:var(--radius-sm);background:' + bg + '">';
+  html += palierHtml;
+  html += '<span style="font-size:18px;font-weight:700;color:' + fg + '">' + verdict + '</span>';
+  html += '<span style="font-size:11px;color:var(--text-sec);margin-left:10px">' + det + '</span>';
+  for (var i = 0; i < expl.length; i++) html += '<div style="font-size:11px;margin-top:4px;color:var(--text-sec)">' + expl[i] + '</div>';
+  html += margeProjHtml;
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+  decRenderPalierAnalyse();
+}
+
+// ===== ANALYSE MARCHE THEA (engagement annuel 96/156/348) =====
+var DEC_THEA_NIVEAUX = [
+  { nom: 'March\u00e9 1', seuil: 96,  taux: { otc:45, blepha:30, thealose:16.5, vitabact_fl:45, monoprost:2, nutrof180:30, cromadoses:7, rx_autres:0 } },
+  { nom: 'March\u00e9 2', seuil: 156, taux: { otc:50, blepha:30, thealose:16.5, vitabact_fl:50, monoprost:4, nutrof180:30, cromadoses:7, rx_autres:0 } },
+  { nom: 'March\u00e9 3', seuil: 348, taux: { otc:50, blepha:35, thealose:16.5, vitabact_fl:55, monoprost:6, nutrof180:30, cromadoses:10, rx_autres:0 } }
+];
+var DEC_THEA_GAMMES_LABELS = { otc:'OTC Conseil', blepha:'Blepha', thealose:'Th\u00e9alose 15ml', vitabact_fl:'Vitabact flacon', monoprost:'Monoprost', nutrof180:'Nutrof Total 180', cromadoses:'Cromadoses', rx_autres:'Autres RX (0%)' };
+// Seuls les produits CITES dans l'offre UPP comptent pour l'engagement.
+// Les rembours\u00e9s cit\u00e9s (Th\u00e9alose, Vitabact fl, Monoprost, Nutrof, Cromadoses) sont l'exception Th\u00e9a (remises crois\u00e9es) ;
+// tout autre produit Th\u00e9a vendu (Dexafree, Dacudoses, Sterdex, Hyabak...) est EXCLU du volume et du calcul de remise.
+var DEC_THEA_ELIGIBLES = ['LARMECRAN','MULTILARM','NAABAK','NUTRILARM','OPHTAKIT','THEALOZ','THEALOSE','THEAPHY','VITABACT','VITAMINE B12','ZAGRAPA','ZASPRAY','MONOPROST','NUTROF','OFTAMAC','CROMA','BLEPHA'];
+function decTheaEstEligible(lib) {
+  lib = String(lib || '').toUpperCase();
+  // Familles ambiguës : l'offre ne cite que la présentation UNIDOSES (Naabak 10 UD, B12 20 UD).
+  // Logique POSITIVE : sans marqueur UD/UNIDOSE explicite, on exclut (les flacons/solutions sont remboursés
+  // et leurs libellés varient trop pour une liste noire — ex. "NAABAK 4.9% COLLYRE SOLUTION 10ML").
+  var estUD = lib.indexOf('UNIDOSE') !== -1 || / UD\b|UD /.test(lib) || lib.indexOf('10 UD') !== -1 || lib.indexOf('20 UD') !== -1 || /\bUD$/.test(lib);
+  if (lib.indexOf('VITAMINE B12') !== -1 && !estUD) return false;
+  if (lib.indexOf('NAABAK') !== -1 && !estUD) return false;
+  for (var i = 0; i < DEC_THEA_ELIGIBLES.length; i++) {
+    if (lib.indexOf(DEC_THEA_ELIGIBLES[i]) !== -1) return true;
+  }
+  return false;
+}
+
+function decTheaGamme(lib) {
+  lib = String(lib || '').toUpperCase();
+  if (lib.indexOf('BLEPHADEMODEX') >= 0) return 'rx_autres';
+  if (lib.indexOf('THEALOSE') >= 0) return 'thealose';
+  if (lib.indexOf('VITABACT') >= 0) return (lib.indexOf('UNIDOSE') !== -1 || / UD\b|UD /.test(lib) || /\bUD$/.test(lib)) ? 'otc' : 'vitabact_fl';
+  if (lib.indexOf('MONOPROST') >= 0) return 'monoprost';
+  if (lib.indexOf('NUTROF') >= 0) return lib.indexOf('180') >= 0 ? 'nutrof180' : 'rx_autres';
+  if (lib.indexOf('OFTAMAC') >= 0) return 'rx_autres';
+  if (lib.indexOf('CROMA') >= 0) return 'cromadoses';
+  if (lib.indexOf('BLEPHA') >= 0) return 'blepha';
+  return 'otc';
+}
+// Multiples de commande Théa par mot-clé (bon UPP) — défaut 12
+// Références obligatoires de l'offre (assortiment imposé). Vide pour Théa (rien dans le bon UPP — à confirmer).
+// Format générique pour les autres labos : { label:'1 réf min parmi Lait Corps a/d', mots:['LAIT CORPS DUO','LAIT CORPS 1L'], min:1 }
+var DEC_THEA_OBLIGATOIRES = [];
+var DEC_THEA_MULTIPLES = [
+  ['BLEPHADERM', 3], ['NUTRILARM', 3], ['OPHTAKIT', 6], ['VITABACT', 6], ['VITAMINE B12', 6], ['BLEPHA', 6]
+];
+function decTheaMultiple(lib) {
+  lib = String(lib || '').toUpperCase();
+  for (var i = 0; i < DEC_THEA_MULTIPLES.length; i++) {
+    if (lib.indexOf(DEC_THEA_MULTIPLES[i][0]) !== -1) return DEC_THEA_MULTIPLES[i][1];
+  }
+  return 12;
+}
+function decTheaPlan(labo, a, niveauCible) {
+  // Plan de commande annuel pour atteindre le seuil du palier cible (palier supérieur à portée si <=20%, sinon recommandé),
+  // réparti au prorata des ventes OTC réelles, arrondi aux multiples Théa.
+  niveauCible = niveauCible || (a && a.reco);
+  if (!a || !niveauCible) return null;
+  var prods = (decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+  var fact = a.mois > 0 ? 12 / a.mois : 1;
+  var lignes = [];
+  for (var i = 0; i < prods.length; i++) {
+    if (!decTheaEstEligible(prods[i].lib)) continue;
+    var g = decTheaGamme(prods[i].lib);
+    if (g !== 'otc' && g !== 'blepha') continue;
+    var qa = (prods[i].qte || 0) * fact;
+    if (qa <= 0) continue;
+    lignes.push({ lib: prods[i].lib, ventes: qa, mult: decTheaMultiple(prods[i].lib), cmd: 0 });
+  }
+  if (!lignes.length) return null;
+  lignes.sort(function(x, y){ return y.ventes - x.ventes; });
+  var cible = niveauCible.seuil;
+  var tot = 0;
+  for (var i = 0; i < lignes.length; i++) {
+    var prop = lignes[i].ventes / a.volOTC * cible;
+    lignes[i].cmd = Math.round(prop / lignes[i].mult) * lignes[i].mult;
+    if (lignes[i].cmd === 0 && prop >= lignes[i].mult / 2) lignes[i].cmd = lignes[i].mult;
+    tot += lignes[i].cmd;
+  }
+  // Ajuster pour garantir total >= cible : bumper les plus gros vendeurs d'un multiple
+  var k = 0, garde = 0;
+  while (tot < cible && garde < 200) {
+    lignes[k % lignes.length].cmd += lignes[k % lignes.length].mult;
+    tot += lignes[k % lignes.length].mult;
+    k++; garde++;
+  }
+  var pauOTC = a.volOTC > 0 ? (function(){
+    // prix d'achat unitaire moyen OTC = achats OTC / volume OTC
+    var achatsOTC = 0;
+    for (var g in a.gammes) { if (g === 'otc' || g === 'blepha') achatsOTC += a.gammes[g].achats; }
+    return achatsOTC / a.volOTC;
+  })() : 0;
+  var effortU = Math.max(0, tot - a.volOTC);
+  return {
+    lignes: lignes, total: tot, cible: cible,
+    effortU: effortU,
+    effortPct: a.volOTC > 0 ? effortU / a.volOTC * 100 : 0,
+    effortEur: effortU * pauOTC,
+    effortMois: a.volOTC > 0 ? effortU / (a.volOTC / 12) : 0
+  };
+}
+
+function decTheaAnalyse(labo) {
+  var prods = (typeof decOspharmProds !== 'undefined' && decOspharmProds && decOspharmProds[labo]) ? decOspharmProds[labo] : [];
+  if (!prods.length) return null;
+  var periode = decGetPeriode();
+  var mois = periode === 'encours' ? decMoisEchus() : 12;
+  var fact = mois > 0 ? 12 / mois : 1;
+  // L'engagement Théa porte sur les unités OTC (gammes otc + blepha) : critère = ABSORPTION du volume.
+  // Les remboursés à remise croisée sont un bonus, hors critère. Achats = CA HT - marge (jamais "Prix achat HT" Ospharm).
+  var GAMMES_OTC = { otc: true, blepha: true };
+  var gammes = {};
+  var volOTC = 0, qteRx = 0, caOTC = 0, caRx = 0, achatsOTC = 0, achatsRx = 0, margeOTC = 0, margeRx = 0;
+  var exclus = { nb: 0, qte: 0, libs: [] };
+  for (var i = 0; i < prods.length; i++) {
+    var q = (prods[i].qte || 0) * fact;
+    if (!decTheaEstEligible(prods[i].lib)) {
+      if ((prods[i].qte || 0) > 0) { exclus.nb++; exclus.qte += q; if (exclus.libs.length < 4) exclus.libs.push(prods[i].lib); }
+      continue;
+    }
+    var g = decTheaGamme(prods[i].lib);
+    if (!gammes[g]) gammes[g] = { qte: 0, achats: 0 };
+    gammes[g].qte += q;
+    var achatsLigne = Math.max(0, (prods[i].caht || 0) - (prods[i].marge || 0)) * fact;
+    var margeLigne = (prods[i].marge || 0) * fact;
+    gammes[g].achats += achatsLigne;
+    var caLigne = (prods[i].caht || 0) * fact;
+    if (GAMMES_OTC[g]) { volOTC += q; margeOTC += margeLigne; caOTC += caLigne; achatsOTC += achatsLigne; }
+    else { qteRx += q; margeRx += margeLigne; caRx += caLigne; achatsRx += achatsLigne; }
+  }
+  var niveaux = DEC_THEA_NIVEAUX.map(function(n) {
+    var remOTC = 0, remRx = 0;
+    for (var g in gammes) {
+      var r = gammes[g].achats * (n.taux[g] || 0) / 100;
+      if (GAMMES_OTC[g]) remOTC += r; else remRx += r;
+    }
+    var effort = n.seuil - volOTC;
+    var s = volOTC > 0 ? Math.max(1, n.seuil / volOTC) : 1; // proportionner au volume du palier si > rythme
+    // Marge si TOUT le volume du palier est vendu : marge OTC actuelle proportionnée + remise OTC proportionnée,
+    // + part remboursés inchangée (le rythme RX ne dépend pas de l'engagement) + son bonus.
+    var margePalier = s * (margeOTC + remOTC) + margeRx + remRx;
+    return { nom: n.nom, seuil: n.seuil, remOTC: remOTC * s, remRx: remRx, remise: remOTC * s + remRx,
+             margePalier: margePalier, effort: effort, absorbe: n.seuil <= volOTC, aPortee20: n.seuil <= volOTC * 1.20 };
+  });
+  // Recommandation = le plus haut palier ABSORBÉ par le rythme actuel (pas d'effort forcé)
+  var reco = null;
+  for (var j = 0; j < niveaux.length; j++) { if (niveaux[j].absorbe) reco = niveaux[j]; }
+  // Palier supérieur à signaler s'il est à <= 20% d'effort
+  var nudge = null;
+  for (var k = 0; k < niveaux.length; k++) {
+    var n2 = niveaux[k];
+    if (!n2.absorbe && n2.aPortee20) { nudge = n2; break; }
+  }
+  return { volOTC: volOTC, qteRx: qteRx, caOTC: caOTC, caRx: caRx, achatsOTC: achatsOTC, achatsRx: achatsRx,
+           margeOTC: margeOTC, margeRx: margeRx,
+           mois: mois, periode: periode, gammes: gammes, niveaux: niveaux, reco: reco, nudge: nudge, exclus: exclus };
+}
+// ===== COMPARATIF DES 3 MARCHES THEA (bons SDAV 96 / 156 / 348 u) =====
+var THEA_MARCHES_DETAIL = {
+  m1: { engagement: '96 u', ouverture: '48 u', obli: '12 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 6 Blephasol + 24 Vitabact 10ml' },
+  m2: { engagement: '156 u', ouverture: '78 u', obli: '12 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 6 Blephasol + 36 Vitabact 10ml' },
+  m3: { engagement: '348 u', ouverture: '174 u', obli: '24 Larmecran J&N, 12 Zagrapa, 12 Zaspray, 18 Blepha (dont 12 Blephasol) + 96 Vitabact 10ml + 12 Cromadoses' }
+};
+// ===== OFFRES SPECIFIQUES PRODUIT (ex: Vitabact volumes 84u/156u) =====
+// ===== REFERENCES OBLIGATOIRES (generique, tout labo) =====
+// Syntaxe: "4:TOUT|1:HYDRA,CICA" -> [{min:4,mots:['TOUT']},{min:1,mots:['HYDRA','CICA']}]
+// 'TOUT' = utiliser les mots-cles de l'offre elle-meme (toute reference de l'offre comptee)
+function decParseObligatoires(str) {
+  var out = [];
+  (str || '').split('|').forEach(function(part) {
+    var m = part.split(':');
+    if (m.length < 2) return;
+    var min = parseInt(m[0].trim(), 10);
+    var mots = m[1].split(',').map(function(s){ return s.trim().toUpperCase(); }).filter(Boolean);
+    if (!isNaN(min) && mots.length > 0) out.push({ min: min, mots: mots });
+  });
+  return out;
+}
+// Verifie chaque regle : compte les references distinctes (lib) vendues (qte>0) matchant les mots
+function decObligatoiresCheck(labo, regles, motsOffre) {
+  if (!decOspharmProds || !decOspharmProds[labo] || !regles.length) return [];
+  var prods = decOspharmProds[labo];
+  return regles.map(function(r) {
+    var mots = r.mots.indexOf('TOUT') >= 0 ? motsOffre : r.mots;
+    var matches = [];
+    prods.forEach(function(p) {
+      if ((p.qte || 0) <= 0) return;
+      var L = (p.lib || '').toUpperCase();
+      if (mots.some(function(k){ return L.indexOf(k) >= 0; })) matches.push(p.lib);
+    });
+    return { min: r.min, count: matches.length, ok: matches.length >= r.min, exemples: matches.slice(0, r.min + 2) };
+  });
+}
+function decObligatoiresRender(checks) {
+  if (!checks || !checks.length) return '';
+  var html = '';
+  checks.forEach(function(c) {
+    html += '<div style="font-size:11px;margin-top:5px;padding:6px 8px;border-radius:var(--radius-sm);background:' + (c.ok ? 'var(--accent-bg)' : 'var(--danger-bg)') + ';color:' + (c.ok ? 'var(--accent-text)' : 'var(--danger)') + '">'
+      + (c.ok ? '✓' : '⚠') + ' Réf. obligatoires : <strong>' + c.count + '/' + c.min + '</strong>'
+      + (c.exemples.length ? ' — ' + c.exemples.join(', ') : '')
+      + (c.ok ? '' : ' — manquant, à compléter sur le bon de commande')
+      + '</div>';
+  });
+  return html;
+}
+
+function decTheaAnalyseOffreSpecifique(titre, mots, paliers, labo, obligatoires) {
+  // paliers: [{seuil:84, remise:50}, {seuil:156, remise:55}]
+  if (!decOspharmProds || !decOspharmProds[labo]) return '';
+  var f = decGetPeriode() === 'encours' ? 12 / Math.max(decMoisEchus(), 1) : 1;
+  var motsU = mots.toUpperCase().split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  var vol = 0;
+  decOspharmProds[labo].forEach(function(p) {
+    var L = (p.lib || '').toUpperCase();
+    if (motsU.some(function(k){ return L.indexOf(k) >= 0; })) vol += p.qte;
+  });
+  var volAn = vol * f;
+  if (volAn <= 0) return '';
+  // recommandation : plus haut palier acquis sans effort, ou objectif si effort <= 20%
+  var reco = null, nudge = null;
+  paliers.forEach(function(pal) {
+    if (volAn >= pal.seuil) reco = pal;
+    else if (!nudge) {
+      var effort = pal.seuil - volAn;
+      if (effort / Math.max(volAn, 1) <= 0.20) nudge = pal;
+    }
+  });
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:10px">🎯 ' + titre + ' — ton volume : ' + Math.round(volAn) + ' u/an</div>';
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:4px;table-layout:auto">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 10px;white-space:nowrap">Palier</th><th style="padding:3px 10px;white-space:nowrap">Seuil</th><th style="padding:3px 10px;white-space:nowrap">Remise</th><th style="padding:3px 10px;white-space:nowrap">Absorption</th></tr>';
+  paliers.forEach(function(pal, i) {
+    var isAcquis = reco === pal;
+    var isObjectif = nudge === pal;
+    var badge = '';
+    if (isAcquis) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px">✓ ACQUIS</span>';
+    if (isObjectif) badge = ' <span style="font-size:9px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:8px">OBJECTIF</span>';
+    var rowBg = isAcquis ? 'background:var(--accent-bg);font-weight:600' : (isObjectif ? 'background:var(--warn-bg);font-weight:600' : '');
+    var fais;
+    if (volAn >= pal.seuil) fais = '✓ absorbé par ton rythme';
+    else {
+      var effort = pal.seuil - volAn, pct = Math.round(effort / Math.max(volAn,1) * 100);
+      fais = pct <= 20 ? '↗ +' + Math.ceil(effort) + ' u à faire en plus (+' + pct + '%)' : '✗ effort trop important (+' + pct + '%)';
+    }
+    html += '<tr style="' + rowBg + '"><td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">Marché ' + (i+1) + badge + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">' + pal.seuil + ' u</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">' + pal.remise + '%</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border);white-space:nowrap">' + fais + '</td></tr>';
+  });
+  html += '</table>';
+  if (reco) html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">À ce rythme, Marché ' + (paliers.indexOf(reco)+1) + ' (' + reco.seuil + 'u, ' + reco.remise + '%) est ta position de repli sans effort.</div>';
+  else if (nudge) html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Aucun palier encore acquis — Marché ' + (paliers.indexOf(nudge)+1) + ' est atteignable avec un effort raisonnable.</div>';
+  else html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Aucun palier absorbé ni à portée à ce rythme.</div>';
+  if (obligatoires && obligatoires.length) {
+    var motsU = mots.toUpperCase().split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    html += decObligatoiresRender(decObligatoiresCheck(labo, obligatoires, motsU));
+  }
+  return html;
+}
+
+function decTheaComparatifMarches() {
+  var rows = [
+    ['Engagement annuel OTC', THEA_MARCHES_DETAIL.m1.engagement, THEA_MARCHES_DETAIL.m2.engagement, THEA_MARCHES_DETAIL.m3.engagement],
+    ['Commande d\u2019ouverture', THEA_MARCHES_DETAIL.m1.ouverture, THEA_MARCHES_DETAIL.m2.ouverture, THEA_MARCHES_DETAIL.m3.ouverture],
+    ['R\u00e9f\u00e9rences obligatoires', THEA_MARCHES_DETAIL.m1.obli, THEA_MARCHES_DETAIL.m2.obli, THEA_MARCHES_DETAIL.m3.obli],
+    ['Remise gamme OTC', '45%', '50%', '50%'],
+    ['Remise Blepha OTC', '30%', '30%', '35%'],
+    ['Th\u00e9alose 15ml', '16,5%', '16,5%', '16,5%'],
+    ['Vitabact Flacon 10ml', '45%', '50%', '55%'],
+    ['Monoprost 30 UD', '2%', '4%', '6%'],
+    ['Nutrof Total 180', '30%', '30%', '30%'],
+    ['Cromadoses', '7%', '7%', '10%'],
+    ['Franco / d\u00e9lai', '114 \u20ac \u00b7 45j fdm', '114 \u20ac \u00b7 45j fdm', '114 \u20ac \u00b7 45j fdm']
+  ];
+  var html = '<div style="font-size:12px;font-weight:700;margin-top:10px">📊 Comparatif des 3 march\u00e9s (bons SDAV permanents)</div>';
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:4px;table-layout:auto">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 10px"></th><th style="padding:3px 10px">March\u00e9 1 (96 u)</th><th style="padding:3px 10px">March\u00e9 2 (156 u)</th><th style="padding:3px 10px">March\u00e9 3 (348 u)</th></tr>';
+  rows.forEach(function(r) {
+    html += '<tr><td style="padding:3px 10px;border-top:1px solid var(--border);color:var(--text-ter)">' + r[0] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + r[1] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + r[2] + '</td>'
+      + '<td style="padding:3px 10px;border-top:1px solid var(--border)">' + r[3] + '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:4px">Les paliers sup\u00e9rieurs incluent toujours les conditions des paliers inf\u00e9rieurs (Th\u00e9alose/Nutrof identiques sur les 3) \u2014 la commande d\u2019ouverture du palier vis\u00e9 remplace celle d\u2019un palier inf\u00e9rieur d\u00e9j\u00e0 pass\u00e9e.</div>';
+  return html;
+}
+
+function decAfficherTheaAnalyse(labo) {
+  var el = document.getElementById('dec-thea');
+  if (!el) return;
+  if (String(labo || '').toUpperCase().indexOf('THEA') < 0) { el.style.display = 'none'; return; }
+  var a = decTheaAnalyse(labo);
+  if (!a) { el.style.display = 'none'; return; }
+  var html = '<strong style="font-size:12px">Analyse marché Théa</strong>';
+  var txOTC = a.caOTC > 0 ? (a.margeOTC / a.caOTC * 100) : 0;
+  html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm)">';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-bottom:4px">MARCHÉ OTC RECONSTITUÉ — produits de l\u2019offre uniquement (OTC + Blepha)' + (a.periode === 'encours' ? ' · annualisé ×12/' + a.mois : ' · année lissée') + '</div>';
+  html += '<div style="display:flex;gap:18px;flex-wrap:wrap">';
+  html += '<span>Volume<br><strong style="font-size:13px">' + Math.round(a.volOTC) + ' u/an</strong></span>';
+  html += '<span>CA HT<br><strong style="font-size:13px">' + Math.round(a.caOTC).toLocaleString('fr') + ' €</strong></span>';
+  html += '<span>Achats<br><strong style="font-size:13px">' + Math.round(a.achatsOTC).toLocaleString('fr') + ' €</strong></span>';
+  html += '<span>Marge<br><strong style="font-size:13px">' + Math.round(a.margeOTC).toLocaleString('fr') + ' €</strong></span>';
+  html += '<span>Taux<br><strong style="font-size:13px">' + txOTC.toFixed(1) + '%</strong></span>';
+  html += '</div>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px;border-top:1px dashed var(--border);padding-top:5px">Remboursés croisés suivis pour le bonus uniquement (hors décision) : ' + Math.round(a.qteRx) + ' u/an · CA ' + Math.round(a.caRx).toLocaleString('fr') + ' € · marge ' + Math.round(a.margeRx).toLocaleString('fr') + ' €</div>';
+  html += '</div>';
+  if (a.exclus && a.exclus.nb > 0) {
+    html += '<div style="font-size:10px;color:var(--text-sec);margin-top:4px;padding:6px 8px;background:#fff;border:1px dashed var(--border);border-radius:var(--radius-sm)">⚠ <strong>' + a.exclus.nb + ' réf. exclues</strong> du calcul (≈ ' + Math.round(a.exclus.qte) + ' u/an) : produits Théa hors offre UPP. Ex : ' + a.exclus.libs.join(', ') + (a.exclus.nb > a.exclus.libs.length ? '…' : '') + '</div>';
+  }
+  html += '<table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:8px;table-layout:auto">';
+  html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 10px;white-space:nowrap">Niveau</th><th style="padding:3px 10px;white-space:nowrap">Seuil OTC</th><th style="padding:3px 10px;white-space:nowrap">Absorption (ton rythme OTC)</th><th style="padding:3px 10px;white-space:nowrap">Remise OTC</th><th style="padding:3px 10px;white-space:nowrap">+ Bonus remboursés</th><th style="padding:3px 10px;white-space:nowrap">Marge si tout vendu</th></tr>';
+  for (var i = 0; i < a.niveaux.length; i++) {
+    var n = a.niveaux[i];
+    var isAcquis = a.reco && n.nom === a.reco.nom;
+    var isObjectif = a.nudge && n.nom === a.nudge.nom;
+    var fais, col;
+    if (n.absorbe) { fais = '✓ absorbé par ton rythme'; col = 'var(--accent-text)'; }
+    else if (n.aPortee20) { fais = '↗ +' + Math.ceil(n.effort) + ' u à faire en plus (+' + Math.round(n.effort / Math.max(a.volOTC, 1) * 100) + '%)'; col = 'var(--warn)'; }
+    else { fais = '✗ ×' + (n.seuil / Math.max(a.volOTC, 1)).toFixed(1) + ' de ton OTC → surstock'; col = 'var(--danger)'; }
+    var rowBg = isObjectif ? 'background:var(--warn-bg);font-weight:600' : (isAcquis ? 'background:var(--accent-bg);font-weight:600' : '');
+    var badge = '';
+    if (isAcquis && a.nudge) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">✓ ACQUIS</span>';
+    else if (isAcquis) badge = ' <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">RECOMMANDÉ</span>';
+    if (isObjectif) badge += ' <span style="font-size:9px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:8px;vertical-align:1px">OBJECTIF</span>';
+    html += '<tr style="' + rowBg + '">';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap">' + n.nom + badge + '</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap">' + n.seuil + ' u</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:' + col + ';white-space:nowrap">' + fais + '</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap">≈ ' + Math.round(n.remOTC).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);color:var(--text-sec);white-space:nowrap">+ ' + Math.round(n.remRx).toLocaleString('fr') + ' €/an</td>';
+    html += '<td style="padding:5px 10px;border-top:1px solid var(--border);white-space:nowrap"><strong>≈ ' + Math.round(n.margePalier).toLocaleString('fr') + ' €/an</strong></td>';
+    html += '</tr>';
+  }
+  html += '</table>';
+  if (a.reco) {
+    var idx = a.niveaux.findIndex(function(n){ return n.nom === a.reco.nom; });
+    var why = '<strong>' + a.reco.nom + ' (' + a.reco.seuil + ' u OTC)</strong> : le plus haut palier absorbé par ton rythme OTC naturel (' + Math.round(a.volOTC) + ' u/an)' + (a.nudge ? ' — ta position de repli sans aucun effort' : '') + '. Marge si tout le volume est vendu : <strong>≈ ' + Math.round(a.reco.margePalier).toLocaleString('fr') + ' €/an</strong> (remise ' + Math.round(a.reco.remise).toLocaleString('fr') + ' € incluse).';
+    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--accent-bg);border-radius:var(--radius-sm);color:var(--accent-text)">' + why + '</div>';
+    if (a.nudge) {
+      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>Objectif conseillé — ' + a.nudge.nom + ' : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '% de ton rythme, sous le seuil des 20%). Gain : remise +' + Math.round(a.nudge.remise - a.reco.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an (+' + Math.round(a.nudge.margePalier - a.reco.margePalier).toLocaleString('fr') + ' €).</div>';
+    }
+    var cibleNiveau = a.nudge || a.reco;
+    var plan = decTheaPlan(labo, a, cibleNiveau);
+    if (plan) {
+      html += '<details style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff">';
+      html += '<summary style="cursor:pointer;padding:8px 10px;font-size:11px;font-weight:600">\ud83d\udce6 Plan de commande sugg\u00e9r\u00e9 \u2014 ' + (a.nudge ? 'objectif ' : '') + cibleNiveau.nom + ' (' + plan.total + ' u/an, arrondi aux multiples Th\u00e9a)</summary>';
+      html += '<div style="padding:0 10px 10px">';
+      html += '<div style="font-size:11px;margin:6px 0;padding:6px 8px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)"><strong>Effort vs ton rythme : ' + (plan.effortU > 0 ? '+' + Math.ceil(plan.effortU) + ' u (+' + Math.round(plan.effortPct) + '%) \u00b7 \u2248 ' + Math.round(plan.effortEur).toLocaleString('fr') + ' \u20ac d\u2019achats en plus \u00b7 \u2248 ' + plan.effortMois.toFixed(1) + ' mois de stock suppl\u00e9mentaire' : 'aucun \u2014 ton rythme couvre d\u00e9j\u00e0 le palier') + '</strong></div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+      html += '<tr style="color:var(--text-ter);text-align:left"><th style="padding:3px 6px">Produit</th><th style="padding:3px 6px">Ventes/an</th><th style="padding:3px 6px">Commande/an sugg\u00e9r\u00e9e</th></tr>';
+      for (var p = 0; p < plan.lignes.length; p++) {
+        var L = plan.lignes[p];
+        html += '<tr><td style="padding:3px 6px;border-top:1px solid var(--border)">' + L.lib + '</td><td style="padding:3px 6px;border-top:1px solid var(--border)">' + Math.round(L.ventes) + '</td><td style="padding:3px 6px;border-top:1px solid var(--border)"><strong>' + L.cmd + '</strong> <span style="color:var(--text-ter)">(\u00d7' + L.mult + ')</span></td></tr>';
+      }
+      html += '<tr style="font-weight:600"><td style="padding:5px 10px;border-top:2px solid var(--border-med)">TOTAL</td><td style="padding:5px 10px;border-top:2px solid var(--border-med)">' + Math.round(a.volOTC) + '</td><td style="padding:5px 10px;border-top:2px solid var(--border-med)">' + plan.total + ' u (cible ' + plan.cible + ')</td></tr>';
+      html += '</table>';
+      if (typeof DEC_THEA_OBLIGATOIRES !== 'undefined' && DEC_THEA_OBLIGATOIRES.length > 0) {
+        for (var ob = 0; ob < DEC_THEA_OBLIGATOIRES.length; ob++) {
+          var regle = DEC_THEA_OBLIGATOIRES[ob];
+          var couverts = 0;
+          for (var pl = 0; pl < plan.lignes.length; pl++) {
+            if (plan.lignes[pl].cmd <= 0) continue;
+            var libU = String(plan.lignes[pl].lib).toUpperCase();
+            for (var mo = 0; mo < regle.mots.length; mo++) { if (libU.indexOf(regle.mots[mo].toUpperCase()) !== -1) { couverts++; break; } }
+          }
+          var okR = couverts >= (regle.min || 1);
+          html += '<div style="font-size:11px;margin-top:5px;padding:6px 8px;border-radius:var(--radius-sm);background:' + (okR ? 'var(--accent-bg)' : 'var(--danger-bg)') + ';color:' + (okR ? 'var(--accent-text)' : 'var(--danger)') + '">' + (okR ? '\u2713 Obligatoire couvert' : '\u26a0 OBLIGATOIRE NON COUVERT \u2014 ajouter au plan') + ' : ' + regle.label + (okR ? '' : ' (' + couverts + '/' + (regle.min || 1) + ')') + '</div>';
+        }
+      } else {
+        html += '<div style="font-size:10px;color:var(--text-sec);margin-top:5px;padding:5px 8px;background:var(--surface2);border-radius:var(--radius-sm)">\u2139 R\u00e9f\u00e9rences obligatoires : aucune identifi\u00e9e dans le bon UPP Th\u00e9a \u2014 \u00e0 confirmer avec le d\u00e9l\u00e9gu\u00e9 (assortiment impos\u00e9 fr\u00e9quent chez d\u2019autres labos).</div>';
+      }
+      html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">R\u00e9parti au prorata de tes ventes r\u00e9elles \u2014 \u00e0 \u00e9taler sur tes commandes de l\u2019ann\u00e9e (franco 114 \u20ac HT). Tu peux panacher diff\u00e9remment : seul le total engage.</div>';
+      html += '</div></details>';
+    }
+  } else {
+    html += '<div style="font-size:11px;margin-top:8px;padding:8px 10px;background:var(--danger-bg);border-radius:var(--radius-sm);color:var(--danger)">Aucun palier absorbé par ton rythme OTC (' + Math.round(a.volOTC) + ' u/an). Négocier hors marché ou développer l\u2019OTC avant de s\u2019engager.</div>';
+    if (a.nudge) {
+      html += '<div style="font-size:11px;margin-top:6px;padding:8px 10px;background:var(--warn-bg);border-radius:var(--radius-sm);color:var(--warn)">🎯 <strong>Objectif conseillé — ' + a.nudge.nom + ' (' + a.nudge.seuil + ' u) : +' + Math.ceil(a.nudge.effort) + ' unités à faire en plus</strong> (+' + Math.round(a.nudge.effort / Math.max(a.volOTC, 1) * 100) + '%). Remise ≈ ' + Math.round(a.nudge.remise).toLocaleString('fr') + ' €/an · marge si tout vendu ≈ ' + Math.round(a.nudge.margePalier).toLocaleString('fr') + ' €/an.</div>';
+    }
+  }
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-top:6px">Faisabilité jugée sur tes ventes OTC annualisées (Ospharm) — l\u2019engagement porte sur les achats : vérifier l\u2019écart de stock. Le bonus remboursés (' + Math.round(a.qteRx) + ' u/an : Théalose, Vitabact fl, Monoprost, Nutrof, Cromadoses) est estimé à conditions croisées Théa, hors critère de décision.</div>';
+  html += decTheaComparatifMarches();
+
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+// ===== CALENDRIER COMMANDES =====
+function wfRenderCalendrier() {
+  var el = document.getElementById('wf-calendrier');
+  if (!el) return;
+
+  var today = new Date();
+  var labos = Object.keys(condLabos).map(function(id) {
+    var l = condLabos[id];
+    if (!l || !l.nom) return null;
+
+    var status = 'unknown';
+    var joursRupture = null, joursCommande = null;
+    var ruptureDate = null, commandeDate = null;
+
+    if (l.lastOrder) {
+      var lastOrder = new Date(l.lastOrder);
+      var coverage = parseFloat(l.couvertureReelle) || parseFloat(l.orderCoverage) || 2;
+      var deliveryDays = parseInt(l.deliveryDays) || 3;
+      ruptureDate = new Date(lastOrder);
+      ruptureDate.setDate(ruptureDate.getDate() + Math.round(coverage * 30));
+      commandeDate = new Date(ruptureDate);
+      commandeDate.setDate(commandeDate.getDate() - deliveryDays);
+      joursRupture = Math.round((ruptureDate - today) / (1000*60*60*24));
+      joursCommande = Math.round((commandeDate - today) / (1000*60*60*24));
+
+      if (joursRupture <= 0) status = 'rupture';
+      else if (joursCommande <= 0) status = 'urgent';
+      else if (joursCommande <= 14) status = 'bientot';
+      else status = 'ok';
+    }
+
+    return { id:id, nom:l.nom, status:status, joursRupture:joursRupture, joursCommande:joursCommande,
+      ruptureDate:ruptureDate, commandeDate:commandeDate, nextRdv:l.nextRdv ? new Date(l.nextRdv) : null,
+      lastOrder:l.lastOrder ? new Date(l.lastOrder) : null };
+  }).filter(Boolean);
+
+  if (labos.length === 0) { el.innerHTML = ''; return; }
+
+  // Trier par urgence
+  var order = { rupture:0, urgent:1, bientot:2, ok:3, unknown:4 };
+  labos.sort(function(a,b){ return order[a.status] - order[b.status]; });
+
+  var statusConfig = {
+    rupture: { bg:'#fdeaea', border:'#e53e3e', icon:'🚨', label:'Rupture probable' },
+    urgent:  { bg:'#fff3e0', border:'#d97706', icon:'⏰', label:'Commander maintenant' },
+    bientot: { bg:'#fff8ee', border:'#f0b429', icon:'📦', label:'À préparer sous 14j' },
+    ok:      { bg:'#e8f5ee', border:'#38a169', icon:'✓',  label:'Stock OK' },
+    unknown: { bg:'#f5f4f0', border:'#e0e0d8', icon:'?',  label:'Non configuré' }
+  };
+
+  var html = '<div class="card"><p class="card-title">Tableau de bord commandes</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+
+  labos.forEach(function(l) {
+    var cfg = statusConfig[l.status];
+    html += '<div style="background:' + cfg.bg + ';border:1px solid ' + cfg.border + ';border-radius:8px;padding:12px 14px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+    html += '<b style="font-size:13px">' + l.nom + '</b>';
+    html += '<span style="font-size:11px;font-weight:600;color:' + cfg.border + '">' + cfg.icon + ' ' + cfg.label + '</span>';
+    html += '</div>';
+
+    if (l.lastOrder) {
+      html += '<div style="font-size:11px;color:var(--text-sec);line-height:1.8">';
+      html += '📦 Dernière commande : <b>' + l.lastOrder.toLocaleDateString('fr-FR') + '</b><br>';
+      if (l.commandeDate) {
+        var jc = l.joursCommande;
+        var clr = jc <= 0 ? '#e53e3e' : jc <= 14 ? '#d97706' : '#38a169';
+        html += '🛒 Commander avant : <b style="color:' + clr + '">' + l.commandeDate.toLocaleDateString('fr-FR') + '</b>';
+        if (jc > 0) html += ' <span style="color:' + clr + '">(' + jc + 'j)</span>';
+        else html += ' <span style="color:#e53e3e">(dépassé)</span>';
+        html += '<br>';
+      }
+      if (l.ruptureDate) {
+        html += '⚠ Rupture estimée : ' + l.ruptureDate.toLocaleDateString('fr-FR') + ' (' + l.joursRupture + 'j)<br>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--text-ter)">Saisir la date de dernière commande dans Cond. commerciales</div>';
+    }
+
+    if (l.nextRdv) {
+      var jr = Math.round((l.nextRdv - today) / (1000*60*60*24));
+      html += '<div style="margin-top:6px;font-size:11px;font-weight:500;color:#6b46c1">📅 RDV : ' + l.nextRdv.toLocaleDateString('fr-FR') + ' (' + (jr > 0 ? 'dans ' + jr + 'j' : 'passé') + ')</div>';
+    }
+
+    html += '<button type="button" onclick="wfGoToCond(' + l.id + ')" style="margin-top:8px;font-size:10px;padding:3px 8px;background:transparent;border:1px solid ' + cfg.border + ';border-radius:4px;cursor:pointer;color:' + cfg.border + '">→ Configurer</button>';
+    html += '</div>';
+  });
+
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function wfGoToCond(id) {
+  showTab('cond');
+  setTimeout(function(){ condSelectionnerLabo(id); }, 150);
+}
+
+var cmdInited = false;
+
+
+// ===== HISTORIQUE IMPORTS =====
+function condAfficherHistorique() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var labo = condLabos[condLaboActif];
+  var hist = labo.historique || [];
+  var card = document.getElementById('cond-historique-card');
+  var body = document.getElementById('cond-historique-body');
+  if (!card || !body) return;
+
+  if (hist.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' \u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+
+  // Timeline
+  var html = '<div style="display:flex;flex-direction:column;gap:0">';
+
+  hist.forEach(function(h, i) {
+    var isLast = i === hist.length - 1;
+    var d = new Date(h.date);
+    var dateStr = d.toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'});
+    var mbClr = h.mbGlobal >= 35 ? 'var(--accent-text)' : h.mbGlobal >= 28 ? 'var(--warn)' : 'var(--danger)';
+
+    // Evolution vs previous
+    var diffMB = null, diffMarge = null;
+    if (i > 0) {
+      diffMB    = h.mbGlobal - hist[i-1].mbGlobal;
+      diffMarge = h.margeAn  - hist[i-1].margeAn;
+    }
+
+    // Monthly CA sparkline
+    var mois = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+    var LABELS = ['Jui25','Jui25','Aou25','Sep25','Oct25','Nov25','Dec25','Jan26','Fev26','Mar26','Avr26','Mai26'];
+    var ventes = h.ventes || new Array(12).fill(0);
+    var maxV = Math.max.apply(null, ventes) || 1;
+    var sparkline = '<div style="display:flex;gap:2px;align-items:flex-end;height:24px;margin-top:6px">';
+    ventes.forEach(function(v, mi) {
+      var h2 = Math.round((v/maxV)*22);
+      var clr = v > 0 ? 'var(--accent-text)' : 'var(--border)';
+      sparkline += '<div title="' + LABELS[mi] + ': ' + Math.round(v) + '\u20ac" style="width:14px;height:'+h2+'px;background:'+clr+';border-radius:2px 2px 0 0;min-height:2px"></div>';
+    });
+    sparkline += '</div>';
+    sparkline += '<div style="display:flex;gap:2px;margin-top:2px">';
+    ventes.forEach(function(v, mi) {
+      sparkline += '<div style="width:14px;font-size:8px;color:var(--text-ter);text-align:center">' + mois[mi] + '</div>';
+    });
+    sparkline += '</div>';
+
+    html += '<div style="display:flex;gap:0;align-items:stretch">';
+    // Timeline line
+    html += '<div style="display:flex;flex-direction:column;align-items:center;width:32px;flex-shrink:0">';
+    html += '<div style="width:10px;height:10px;border-radius:50%;background:' + (isLast ? 'var(--accent-text)' : 'var(--border-med)') + ';margin-top:14px;flex-shrink:0"></div>';
+    if (!isLast) html += '<div style="width:2px;flex:1;background:var(--border);margin:2px 0"></div>';
+    html += '</div>';
+    // Content
+    html += '<div style="flex:1;padding:10px 0 16px 8px">';
+    html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--text)">' + dateStr + '</span>';
+    html += '<span style="font-size:11px;color:var(--text-ter)">' + h.nbProduits + ' produits · ' + h.nbActifs + ' actifs</span>';
+    html += '<span style="font-size:13px;font-weight:700;color:' + mbClr + '">' + f1(h.mbGlobal) + '%</span>';
+    html += '<span style="font-size:12px;color:var(--text-sec)">' + fE(h.margeAn) + '/an</span>';
+    if (diffMB !== null) {
+      var sign = diffMB >= 0 ? '+' : '';
+      var dClr = diffMB >= 0 ? 'var(--accent-text)' : 'var(--danger)';
+      html += '<span style="font-size:11px;font-weight:600;color:' + dClr + '">' + sign + f1(diffMB) + '% MB</span>';
+      var signM = diffMarge >= 0 ? '+' : '';
+      html += '<span style="font-size:11px;color:' + dClr + '">' + signM + fE(diffMarge) + '</span>';
+    }
+    if (isLast) html += '<span style="font-size:10px;background:var(--accent-bg);color:var(--accent-text);padding:1px 6px;border-radius:3px;font-weight:600">Dernier import</span>';
+    html += '</div>';
+    html += sparkline;
+
+    // Button to restore this import (charge le snapshot complet depuis GitHub)
+    html += '<button type="button" onclick="condRestaurerImport(\'' + h.date + '\')" style="margin-top:6px;font-size:10px;color:var(--text-ter);background:none;border:none;cursor:pointer;padding:0">Restaurer cette evaluation \u2192</button>';
+
+    html += '</div></div>';
+  });
+
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+async function condRestaurerImport(dateEval) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var labo = condLabos[condLaboActif];
+  var hist = labo.historique || [];
+  var h = hist.find(function(x){ return x.date === dateEval; });
+  if (!h) return;
+
+  // Charger le snapshot complet des produits depuis GitHub pour cette date
+  var snap = await condChargerSnapshotGitHub(condLaboActif, dateEval);
+  if (snap && snap.produits) {
+    labo.produits = snap.produits;
+  } else {
+    if (!confirm('Snapshot detaille introuvable sur GitHub pour cette date — restaurer seulement les chiffres globaux (CA, marge, MB%) sans le detail produit ?')) return;
+  }
+  labo.mbActuel = h.mbGlobal;
+  labo.margeActuelle = h.margeAn;
+  labo.caAnnuel = h.caAn;
+  labo.dateEval = h.date;
+  labo.alertes = [];
+
+  // Restore ventes grid
+  h.ventes.forEach(function(v, i) {
+    var el = document.getElementById('cond-v-' + i);
+    if (el) el.value = v > 0 ? v.toFixed(0) : 0;
+  });
+
+  // Update UI fields
+  document.getElementById('cond-date-eval').value = h.date;
+  document.getElementById('cond-mb-actuel').value = h.mbGlobal;
+  document.getElementById('cond-marge-actuelle').value = h.margeAn;
+  document.getElementById('cond-ca-annuel').value = h.caAn;
+
+  condUpdateVentes();
+  condUpdateDiag();
+  condCalc();
+}
+
+// Also update condSelectionnerLabo to show historique
+
+
+// ===== CATALOGUE =====
+var catLaboActif = null;
+var catProduits  = [];   // [{ean, nom, moy, pa_net, pv_ttc, categorie, sous_categorie, marche, palier_id}]
+
+// Nomenclature NUTRI&CO par défaut - extensible
+
+// ===== BOIRON — Catalogue pré-chargé (BDC Marchés OTC + Réassort 2026) =====
+// TVA : 2.1% médicaments homéopathiques, 5.5% compléments alimentaires, 20% cosmétiques
+var BOIRON_CATALOGUE_DEFAUT = [{"nom":"ACTHEANE 120 Comprimés","ean":"3400926764630","marche":"STRESS-SOMMEIL","pu_catalogue":20.86,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNICALME 40cp","ean":"3400921918144","marche":"TRAUMATO/SPORT","pu_catalogue":7.91,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNIGEL 120g","ean":"3400930199855","marche":"TRAUMATO/SPORT","pu_catalogue":13.3,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNIGEL 45g","ean":"3400930199848","marche":"TRAUMATO/SPORT","pu_catalogue":5.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNIGEL Sachets x12 (2g)","ean":"3400930257692","marche":"TRAUMATO/SPORT","pu_catalogue":8.01,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNITROSIUM 120cp","ean":"3400930213926","marche":"TRAUMATO/SPORT","pu_catalogue":17.14,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARTENSIUM 70g","ean":"3400930262221","marche":"TRAUMATO/SPORT","pu_catalogue":9.03,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARTENSIUM 120g","ean":"3400930278451","marche":"TRAUMATO/SPORT","pu_catalogue":13.46,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AVENOC Pommade 30g","ean":"3400930131589","marche":"PRINTEMPS","pu_catalogue":8.87,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AVENOC Suppositoires","ean":"3400930088937","marche":"PRINTEMPS","pu_catalogue":8.72,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BOCEAL","ean":"3400930210598","marche":"","pu_catalogue":7.75,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CAMILIA 30 Unidoses","ean":"3400939472898","marche":"BEBE/MAMAN","pu_catalogue":13.91,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CAMILIA 10 Unidoses","ean":"3400936096295","marche":"BEBE/MAMAN","pu_catalogue":6.45,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CANEPHRON 30cp","ean":"3400930214138","marche":"PRINTEMPS","pu_catalogue":16.01,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CASTOR EQUI 70g","ean":"3400931468103","marche":"BEBE/MAMAN","pu_catalogue":6.83,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CHAMOMILLA VULGARIS 9CH Suppositoires x12","ean":"3400921924008","marche":"BEBE/MAMAN","pu_catalogue":11.12,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CICADERMA","ean":"3400941558405","marche":"DERMATOLOGIE","pu_catalogue":8.31,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"COCCULINE 40 Comprimés","ean":"3400939560120","marche":"PRINTEMPS","pu_catalogue":8.05,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"COCCULINE 6 Doses","ean":"3400933699291","marche":"PRINTEMPS","pu_catalogue":10.25,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"COCYNTAL 30 Unidoses","ean":"3400930171615","marche":"BEBE/MAMAN","pu_catalogue":14.38,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CORYZALIA 40 Comprimés","ean":"3400922468860","marche":"BEBE/MAMAN","pu_catalogue":7.75,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CORYZALIA 20 Unidoses","ean":"3400930142417","marche":"BEBE/MAMAN","pu_catalogue":12.95,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CREME AU CALENDULA","ean":"3400930617007","marche":"DERMATOLOGIE","pu_catalogue":12.44,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DIARALIA","ean":"3400936096646","marche":"","pu_catalogue":7.91,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DROSETUX","ean":"3400930043318","marche":"SIROPS","pu_catalogue":7.8,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ENDHOMETROL","ean":"3400930356548","marche":"","pu_catalogue":8.52,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"GASTROCYNESINE","ean":"3400930430569","marche":"","pu_catalogue":9.18,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOAFTYL 60cp","ean":"3400935875082","marche":"PRINTEMPS","pu_catalogue":8.11,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOGENE 9","ean":"3400930503461","marche":"","pu_catalogue":6.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOGENE 46 60cp","ean":"3400936375314","marche":"STRESS-SOMMEIL","pu_catalogue":9.44,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOPLASMINE 40g","ean":"3400930137420","marche":"DERMATOLOGIE","pu_catalogue":7.68,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOPLASMINE 18g","ean":"3400930137413","marche":"DERMATOLOGIE","pu_catalogue":5.51,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOPTIC 10 Unidoses","ean":"3400935875143","marche":"PRINTEMPS","pu_catalogue":7.6,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEOVOX","ean":"3400930504291","marche":"","pu_catalogue":7.14,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"IDRYLINE 30 Unidoses","ean":"3400930211212","marche":"PRINTEMPS","pu_catalogue":13.57,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLOCOCCINUM 30 Doses","ean":"3400941662003","marche":"","pu_catalogue":34.0,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLOCOCCINUM 6 Doses","ean":"3400932811007","marche":"","pu_catalogue":9.49,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLOCOCCINUM 12 Doses","ean":"3400930262047","marche":"","pu_catalogue":15.43,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSTEOCYNESINE 60cp","ean":"3400930195819","marche":"PRINTEMPS","pu_catalogue":8.77,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PARAGRIPPE","ean":"3400930783856","marche":"","pu_catalogue":8.52,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PATES BAUDRY","ean":"3400930211182","marche":"","pu_catalogue":9.18,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PATES MANDARINE","ean":"3400930211175","marche":"","pu_catalogue":9.18,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PATES SAMBUCUS","ean":"3400930081914","marche":"","pu_catalogue":9.18,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PRELINIUM 60cp","ean":"3400930226254","marche":"PRINTEMPS","pu_catalogue":10.2,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"QUIETUDE","ean":"3400935272515","marche":"BEBE/MAMAN","pu_catalogue":8.52,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"RHINALLERGY 40 Comprimés","ean":"3400939172132","marche":"PRINTEMPS","pu_catalogue":7.19,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SEDATIF PC 90 Comprimés","ean":"3400930217542","marche":"STRESS-SOMMEIL","pu_catalogue":11.63,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SEDATIF PC Granules 2 tubes","ean":"3400930211236","marche":"STRESS-SOMMEIL","pu_catalogue":8.06,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SINUPHYL 20 Comprimés","ean":"3400930236031","marche":"","pu_catalogue":10.4,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SPORTENINE 33 Comprimés","ean":"3400930066348","marche":"TRAUMATO/SPORT","pu_catalogue":14.84,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STODAL Granules 2 tubes","ean":"3400930204566","marche":"SIROPS","pu_catalogue":8.36,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STODAL Sirop","ean":"3400930157886","marche":"SIROPS","pu_catalogue":7.7,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STODALINE Sirop sans sucre","ean":"3400927999413","marche":"SIROPS","pu_catalogue":8.16,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STORINYL","ean":"3400930229378","marche":"SIROPS","pu_catalogue":8.57,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"VARESOL 3 Tubes","ean":"3400930232248","marche":"BEBE/MAMAN","pu_catalogue":10.05,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"VERRULIA 60cp","ean":"3400936096417","marche":"PRINTEMPS","pu_catalogue":7.91,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ZENALIA 30cp","ean":"3400936096707","marche":"STRESS-SOMMEIL","pu_catalogue":8.62,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNICREME 70g","ean":"3352712007493","marche":"TRAUMATO/SPORT","pu_catalogue":9.08,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNIROLLER","ean":"3352712011292","marche":"TRAUMATO/SPORT","pu_catalogue":11.58,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNIPATCH x5","ean":"3352712012633","marche":"TRAUMATO/SPORT","pu_catalogue":12.5,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CORYZALIA Spray Nasal 100ml","ean":"3352712011360","marche":"BEBE/MAMAN","pu_catalogue":5.61,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CREME DE CHANGE 75ml","ean":"3352712011438","marche":"BEBE/MAMAN","pu_catalogue":6.32,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DAPIS Gel","ean":"3401579221747","marche":"DAPIS","pu_catalogue":6.89,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DAPIS Stick","ean":"3401577473346","marche":"DAPIS","pu_catalogue":8.87,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DAPIS Repulsif Roll-On 40ml","ean":"3352712010363","marche":"DAPIS","pu_catalogue":12.76,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DAPIS Repulsif Spray 75ml","ean":"3352712010356","marche":"DAPIS","pu_catalogue":13.52,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CBD Gel Apaisant 120g","ean":"3352712010295","marche":"CBD","pu_catalogue":16.93,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CBD Gel Apaisant 40g","ean":"3352712010288","marche":"CBD","pu_catalogue":11.63,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CBD Gel Relaxant 70g","ean":"3352712010318","marche":"CBD","pu_catalogue":13.77,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CBD Gel Roll-On 45g","ean":"3352712010301","marche":"CBD","pu_catalogue":11.63,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DERMOPLASMINE Baume Levres","ean":"3352712011520","marche":"DERMATOLOGIE","pu_catalogue":7.55,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DERMOPLASMINE Mousse","ean":"3352712011513","marche":"DERMATOLOGIE","pu_catalogue":12.6,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DERMOPLASMINE Soin","ean":"3352712011506","marche":"DERMATOLOGIE","pu_catalogue":11.32,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DERMOPLASMINE Stick","ean":"3352712011537","marche":"DERMATOLOGIE","pu_catalogue":5.41,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DERMOPLASMINE Stick Lot 2","ean":"3352712011544","marche":"DERMATOLOGIE","pu_catalogue":10.57,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MAG'300+ 160 Comprimés","ean":"3352712008124","marche":"STRESS-SOMMEIL","pu_catalogue":18.11,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MAG'300+ 80 Comprimés","ean":"3352712008117","marche":"STRESS-SOMMEIL","pu_catalogue":10.56,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MAG NUIT 30 Gelules","ean":"3352712007905","marche":"STRESS-SOMMEIL","pu_catalogue":11.53,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLO Immunite Enfant","ean":"3352712011650","marche":"","pu_catalogue":15.5,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLO Immunite Adulte","ean":"3352712011629","marche":"","pu_catalogue":15.71,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLO Vitalite Enfant","ean":"3352712011612","marche":"","pu_catalogue":14.48,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLO Vitalite Adulte","ean":"3352712011605","marche":"","pu_catalogue":15.71,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSCILLO Vitalite 50+","ean":"3352712011599","marche":"","pu_catalogue":15.71,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSMOBIOTIC FLORA Adulte 12 sachets","ean":"3352712008698","marche":"PRINTEMPS","pu_catalogue":14.1,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSMOBIOTIC FLORA Enfant 12 sticks","ean":"3352712008704","marche":"PRINTEMPS","pu_catalogue":11.75,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"OSMOBIOTIC FLORA Bebe 5ml","ean":"3352712008711","marche":"PRINTEMPS","pu_catalogue":12.95,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STODAL PLANTES Sirop","ean":"3352712012480","marche":"SIROPS","pu_catalogue":8.67,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STODAL PLANTES Pastilles Fruits Rouges","ean":"3352712012466","marche":"SIROPS","pu_catalogue":8.67,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"STODAL PLANTES Pastilles Citron","ean":"3352712012473","marche":"SIROPS","pu_catalogue":8.67,"lppr":0,"tva":5.5,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Bain de Bouche","ean":"3401577974096","marche":"BUCCODENTAIRE","pu_catalogue":9.22,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Soin Blancheur 75ml","ean":"3352712008575","marche":"BUCCODENTAIRE","pu_catalogue":6.64,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Soin Complet Anis 75ml","ean":"3352712008513","marche":"BUCCODENTAIRE","pu_catalogue":5.25,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Soin Complet Chlorophylle 75ml","ean":"3352712008551","marche":"BUCCODENTAIRE","pu_catalogue":5.25,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Soin Complet Citron 75ml","ean":"3352712008537","marche":"BUCCODENTAIRE","pu_catalogue":5.25,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack Soin Blancheur","ean":"3352712008582","marche":"BUCCODENTAIRE","pu_catalogue":13.28,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack Soin Anis","ean":"3352712009923","marche":"BUCCODENTAIRE","pu_catalogue":10.5,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack Soin Chloro","ean":"3352712009909","marche":"BUCCODENTAIRE","pu_catalogue":10.5,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack Soin Citron","ean":"3352712009916","marche":"BUCCODENTAIRE","pu_catalogue":10.5,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Gencives Sensibles Anis","ean":"3352712008599","marche":"BUCCODENTAIRE","pu_catalogue":5.46,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Gencives Sensibles Chlorophylle","ean":"3352712008612","marche":"BUCCODENTAIRE","pu_catalogue":5.46,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack Gencives Anis","ean":"3352712008605","marche":"BUCCODENTAIRE","pu_catalogue":10.92,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack Gencives Chloro","ean":"3352712008629","marche":"BUCCODENTAIRE","pu_catalogue":10.92,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT 120ml Soin Complet Chloro","ean":"3352712009558","marche":"BUCCODENTAIRE","pu_catalogue":7.11,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT 120ml Soin Complet Citron","ean":"3352712009749","marche":"BUCCODENTAIRE","pu_catalogue":7.11,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Soin 1eres Dents","ean":"3352712008490","marche":"BUCCODENTAIRE","pu_catalogue":4.43,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Twin Pack 1eres Dents","ean":"3352712008506","marche":"BUCCODENTAIRE","pu_catalogue":8.86,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HOMEODENT Soin Complet Chloro Voyage","ean":"3352712008636","marche":"BUCCODENTAIRE","pu_catalogue":3.19,"lppr":0,"tva":20,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNICA MONTANA 9CH 3 tubes","ean":"3400300759061","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNICA MONTANA 15CH 3 tubes","ean":"3400300759054","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"APIS 15CH 3 tubes","ean":"3400300629050","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CUPRUM METALLICUM 9CH 3 tubes","ean":"3400302559065","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"GELSEMIUM 9CH 3 tubes","ean":"3400303339062","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"GELSEMIUM 15CH 3 tubes","ean":"3400303339055","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HAMAMELIS COMPOSE 3 tubes","ean":"3400930216439","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"IGNATIA AMARA 9CH 3 tubes","ean":"3400303849066","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"IGNATIA AMARA 15CH 3 tubes","ean":"3400303849059","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"LEDUM PALUSTRE 5CH 3 tubes","ean":"3400304309279","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"NUX VOMICA 9CH 3 tubes","ean":"3400305279069","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PASSIFLORA COMPOSE 3 tubes","ean":"3400930215487","marche":"HOMEOPACK","pu_catalogue":8.99,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ARNICA MONTANA 9CH 4 doses","ean":"3400300759085","marche":"HOMEOPACK","pu_catalogue":10.46,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"VACCINOTOXINUM 15CH 4 doses","ean":"3400309259074","marche":"HOMEOPACK","pu_catalogue":10.46,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"LABIAMEO 3 tubes (Herpes Labial)","ean":"3400930256626","marche":"HOMEOCONSEILS","pu_catalogue":10.23,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CONVAMEO 3 tubes (Fatigue Passagere)","ean":"3400930243732","marche":"HOMEOCONSEILS","pu_catalogue":10.23,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SEVAMEO 3 tubes (Sevrage Tabagique)","ean":"3400930289242","marche":"HOMEOCONSEILS","pu_catalogue":10.23,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ZELACEO 3 tubes (Surmenage/Stress)","ean":"3400930275580","marche":"HOMEOCONSEILS","pu_catalogue":10.23,"lppr":0,"tva":2.1,"colisage":1,"format":"","moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}];
+
+function boironInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  condLabos[laboId].produits = BOIRON_CATALOGUE_DEFAUT.map(function(p) {
+    return {
+      nom: p.nom || '', ean: p.ean || '', format: p.format || '',
+      pu_catalogue: p.pu_catalogue || 0, lppr: 0,
+      tva: p.tva || 2.1, colisage: p.colisage || 1,
+      marche_boiron: p.marche || '',
+      moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0, rem_cat: 0, mois: new Array(12).fill(0)
+    };
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-12-31';
+}
+
+// ===== GIBAUD — Catalogue pré-chargé (Tarif ORTHO PODO CONSEIL 2026, 1er juin) =====
+// Source : Tarif ORTHO PODO CONSEIL uniquement (1543 produits)
+var GIBAUD_CATALOGUE_DEFAUT = null;
+var _gibaudCache = null;
+var _gibaudLoading = false;
+
+function gibaudLoadCatalogue(cb) {
+  if (_gibaudCache) { cb(_gibaudCache); return; }
+  if (_gibaudLoading) { setTimeout(function(){ gibaudLoadCatalogue(cb); }, 300); return; }
+  _gibaudLoading = true;
+  fetch('/gibaud.json')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ _gibaudCache = d; _gibaudLoading = false; cb(d); })
+    .catch(function(){ _gibaudLoading = false; cb([]); });
+};
+
+function gibaudInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = '⏳ Chargement GIBAUD...';
+  gibaudLoadCatalogue(function(data) {
+    if (!condLabos[laboId]) return;
+    condLabos[laboId].produits = data.map(function(p) {
+      return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+    });
+    condLabos[laboId].catalogueMaj = new Date().toISOString();
+    condLabos[laboId].tarifValidite = '2026-12-31';
+    if (majEl) majEl.textContent = data.length + ' produits chargés';
+    if (condLaboActif == laboId) { var cs = document.getElementById('cat-labo-sel'); if (cs && cs.value == laboId) catChargeLabo(); }
+    condSauvegarder();
+  });
+}
+
+// ===== THUASNE — Catalogue pré-chargé (Tarif Médical Détaillants Janvier 2026) =====
+// Pages incluses : 1-2 (Venoflex), 4-12 (Ortho, Bandes, Mobiderm, Lymphatrex Essential)
+// Pages exclues : 3 (sur-mesure Venoflex), 13-19 (sur-mesure, prothèses, lingerie)
+var THUASNE_CATALOGUE_DEFAUT = [{"nom":"Venoflex Incognito Absolu Plumetis Cl2 Chaussette","ean":"","format":"","pu_catalogue":33.87,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Fantaisie Ogee Cl2 Chaussette","ean":"","format":"","pu_catalogue":0,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Losanges Cl2 Chaussette","ean":"","format":"","pu_catalogue":33.87,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Fil d'Ecosse Cl2 Chaussette","ean":"","format":"","pu_catalogue":31.8,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Incognito Absolu Cl2 Chaussette","ean":"","format":"","pu_catalogue":32.34,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Cl2 Chaussette","ean":"","format":"","pu_catalogue":32.34,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Cl3 Chaussette","ean":"","format":"","pu_catalogue":32.65,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Fast Lin Cl2 Chaussette","ean":"","format":"","pu_catalogue":38.1,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Fast Coton Cl2-3 Chaussette","ean":"","format":"","pu_catalogue":38.1,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Fast Laine Cl2-3 Chaussette","ean":"","format":"","pu_catalogue":38.1,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Simply Coton Fin Cl2 Chaussette","ean":"","format":"","pu_catalogue":31.8,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Fast Air Cl2-3 Chaussette","ean":"","format":"","pu_catalogue":38.1,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Coton Cl1 Chaussette","ean":"","format":"","pu_catalogue":32.66,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Coton Cl2 Chaussette","ean":"","format":"","pu_catalogue":31.8,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Coton Cl3 Chaussette","ean":"","format":"","pu_catalogue":32.66,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Incognito Absolu Plumetis Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":47.86,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Fantaisie Ogee Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":47.86,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Losanges Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":47.86,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Fil d'Ecosse Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":46.15,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Incognito Absolu Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":46.71,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":46.71,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Cl3 Bas-cuisse","ean":"","format":"","pu_catalogue":46.71,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Simply Coton Fin Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":46.15,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Coton Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":46.15,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Coton Cl3 Bas-cuisse","ean":"","format":"","pu_catalogue":46.61,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Incognito Absolu Plumetis Cl2 Collant","ean":"","format":"","pu_catalogue":60.4,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Fantaisie Ogee Cl2 Collant","ean":"","format":"","pu_catalogue":60.4,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Losanges Cl2 Collant","ean":"","format":"","pu_catalogue":60.4,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Incognito Absolu Cl2 Collant","ean":"","format":"","pu_catalogue":60.54,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Cl2 Collant","ean":"","format":"","pu_catalogue":60.54,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Cl3 Collant","ean":"","format":"","pu_catalogue":60.54,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Simply Coton Fin Cl2 Collant","ean":"","format":"","pu_catalogue":59.15,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex City Confort Coton Cl2 Collant","ean":"","format":"","pu_catalogue":59.15,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Maternite Cl2 Collant","ean":"","format":"","pu_catalogue":60.54,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Kokoon Absolu Maternite Losanges Cl2 Collant","ean":"","format":"","pu_catalogue":60.4,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Maternite Cl2 Collant","ean":"","format":"","pu_catalogue":44.45,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Cl1-2-3 Chaussette","ean":"","format":"","pu_catalogue":19.49,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Opaque Cl2 Chaussette","ean":"","format":"","pu_catalogue":19.49,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Elegance Cl1-2-3 Chaussette","ean":"","format":"","pu_catalogue":19.49,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Cl1-2-3 Bas-cuisse","ean":"","format":"","pu_catalogue":31.34,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Opaque Cl2 Bas-cuisse","ean":"","format":"","pu_catalogue":31.34,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Elegance Cl1-2-3 Bas-cuisse","ean":"","format":"","pu_catalogue":31.34,"lppr":29.18,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Cl1-2-3 Collant","ean":"","format":"","pu_catalogue":44.45,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Secret Opaque Cl2 Collant","ean":"","format":"","pu_catalogue":44.45,"lppr":41.19,"tva":5.5,"colisage":1},{"nom":"Venoflex Soft Care Cl2-3 Chaussette","ean":"","format":"","pu_catalogue":36.9,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Venoflex Clinic Cl1-2 Chaussette","ean":"","format":"","pu_catalogue":19.49,"lppr":21.96,"tva":5.5,"colisage":1},{"nom":"Enfile-bas de compression","ean":"","format":"","pu_catalogue":58.97,"lppr":0,"tva":20,"colisage":1},{"nom":"LombaStab 21cm","ean":"","format":"21cm","pu_catalogue":90.72,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"LombaStab 26cm","ean":"","format":"26cm","pu_catalogue":101.96,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"Lombatech 21cm","ean":"","format":"21cm","pu_catalogue":53.32,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"Lombatech 26cm","ean":"","format":"26cm","pu_catalogue":63.32,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"LombaFirst 21cm","ean":"","format":"21cm","pu_catalogue":43.98,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"LombaFirst 26cm","ean":"","format":"26cm","pu_catalogue":45.98,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"LombaStart 21cm","ean":"","format":"21cm","pu_catalogue":45.98,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"LombaStart 26cm","ean":"","format":"26cm","pu_catalogue":47.98,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"LombaSkin 21cm","ean":"","format":"21cm","pu_catalogue":44.98,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"LombaSkin 26cm","ean":"","format":"26cm","pu_catalogue":56.65,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"Lombacross Activity 21cm","ean":"","format":"21cm","pu_catalogue":48.32,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"Lombacross Activity 26cm","ean":"","format":"26cm","pu_catalogue":59.98,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"Lombax Original 21cm","ean":"","format":"21cm","pu_catalogue":52.86,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"Lombax Original 26cm","ean":"","format":"26cm","pu_catalogue":68.51,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"Lombamum 21cm","ean":"","format":"21cm","pu_catalogue":68.61,"lppr":46.34,"tva":5.5,"colisage":1},{"nom":"Ceinture Pelvienne 10cm","ean":"","format":"10cm","pu_catalogue":41.14,"lppr":0,"tva":20,"colisage":1},{"nom":"LombaStab Dorso 35cm","ean":"","format":"35cm","pu_catalogue":212.34,"lppr":88.09,"tva":5.5,"colisage":1},{"nom":"LombaStab High 35cm","ean":"","format":"35cm","pu_catalogue":111.16,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"LombaStab High 40cm","ean":"","format":"40cm","pu_catalogue":114.72,"lppr":54.85,"tva":5.5,"colisage":1},{"nom":"LombaStab Immo 35cm","ean":"","format":"35cm","pu_catalogue":318.53,"lppr":164.67,"tva":5.5,"colisage":1},{"nom":"Dynabelt T1-T2 18cm","ean":"","format":"18cm","pu_catalogue":51.02,"lppr":56.5,"tva":5.5,"colisage":1},{"nom":"Dynabelt T3-T4 18cm","ean":"","format":"18cm","pu_catalogue":51.02,"lppr":66.6,"tva":5.5,"colisage":1},{"nom":"Dynabelt T1-T2 25cm","ean":"","format":"25cm","pu_catalogue":62.92,"lppr":70.61,"tva":5.5,"colisage":1},{"nom":"Dynabelt T3-T4 25cm","ean":"","format":"25cm","pu_catalogue":62.92,"lppr":83.24,"tva":5.5,"colisage":1},{"nom":"Dynabelt T1-T2 33cm","ean":"","format":"33cm","pu_catalogue":74.33,"lppr":84.73,"tva":5.5,"colisage":1},{"nom":"Dynabelt T3-T4 33cm","ean":"","format":"33cm","pu_catalogue":74.33,"lppr":96.79,"tva":5.5,"colisage":1},{"nom":"Stomex T1 T2 T3 25cm","ean":"","format":"25cm","pu_catalogue":111.55,"lppr":70.61,"tva":5.5,"colisage":1},{"nom":"Stomex T4 25cm","ean":"","format":"25cm","pu_catalogue":111.55,"lppr":83.24,"tva":5.5,"colisage":1},{"nom":"Cemen 18x2.5cm","ean":"","format":"18x2.5cm","pu_catalogue":27.96,"lppr":13.73,"tva":20,"colisage":1},{"nom":"Cemen 25x2.5cm","ean":"","format":"25x2.5cm","pu_catalogue":42.59,"lppr":20.0,"tva":20,"colisage":1},{"nom":"Ortel Unilateral","ean":"","format":"","pu_catalogue":45.9,"lppr":20.43,"tva":5.5,"colisage":1},{"nom":"Ortel Bilateral","ean":"","format":"","pu_catalogue":78.12,"lppr":33.11,"tva":5.5,"colisage":1},{"nom":"Bande herniaire","ean":"","format":"","pu_catalogue":47.28,"lppr":33.11,"tva":5.5,"colisage":1},{"nom":"Ortel C1 Classic","ean":"","format":"","pu_catalogue":6.0,"lppr":9.25,"tva":5.5,"colisage":1},{"nom":"Ortel C1 Anatomic","ean":"","format":"","pu_catalogue":13.75,"lppr":9.25,"tva":5.5,"colisage":1},{"nom":"Ortel C2 Plus","ean":"","format":"","pu_catalogue":14.86,"lppr":13.1,"tva":5.5,"colisage":1},{"nom":"Ortel C3","ean":"","format":"","pu_catalogue":28.21,"lppr":15.71,"tva":5.5,"colisage":1},{"nom":"Ortel C4 Rigid","ean":"","format":"","pu_catalogue":34.42,"lppr":18.77,"tva":5.5,"colisage":1},{"nom":"Ortel C4 Vario","ean":"","format":"","pu_catalogue":51.57,"lppr":18.77,"tva":5.5,"colisage":1},{"nom":"ImmoClassic","ean":"","format":"","pu_catalogue":29.16,"lppr":15.24,"tva":20,"colisage":1},{"nom":"ImmoClassic+","ean":"","format":"","pu_catalogue":50.77,"lppr":15.24,"tva":20,"colisage":1},{"nom":"ImmoVest","ean":"","format":"","pu_catalogue":38.31,"lppr":15.24,"tva":20,"colisage":1},{"nom":"Le Gilet","ean":"","format":"","pu_catalogue":17.72,"lppr":15.24,"tva":20,"colisage":1},{"nom":"Ligaflex Sangle Claviculaire","ean":"","format":"","pu_catalogue":31.52,"lppr":0,"tva":20,"colisage":1},{"nom":"Manuaction","ean":"","format":"","pu_catalogue":51.66,"lppr":56.64,"tva":5.5,"colisage":1},{"nom":"ManuImmo Pro","ean":"","format":"","pu_catalogue":52.96,"lppr":56.64,"tva":5.5,"colisage":1},{"nom":"ManuImmo","ean":"","format":"","pu_catalogue":44.55,"lppr":56.64,"tva":5.5,"colisage":1},{"nom":"ManuImmo Open","ean":"","format":"","pu_catalogue":45.05,"lppr":56.64,"tva":5.5,"colisage":1},{"nom":"Le Poignet","ean":"","format":"","pu_catalogue":34.02,"lppr":41.64,"tva":5.5,"colisage":1},{"nom":"Manuvario","ean":"","format":"","pu_catalogue":57.7,"lppr":56.64,"tva":5.5,"colisage":1},{"nom":"Manurhizo Pro","ean":"","format":"","pu_catalogue":50.78,"lppr":53.18,"tva":5.5,"colisage":1},{"nom":"Manurhizo","ean":"","format":"","pu_catalogue":43.58,"lppr":53.18,"tva":5.5,"colisage":1},{"nom":"Manuboxer","ean":"","format":"","pu_catalogue":56.69,"lppr":79.2,"tva":5.5,"colisage":1},{"nom":"Digi Immo","ean":"","format":"","pu_catalogue":28.13,"lppr":36.71,"tva":5.5,"colisage":1},{"nom":"Rhizoimmo","ean":"","format":"","pu_catalogue":45.73,"lppr":43.32,"tva":5.5,"colisage":1},{"nom":"Rhizo-pro","ean":"","format":"","pu_catalogue":37.47,"lppr":43.32,"tva":5.5,"colisage":1},{"nom":"Silistab Epi","ean":"","format":"","pu_catalogue":34.1,"lppr":0,"tva":20,"colisage":1},{"nom":"Epi-med Pro Master","ean":"","format":"","pu_catalogue":27.77,"lppr":0,"tva":20,"colisage":1},{"nom":"Epi-med","ean":"","format":"","pu_catalogue":19.41,"lppr":0,"tva":20,"colisage":1},{"nom":"Condylex","ean":"","format":"","pu_catalogue":14.25,"lppr":0,"tva":20,"colisage":1},{"nom":"ROM-R Elbow","ean":"","format":"","pu_catalogue":98.0,"lppr":0,"tva":20,"colisage":1},{"nom":"Accessoire ROM-R Elbow","ean":"","format":"","pu_catalogue":17.4,"lppr":0,"tva":20,"colisage":1},{"nom":"GenuSoft","ean":"","format":"","pu_catalogue":12.6,"lppr":7.26,"tva":5.5,"colisage":1},{"nom":"GenuAction","ean":"","format":"","pu_catalogue":21.5,"lppr":18.95,"tva":5.5,"colisage":1},{"nom":"GenuExtrem","ean":"","format":"","pu_catalogue":26.11,"lppr":21.48,"tva":5.5,"colisage":1},{"nom":"Genu-Go Silistab Cl2","ean":"","format":"","pu_catalogue":33.6,"lppr":24.01,"tva":5.5,"colisage":1},{"nom":"GenuPro Comfort","ean":"","format":"","pu_catalogue":48.72,"lppr":24.01,"tva":5.5,"colisage":1},{"nom":"Bandage Rotulien","ean":"","format":"","pu_catalogue":15.04,"lppr":0,"tva":20,"colisage":1},{"nom":"Patella Reliever","ean":"","format":"","pu_catalogue":90.54,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Ligastrap Genu","ean":"","format":"","pu_catalogue":44.36,"lppr":21.48,"tva":5.5,"colisage":1},{"nom":"Genu Dynastab","ean":"","format":"","pu_catalogue":73.41,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Genu Ligaflex Longue Fermee","ean":"","format":"","pu_catalogue":104.53,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Genu Ligaflex Courte Fermee","ean":"","format":"","pu_catalogue":93.16,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Genu Ligaflex Longue Ouverte","ean":"","format":"","pu_catalogue":108.03,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Genu Ligaflex Courte Ouverte","ean":"","format":"","pu_catalogue":96.77,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"GenuStart ROM Longue Ouverte","ean":"","format":"","pu_catalogue":99.62,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"GenuStart ROM Courte Ouverte","ean":"","format":"","pu_catalogue":99.62,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Genu Ligaflex ROM","ean":"","format":"","pu_catalogue":154.9,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Rebel","ean":"","format":"","pu_catalogue":174.74,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"GenuPro Control","ean":"","format":"","pu_catalogue":229.0,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Action Reliever","ean":"","format":"","pu_catalogue":170.98,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Rebel Reliever","ean":"","format":"","pu_catalogue":599.91,"lppr":490.0,"tva":5.5,"colisage":1},{"nom":"GenuStart Ice","ean":"","format":"","pu_catalogue":86.41,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"Ligaflex Immo 3 volets","ean":"","format":"","pu_catalogue":52.2,"lppr":57.23,"tva":5.5,"colisage":1},{"nom":"Ligaflex Immo 0 degres","ean":"","format":"","pu_catalogue":46.74,"lppr":57.23,"tva":5.5,"colisage":1},{"nom":"Ligaflex Immo 20 degres","ean":"","format":"","pu_catalogue":46.74,"lppr":57.23,"tva":5.5,"colisage":1},{"nom":"Genuimmo 0 degres","ean":"","format":"","pu_catalogue":56.38,"lppr":57.23,"tva":5.5,"colisage":1},{"nom":"Genuimmo 20 degres","ean":"","format":"","pu_catalogue":54.29,"lppr":57.23,"tva":5.5,"colisage":1},{"nom":"ROM-R Genou","ean":"","format":"","pu_catalogue":107.7,"lppr":102.29,"tva":5.5,"colisage":1},{"nom":"MalleoSoft","ean":"","format":"","pu_catalogue":12.36,"lppr":6.92,"tva":5.5,"colisage":1},{"nom":"MalleoAction","ean":"","format":"","pu_catalogue":17.61,"lppr":15.9,"tva":5.5,"colisage":1},{"nom":"Silistab Malleo","ean":"","format":"","pu_catalogue":44.82,"lppr":18.43,"tva":5.5,"colisage":1},{"nom":"Silistab Achillo","ean":"","format":"","pu_catalogue":44.76,"lppr":18.43,"tva":5.5,"colisage":1},{"nom":"MalleoPro Activ","ean":"","format":"","pu_catalogue":50.28,"lppr":18.43,"tva":5.5,"colisage":1},{"nom":"Ligastrap Malleo","ean":"","format":"","pu_catalogue":34.16,"lppr":15.9,"tva":5.5,"colisage":1},{"nom":"Malleo Dynastab","ean":"","format":"","pu_catalogue":46.7,"lppr":27.44,"tva":5.5,"colisage":1},{"nom":"Malleo Dynastab BOA","ean":"","format":"","pu_catalogue":47.98,"lppr":27.44,"tva":5.5,"colisage":1},{"nom":"Malleo Dynastab BOA Ouverte","ean":"","format":"","pu_catalogue":35.12,"lppr":27.44,"tva":5.5,"colisage":1},{"nom":"Ligacast","ean":"","format":"","pu_catalogue":22.35,"lppr":27.44,"tva":5.5,"colisage":1},{"nom":"Ligacast Air+","ean":"","format":"","pu_catalogue":25.87,"lppr":27.44,"tva":5.5,"colisage":1},{"nom":"Ligacast Ice","ean":"","format":"","pu_catalogue":26.81,"lppr":27.44,"tva":5.5,"colisage":1},{"nom":"XLR8","ean":"","format":"","pu_catalogue":83.44,"lppr":64.4,"tva":5.5,"colisage":1},{"nom":"LigaStep Fix Walker","ean":"","format":"","pu_catalogue":50.43,"lppr":64.4,"tva":5.5,"colisage":1},{"nom":"LigaStep Air Walker","ean":"","format":"","pu_catalogue":62.1,"lppr":64.4,"tva":5.5,"colisage":1},{"nom":"LigaStep Rom Walker","ean":"","format":"","pu_catalogue":68.36,"lppr":64.4,"tva":5.5,"colisage":1},{"nom":"Talonnettes XLR8","ean":"","format":"","pu_catalogue":51.16,"lppr":64.4,"tva":5.5,"colisage":1},{"nom":"Accessoires XLR8","ean":"","format":"","pu_catalogue":32.73,"lppr":0,"tva":20,"colisage":1},{"nom":"Semelles Pedipro","ean":"","format":"","pu_catalogue":21.43,"lppr":0,"tva":20,"colisage":1},{"nom":"Talonnettes Pedipro","ean":"","format":"","pu_catalogue":18.94,"lppr":0,"tva":20,"colisage":1},{"nom":"Semelles Pedipro Plus","ean":"","format":"","pu_catalogue":28.59,"lppr":0,"tva":20,"colisage":1},{"nom":"Talonnettes Pedipro Plus","ean":"","format":"","pu_catalogue":22.52,"lppr":0,"tva":20,"colisage":1},{"nom":"Talonnettes Pedipro Softer","ean":"","format":"","pu_catalogue":17.98,"lppr":0,"tva":20,"colisage":1},{"nom":"SpryStep Flex","ean":"","format":"","pu_catalogue":54.92,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"SpryStep Original","ean":"","format":"","pu_catalogue":463.5,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"SpryStep One","ean":"","format":"","pu_catalogue":463.5,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"SpryStep Plus","ean":"","format":"","pu_catalogue":481.0,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"SpryStep Max","ean":"","format":"","pu_catalogue":556.2,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"Sprystep Pediatric","ean":"","format":"","pu_catalogue":463.5,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"Pero-med AFO","ean":"","format":"","pu_catalogue":463.5,"lppr":76.22,"tva":5.5,"colisage":1},{"nom":"LigaStep Pedi Walker","ean":"","format":"","pu_catalogue":51.16,"lppr":64.4,"tva":5.5,"colisage":1},{"nom":"Biflex 16+ Pratic 8x3m","ean":"","format":"8x3m","pu_catalogue":21.84,"lppr":12.9,"tva":20,"colisage":1},{"nom":"Biflex 16+ Pratic 8x4m","ean":"","format":"8x4m","pu_catalogue":27.14,"lppr":17.2,"tva":20,"colisage":1},{"nom":"Biflex 16+ Pratic 10x3m","ean":"","format":"10x3m","pu_catalogue":25.84,"lppr":16.2,"tva":20,"colisage":1},{"nom":"Biflex 16+ Pratic 10x4m","ean":"","format":"10x4m","pu_catalogue":32.88,"lppr":21.6,"tva":20,"colisage":1},{"nom":"Biflex 17+ Pratic 10x3m","ean":"","format":"10x3m","pu_catalogue":27.12,"lppr":16.95,"tva":20,"colisage":1},{"nom":"Biflex 17+ Pratic 10x4m","ean":"","format":"10x4m","pu_catalogue":34.68,"lppr":22.6,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 8x3m","ean":"","format":"8x3m","pu_catalogue":20.54,"lppr":12.9,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 8x3.5m","ean":"","format":"8x3.5m","pu_catalogue":23.2,"lppr":15.05,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 8x4m","ean":"","format":"8x4m","pu_catalogue":25.79,"lppr":17.2,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 8x5m","ean":"","format":"8x5m","pu_catalogue":31.77,"lppr":21.5,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 10x3m","ean":"","format":"10x3m","pu_catalogue":24.65,"lppr":16.2,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 10x3.5m","ean":"","format":"10x3.5m","pu_catalogue":29.1,"lppr":18.9,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 10x4m","ean":"","format":"10x4m","pu_catalogue":31.87,"lppr":21.6,"tva":20,"colisage":1},{"nom":"Biflex 16+ legere 10x5m","ean":"","format":"10x5m","pu_catalogue":39.64,"lppr":27.0,"tva":20,"colisage":1},{"nom":"Biflex 17+ forte 8x4m","ean":"","format":"8x4m","pu_catalogue":27.85,"lppr":18.04,"tva":20,"colisage":1},{"nom":"Biflex 17+ forte 10x3m","ean":"","format":"10x3m","pu_catalogue":25.89,"lppr":16.95,"tva":20,"colisage":1},{"nom":"Biflex 17+ forte 10x3.5m","ean":"","format":"10x3.5m","pu_catalogue":31.77,"lppr":19.78,"tva":20,"colisage":1},{"nom":"Biflex 17+ forte 10x4m","ean":"","format":"10x4m","pu_catalogue":33.09,"lppr":22.6,"tva":20,"colisage":1},{"nom":"Biflex 17+ forte 10x5m","ean":"","format":"10x5m","pu_catalogue":42.72,"lppr":28.25,"tva":20,"colisage":1},{"nom":"Biflex 16 legere 8x3m","ean":"","format":"8x3m","pu_catalogue":22.43,"lppr":12.9,"tva":20,"colisage":1},{"nom":"Biflex 16 legere 10x3m","ean":"","format":"10x3m","pu_catalogue":27.12,"lppr":16.2,"tva":20,"colisage":1},{"nom":"Biflex 16 legere 10x3.5m","ean":"","format":"10x3.5m","pu_catalogue":32.41,"lppr":18.9,"tva":20,"colisage":1},{"nom":"Biflex 16 legere 10x4m","ean":"","format":"10x4m","pu_catalogue":35.47,"lppr":21.6,"tva":20,"colisage":1},{"nom":"Biflex 16 legere 10x5m","ean":"","format":"10x5m","pu_catalogue":44.58,"lppr":27.0,"tva":20,"colisage":1},{"nom":"Biflex 17 forte 10x3m","ean":"","format":"10x3m","pu_catalogue":28.62,"lppr":16.95,"tva":20,"colisage":1},{"nom":"Biflex 17 forte 10x4m","ean":"","format":"10x4m","pu_catalogue":36.99,"lppr":22.6,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 8x3m","ean":"","format":"8x3m","pu_catalogue":20.54,"lppr":12.9,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 8x3.5m","ean":"","format":"8x3.5m","pu_catalogue":23.2,"lppr":15.05,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 8x4m","ean":"","format":"8x4m","pu_catalogue":25.79,"lppr":17.2,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 8x5m","ean":"","format":"8x5m","pu_catalogue":31.77,"lppr":21.5,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 10x3m","ean":"","format":"10x3m","pu_catalogue":24.65,"lppr":16.2,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 10x3.5m","ean":"","format":"10x3.5m","pu_catalogue":29.1,"lppr":18.9,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 10x4m","ean":"","format":"10x4m","pu_catalogue":31.87,"lppr":21.6,"tva":20,"colisage":1},{"nom":"Biflex LL 16+ 10x5m","ean":"","format":"10x5m","pu_catalogue":39.64,"lppr":27.0,"tva":20,"colisage":1},{"nom":"Biflex LL 17+ 8x4m","ean":"","format":"8x4m","pu_catalogue":27.85,"lppr":18.04,"tva":20,"colisage":1},{"nom":"Biflex LL 17+ 10x3m","ean":"","format":"10x3m","pu_catalogue":25.89,"lppr":16.95,"tva":20,"colisage":1},{"nom":"Biflex LL 17+ 10x3.5m","ean":"","format":"10x3.5m","pu_catalogue":31.77,"lppr":19.78,"tva":20,"colisage":1},{"nom":"Biflex LL 17+ 10x4m","ean":"","format":"10x4m","pu_catalogue":33.09,"lppr":22.6,"tva":20,"colisage":1},{"nom":"Biflex LL 17+ 10x5m","ean":"","format":"10x5m","pu_catalogue":42.72,"lppr":28.25,"tva":20,"colisage":1},{"nom":"Kit Biflex T1","ean":"","format":"T1","pu_catalogue":46.8,"lppr":46.56,"tva":20,"colisage":1},{"nom":"Kit Biflex T2","ean":"","format":"T2","pu_catalogue":49.6,"lppr":49.47,"tva":20,"colisage":1},{"nom":"Kit Biflex T3","ean":"","format":"T3","pu_catalogue":51.8,"lppr":51.42,"tva":20,"colisage":1},{"nom":"Biflexideal 3x5m","ean":"","format":"3x5m","pu_catalogue":7.79,"lppr":0,"tva":20,"colisage":1},{"nom":"Biflexideal 6x5m","ean":"","format":"6x5m","pu_catalogue":9.18,"lppr":0,"tva":20,"colisage":1},{"nom":"Biflexideal 8x5m","ean":"","format":"8x5m","pu_catalogue":10.17,"lppr":0,"tva":20,"colisage":1},{"nom":"Biflexideal 10x5m","ean":"","format":"10x5m","pu_catalogue":11.38,"lppr":0,"tva":20,"colisage":1},{"nom":"Biplast 3x2.5m","ean":"","format":"3x2.5m","pu_catalogue":3.56,"lppr":1.15,"tva":20,"colisage":1},{"nom":"Biplast 6x2.5m","ean":"","format":"6x2.5m","pu_catalogue":5.27,"lppr":2.3,"tva":20,"colisage":1},{"nom":"Biplast 8x2.5m","ean":"","format":"8x2.5m","pu_catalogue":6.18,"lppr":3.07,"tva":20,"colisage":1},{"nom":"Biplast 10x2.5m","ean":"","format":"10x2.5m","pu_catalogue":7.57,"lppr":3.84,"tva":20,"colisage":1},{"nom":"Biplast 15x2.5m","ean":"","format":"15x2.5m","pu_catalogue":10.98,"lppr":3.84,"tva":20,"colisage":1},{"nom":"Biplast 20x2.5m","ean":"","format":"20x2.5m","pu_catalogue":14.5,"lppr":3.84,"tva":20,"colisage":1},{"nom":"Bande coton 11x4m","ean":"","format":"11x4m","pu_catalogue":5.98,"lppr":0,"tva":20,"colisage":1},{"nom":"Bande mousse 8mm 8x1m","ean":"","format":"8x1m","pu_catalogue":8.51,"lppr":3.99,"tva":20,"colisage":1},{"nom":"Bande mousse 8mm 10x1m","ean":"","format":"10x1m","pu_catalogue":8.67,"lppr":3.99,"tva":20,"colisage":1},{"nom":"Bande mousse 12mm 10x1m","ean":"","format":"10x1m","pu_catalogue":11.53,"lppr":3.99,"tva":20,"colisage":1},{"nom":"Varico T0","ean":"","format":"T0","pu_catalogue":9.47,"lppr":4.04,"tva":20,"colisage":4},{"nom":"Varico T1","ean":"","format":"T1","pu_catalogue":6.71,"lppr":4.04,"tva":20,"colisage":4},{"nom":"Varico T2","ean":"","format":"T2","pu_catalogue":8.24,"lppr":4.04,"tva":20,"colisage":4},{"nom":"Varico T3","ean":"","format":"T3","pu_catalogue":10.85,"lppr":4.04,"tva":20,"colisage":4},{"nom":"Mousse protection 7x27m","ean":"","format":"7x27m","pu_catalogue":6.11,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Plaques 25x1m 5x5mm","ean":"","format":"25x1m","pu_catalogue":49.47,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Plaques 20x1m 15x15mm","ean":"","format":"20x1m","pu_catalogue":29.39,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Plaques 25x25cm 5x5mm","ean":"","format":"25x25cm","pu_catalogue":23.1,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Bandes 10x3m 5x5mm","ean":"","format":"10x3m","pu_catalogue":51.52,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Bandes 10x3m 15x15mm","ean":"","format":"10x3m","pu_catalogue":30.85,"lppr":0,"tva":20,"colisage":1},{"nom":"Kit Mobiderm 1","ean":"","format":"Kit 1","pu_catalogue":110.89,"lppr":0,"tva":20,"colisage":1},{"nom":"Kit Mobiderm 2","ean":"","format":"Kit 2","pu_catalogue":168.5,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Manchon","ean":"","format":"","pu_catalogue":49.53,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Mitaine","ean":"","format":"","pu_catalogue":27.87,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Gant","ean":"","format":"","pu_catalogue":64.86,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Autofit Manchon","ean":"","format":"","pu_catalogue":123.85,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Autofit Chaussette","ean":"","format":"","pu_catalogue":153.32,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Autofit Bas-cuisse","ean":"","format":"","pu_catalogue":206.39,"lppr":0,"tva":20,"colisage":1},{"nom":"Mobiderm Intimate Short","ean":"","format":"","pu_catalogue":97.22,"lppr":0,"tva":20,"colisage":1},{"nom":"Lymphatrex Essential Mitaine","ean":"","format":"","pu_catalogue":33.03,"lppr":6.25,"tva":5.5,"colisage":1},{"nom":"Lymphatrex Essential Manchon","ean":"","format":"","pu_catalogue":43.06,"lppr":41.81,"tva":5.5,"colisage":1},{"nom":"Lymphatrex Essential Mitaine+Manchon","ean":"","format":"","pu_catalogue":67.82,"lppr":65.84,"tva":5.5,"colisage":1},{"nom":"Lymphatrex Essential Chaussette","ean":"","format":"","pu_catalogue":36.58,"lppr":35.51,"tva":5.5,"colisage":1},{"nom":"Lymphatrex Essential Bas-cuisse","ean":"","format":"","pu_catalogue":44.82,"lppr":41.65,"tva":5.5,"colisage":1},{"nom":"Lymphatrex Essential Collant","ean":"","format":"","pu_catalogue":127.36,"lppr":46.99,"tva":5.5,"colisage":1}];
+
+function thuasneInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return; // déjà chargé
+  condLabos[laboId].produits = THUASNE_CATALOGUE_DEFAUT.map(function(p) {
+    return {
+      nom: p.nom, ean: p.ean || '', format: p.format || '',
+      pu_catalogue: p.pu_catalogue || 0,
+      lppr: p.lppr || 0,
+      tva: p.tva || 5.5,
+      colisage: p.colisage || 1,
+      moy: 0, pa_net: 0, pv_ttc: 0, pv_ht: 0, mbu: 0, mb_pct: 0,
+      rem_cat: 0, mois: new Array(12).fill(0)
+    };
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-07-01'; // Tarif 01/2026 valide jusqu'au 07/2026 (next update)
+}
+
+// ===== MARQUE VERTE — Catalogue externalisé (marqueverte.json, tarif PharmUPP Essentiel janv. 2026) =====
+var MARCHES_MARQUEVERTE = [
+  {id:'abso_trad',      label:'ABSO Médical (traditionnel)',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 0–70% selon réf | SDAV 22–82% sous conditions de volume — Min cmd 75€ net, franco 300€ (+5€ port en dessous), 45j fin de mois. Dividende coopératif Welcoop 4% dès 3 000€ CA net/an (seuil de déclenchement, calcul dès le 1er euro)'},
+  {id:'abso_lpp',       label:'Pansements techniques LPP',        rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 21–35% | SDAV 26% — RFA fin d\u2019année 2/3/5% si part de marché valeur LMV ≥10/15/20% (mesurée 01/09→31/12/2026, non cumulable, CA tous canaux)'},
+  {id:'premiers_soins', label:'ABSO Famille (premiers soins)',    rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 25% | SDAV 40%'},
+  {id:'soludiab',       label:'Soludiab (diabétologie)',          rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Aiguilles 55% (SDAV 66%+UG, TVA 5,5) | autosurveillance glycémique 40%'},
+  {id:'dermasens',      label:'Dermasens (visage & corps)',       rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 20% | SDAV 45% sur flacons 1L, écorecharges et savons liquides'},
+  {id:'semesa',         label:'Semesa (incontinence)',            rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'55% sur toute la gamme'},
+  {id:'actikine',       label:'Actikiné (muscles & articulations)', rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Direct 20% | SDAV 35%'},
+  {id:'digit',          label:'Digit (tests & mesure)',           rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Tensiomètres 40–68% selon réf | thermomètres 30% | Digitest 50% (SDAV 75%)'},
+  {id:'calmelia',       label:'Calmelia (phytothérapie)',         rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'20% uniforme, TVA 5,5 (sauf argile/henné 20%)'},
+  {id:'moustiko',       label:'Mousti KO (anti-moustiques)',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'50% — diffuseur électrique et recharge à 0%'},
+  {id:'uriprocare',     label:'Uriprocare (incontinence masc.)',  rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Etuis péniens 20% (LPPR 74,70€) | poches à urine 35% — TVA 5,5'},
+  {id:'quotisoin',      label:'Quotisoin (prévention)',           rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'20%'},
+  {id:'materiel',       label:'Matériel médical & coutellerie',   rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'20% (gants TVA 5,5)'}
+];
+
+var _marqueverteCache = null;
+var _marqueverteLoading = false;
+function marqueverteLoadCatalogue(cb) {
+  if (_marqueverteCache) { cb(_marqueverteCache); return; }
+  if (_marqueverteLoading) { setTimeout(function(){ marqueverteLoadCatalogue(cb); }, 300); return; }
+  _marqueverteLoading = true;
+  fetch('/marqueverte.json')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ _marqueverteCache = d; _marqueverteLoading = false; cb(d); })
+    .catch(function(){ _marqueverteLoading = false; cb([]); });
+}
+function marqueverteInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  var majEl = document.getElementById('cond-catalogue-maj');
+  if (majEl) majEl.textContent = '⏳ Chargement MARQUE VERTE...';
+  marqueverteLoadCatalogue(function(data) {
+    if (!condLabos[laboId]) return;
+    condLabos[laboId].produits = data.map(function(p) {
+      return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+    });
+    condLabos[laboId].catalogueMaj = new Date().toISOString();
+    condLabos[laboId].tarifValidite = '2026-12-31';
+    if (majEl) majEl.textContent = data.length + ' produits chargés';
+    if (condLaboActif == laboId) { var cs = document.getElementById('cat-labo-sel'); if (cs && cs.value == laboId) catChargeLabo(); }
+    condSauvegarder();
+  });
+}
+
+var MARCHES_THUASNE = [
+  { id:'compression',  label:'Compression médicale',       rem:0, rem_30:0, rem_25:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Venoflex / Biflex / Lymphatrex' },
+  { id:'orthopedie',   label:'Orthopédie',                 rem:0, rem_30:0, rem_25:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Dos / Genou / Cheville / Poignet' },
+  { id:'cicatrex',     label:'Cicatrex',                   rem:0, rem_30:0, rem_25:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Vêtements compression cicatricielle' },
+  { id:'mobiderm',     label:'Mobiderm',                   rem:0, rem_30:0, rem_25:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Bandages mobilisateurs' },
+];
+
+var MARCHES_NUTRICO = [
+  { id:'general', label:'Marché général',              rem_30:30, rem_25:25, ug_ach:0,  ug_off:0,  ug_tiers:true,  note:'≥ 30 refs → 30% | 8-29 refs → 25%' },
+  { id:'prot',    label:'Protéines & Superaliments',   rem_30:25, rem_25:25, ug_ach:12, ug_off:2,  ug_tiers:false, note:'25% + 12+2 UG' },
+  { id:'isolat',  label:'Protéines isolat panachés', rem_30:20, rem_25:20, ug_ach:12, ug_off:2, ug_tiers:false, note:'20% + 12+2 UG' },
+  { id:'barres',  label:'Barres protéines',             rem_30:20, rem_25:20, ug_ach:6,  ug_off:1,  ug_tiers:false, note:'20% + 6+1 UG' }
+];
+
+var MARCHES_HORUS = [
+  {id:'secheresse',   label:'Sécheresse oculaire',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 25 panachées'},
+  {id:'larmes',       label:'Larmes artificielles',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 5 unités'},
+  {id:'antiVEGF',     label:'Anti-VEGF',                 rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Biosimilaire BAIAMA'},
+  {id:'glaucome',     label:'Glaucome',                  rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 3 panachées'},
+  {id:'corticoide',   label:'Corticoïde ophtalmique',    rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 3-5 unités'},
+  {id:'ains',         label:'AINS ophtalmique',          rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 5 panachées'},
+  {id:'allergie',     label:'Allergie oculaire',         rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 5 panachées'},
+  {id:'lentilles',    label:'Solution lentilles',        rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 5 panachées'},
+  {id:'cicatrisant',  label:'Cicatrisant oculaire',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 10 panachées'},
+  {id:'antiseptique', label:'Antiseptique',              rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 10 unités'},
+  {id:'antibiotique', label:'Antibiotique oculaire',     rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 5 unités'},
+  {id:'cosmetiques',  label:'Cosmétiques ilast/Camolid', rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 3 panachées'},
+  {id:'complements',  label:'Compléments alimentaires',  rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Min 3 panachées'},
+];
+
+var PODOWELL_CATALOGUE_DEFAUT = [{"nom": "ADAM NOIR", "ean": "3376122370848", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ADRIEN NOIR", "ean": "3376122177362", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALADIN NOIR", "ean": "3376122332303", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALBAN NOIR", "ean": "3376122135591", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALEXIS MARINE", "ean": "3376121986279", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALFRED NOIR", "ean": "3376122211868", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALIX NOIR", "ean": "3376122332310", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 51.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALLURE NOIR", "ean": "3376122085551", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALPES NOIR", "ean": "3376121986538", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ALTITUDE NOIR", "ean": "3376121986798", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 45.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AMIRAL BLEU_JEAN", "ean": "3376122186975", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AMIRAL GRIS", "ean": "3376121987290", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AMIRAL NOIR", "ean": "3376122125264", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AMIRAL ROUGE", "ean": "3376122113926", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ANDO NOIR", "ean": "3376122460495", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ANDRE NOIR", "ean": "3376122436704", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 36.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ANITE MARINE", "ean": "3376121988273", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ANTOINE GRIS", "ean": "3376122177911", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ANTOINE MARINE", "ean": "3376122269616", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ANTOINE NOIR", "ean": "3376122177805", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AQUITAINE NOIR", "ean": "3376122085643", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 64.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARIEL GRIS", "ean": "3376122333614", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARMAND MARINE", "ean": "3376122270087", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARMAND NOIR", "ean": "3376122270193", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARREAU NNOIR", "ean": "3376122085780", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 42.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARSENE JEAN", "ean": "3376122109943", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATHENA JEAN", "ean": "3376122042929", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATHENA PERLE", "ean": "3376122043056", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATHOS BORDEAUX", "ean": "3376122114039", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATHOS MARINE", "ean": "3376121988921", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATHOS NOIR", "ean": "3376121989058", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATLAS NOIR", "ean": "3376122188115", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ATLAS GRIS", "ean": "3376122188221", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AWELL MARRON", "ean": "3376121989492", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "BECKY MARINE", "ean": "3376122436841", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 61.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "BECKY02 ECRU", "ean": "3376122460600", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 61.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "BETTY BLANC", "ean": "3376122454739", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "BRIANNE CAPPUCCINO", "ean": "3376122437589", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 62.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "BRIANNE02 NOIR", "ean": "3376122447649", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 60.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DAMIA MARINE", "ean": "3376122137991", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DAMIA NOIR", "ean": "3376122241278", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DAVINA ARGENT", "ean": "3376122360689", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DAVINA OR", "ean": "3376122401948", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DAO_D_VEL NOIR", "ean": "3376122435981", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 90.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DELYA_HV BLANC", "ean": "3376122257521", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DELYA_HV MARINE", "ean": "3376122257361", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DELYA_HV ROUGE", "ean": "3376122257286", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DEMI JEAN", "ean": "3376122437763", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 45.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DEMI NOIR", "ean": "3376122461201", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 45.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DINA BEIGE", "ean": "3376122138288", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DINA ROUGE", "ean": "3376122138363", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DINA02 SABLE", "ean": "3376122402174", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DOLINE BRONZE", "ean": "3376122437848", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 49.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DOLINE KAKI", "ean": "3376122461270", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 49.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DONUTS BLEU_JEAN", "ean": "3376122187446", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DONUTS GRIS", "ean": "3376122125516", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DONUTS NOIR", "ean": "3376121992492", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "DONUTS ROUGE", "ean": "3376121992386", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GAIA ECRU", "ean": "3376122255138", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GAIA NOIR", "ean": "3376122304393", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GALIT ARGENT", "ean": "3376122402525", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GENNY ARGENT", "ean": "3376122402600", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GEORGETTE CAMEL", "ean": "3376122438180", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 45.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GEORGETTE BLANC", "ean": "3376122461515", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 45.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GETASOLO NOIR_S", "ean": "3376122456795", "format": "Pointures variables", "famille": "Semelles/Accessoires", "pu_catalogue": 17.99, "tva": 5.5, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GINA ACIER", "ean": "3376122438425", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GINA CAMEL", "ean": "3376122361402", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GINA NAVY", "ean": "3376122134594", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GINA ROUGE", "ean": "3376122402761", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GRETA BEIGE", "ean": "3376122255053", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "HARRISON02 NOIR", "ean": "3376122378479", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 66.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "HECTOR NOIR", "ean": "3376122419394", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "HUGO NOIR", "ean": "3376122419479", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "HUGO02 TAUPE", "ean": "3376122461829", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "KIRA BLANC", "ean": "3376122461973", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 55.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MADELINE GRIS", "ean": "3376122420437", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 62.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MADELINE NOIR", "ean": "3376122450663", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 62.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MADONA GRIS", "ean": "3376122344481", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MADONA NOIR", "ean": "3376122100100", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK AMIRAL", "ean": "3376122380335", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK ARGENT", "ean": "3376122142056", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK GRIS", "ean": "3376122344559", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK NOIR", "ean": "3376121974481", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK SABLE", "ean": "3376122362836", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK_DETE LIBERTY_ROSE", "ean": "3376122307189", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MAGIK_DETE ROUGE", "ean": "3376122403447", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MANILLE AMIRAL", "ean": "3376122450731", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MANILLE SABLE", "ean": "3376122362980", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MANILLE SHINY_BLACK", "ean": "3376122152895", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MARTA BLEU", "ean": "3376122363123", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MARTA POUDRE", "ean": "3376122307479", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MELBA BLEU", "ean": "3376122404239", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 53.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "MELINA_D POUDRE", "ean": "3376122439675", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 66.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NEFELIE ETAIN", "ean": "3376122404819", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NELIA ECRU", "ean": "3376122363932", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NELIA NOIR", "ean": "3376122364007", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NELIA02 PERLE", "ean": "3376122462048", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NERINA BLANC", "ean": "3376122462116", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NESS BLANC", "ean": "3376122462185", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NESSA MARINE", "ean": "3376122381219", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NESSA SABLE", "ean": "3376122404956", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NEVA MARINE", "ean": "3376122364212", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NEVA NOIR", "ean": "3376122364144", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 32.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NEWELL BORDEAUX", "ean": "3376122405021", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NEWELL BRONZE", "ean": "3376122462253", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NISA SABLE", "ean": "3376122462321", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NOVA MARINE", "ean": "3376122381400", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NOVA NOIR", "ean": "3376122381479", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "NOVA OR", "ean": "3376122405243", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "OCTAVIO_D NOIR", "ean": "3376122172909", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 86.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ORFEO_D NOIR", "ean": "3376122172985", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 83.9, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ORTHOSOLO MARINE_S", "ean": "3376122386283", "format": "Pointures variables", "famille": "Semelles/Accessoires", "pu_catalogue": 15.99, "tva": 5.5, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "OSCAR NOIR", "ean": "3376122256906", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 72.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "OTIS MARRON", "ean": "3376122256821", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 61.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "OTIS NOIR", "ean": "3376122405397", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 61.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "PATRICK NOIR", "ean": "3376122256982", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "PATXI NOIR", "ean": "3376122282790", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 49.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "PODOSOLO MARINE_XS", "ean": "3376122001513", "format": "Pointures variables", "famille": "Semelles/Accessoires", "pu_catalogue": 31.99, "tva": 5.5, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "PODOSOLO MARINE_S", "ean": "3376122001506", "format": "Pointures variables", "famille": "Semelles/Accessoires", "pu_catalogue": 31.99, "tva": 5.5, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "PODOSOLO MARINE_M", "ean": "3376122001490", "format": "Pointures variables", "famille": "Semelles/Accessoires", "pu_catalogue": 31.99, "tva": 5.5, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "PODOSOLO MARINE_L", "ean": "3376122001483", "format": "Pointures variables", "famille": "Semelles/Accessoires", "pu_catalogue": 31.99, "tva": 5.5, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "REX NOIR", "ean": "3376122463182", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 45.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ROBIN BLANC", "ean": "3376122463267", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 49.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ROLAND GRIS", "ean": "3376122452698", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ROLAND NOIR", "ean": "3376122422431", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 33.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SAFIA BLEU", "ean": "3376122406547", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SAFIA NOIR", "ean": "3376122422509", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SAMIA GRIS", "ean": "3376122406622", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SARITA NOIR", "ean": "3376122348267", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SARITA OR", "ean": "3376122365875", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SERAPHINE NOIR", "ean": "3376122453084", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SHIRLEY_HV NOIR", "ean": "3376122284312", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SIAM TAUPE", "ean": "3376122441173", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 57.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SIANA NOIR", "ean": "3376122223878", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SOPHIA NOIR", "ean": "3376122350383", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SOPHIA OR", "ean": "3376122366100", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "STELLA MARINE", "ean": "3376122285074", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 56.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "STINA MARINE", "ean": "3376122384432", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 63.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "STINA NOIR", "ean": "3376122350703", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 63.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SUZIE02 BEIGE", "ean": "3376122407001", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VALBA GRIS", "ean": "3376122407865", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 47.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VALIA BORDEAUX", "ean": "3376122385804", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 47.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VALIA GRIS", "ean": "3376122407933", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 47.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VALMON NOIR", "ean": "3376122465360", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VANDA_D BRONZE", "ean": "3376122173395", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 66.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VANDA_D NOIR", "ean": "3376122173234", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 66.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VANINA_HV NOIR", "ean": "3376122287795", "format": "Pointures variables", "famille": "CHUP", "pu_catalogue": 66.0, "tva": 5.5, "lppr": 55.02, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VASCO NOIR", "ean": "3376122441982", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 49.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VERANO MARINE", "ean": "3376122241360", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VERANO NOIR", "ean": "3376122288570", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VERONA NOIR", "ean": "3376122352387", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VIRTUEL ARGENT", "ean": "3376122408084", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 59.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WANDERER MARINE", "ean": "3376122456405", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 75.0, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WILL GRIS", "ean": "3376122442231", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WILMA MARINE", "ean": "3376122442309", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WINDSTEP ROSE", "ean": "3376122456481", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 75.0, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "XAVIER NOIR", "ean": "3376122313623", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "XILO NOIR", "ean": "3376122313821", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 39.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "YANNICK BLANC", "ean": "3376122454814", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 75.0, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "YOHAN BEIGE", "ean": "3376122464349", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 66.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "YVAN CAMEL", "ean": "3376122288266", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "YVAN GRIS", "ean": "3376122352622", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "YVAN JEAN", "ean": "3376122464561", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "YVES NOIR", "ean": "3376122289638", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 69.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ZELDA KAKI", "ean": "3376122454951", "format": "Pointures variables", "famille": "CHUT", "pu_catalogue": 61.99, "tva": 5.5, "lppr": 50.62, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ADDAX JEAN", "ean": "3376122043506", "format": "Pointures variables", "famille": "Confort Médical", "pu_catalogue": 34.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARRY JEAN", "ean": "3376122043728", "format": "Pointures variables", "famille": "Confort Médical", "pu_catalogue": 33.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "AXEL GRIS", "ean": "3376122256746", "format": "Pointures variables", "famille": "Confort Médical", "pu_catalogue": 33.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VEGAS BRONZE", "ean": "3376122057619", "format": "Pointures variables", "famille": "Active", "pu_catalogue": 35.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VEGAS NOIR", "ean": "3376122146337", "format": "Pointures variables", "famille": "Active", "pu_catalogue": 35.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VEGAS ARGENT", "ean": "3376122081829", "format": "Pointures variables", "famille": "Active", "pu_catalogue": 35.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VIDA PERLE", "ean": "3376122442040", "format": "Pointures variables", "famille": "Active", "pu_catalogue": 39.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "VITO NOIR", "ean": "3376122442156", "format": "Pointures variables", "famille": "Active", "pu_catalogue": 39.99, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": true, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARCOBALENO FEM BLACK", "ean": "4711281942892", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARCOBALENO FEM FUXIA", "ean": "4711281942779", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARCOBALENO FEM VIOLET", "ean": "4711281942816", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARCOBALENO HOM MARINE", "ean": "4713264842632", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "ARCOBALENO HOM NOIR", "ean": "4712914383778", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 2.0 PRO SILVER", "ean": "4711281945145", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 2.0 PRO TURQUOISE", "ean": "4711281945107", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 2.0 SOP BLACK", "ean": "4713264847606", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 2.0 SOP DESERTO", "ean": "4711281940799", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 2.0 SOP MARE", "ean": "4711281940751", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 3.0 BLU", "ean": "4711281940591", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "WOODSTOCK 3.0 CIPRIA", "ean": "4711281940638", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "FUTURA_2 CAFFE", "ean": "4711630350248", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SOLEMIO PERLE", "ean": "4713264842472", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SOLEMIO ROSE PALE", "ean": "4712914389022", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "SOLEMIO ROUGE", "ean": "4713264841895", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, {"nom": "GELATA 2.0 PICASSO", "ean": "4711281947194", "format": "Tailles bipar", "famille": "Gelatto", "pu_catalogue": 0, "tva": 20.0, "lppr": 0, "colisage": 1, "min_cmd": 1, "panachage": false, "nouveaute": false, "remises_paliers": [], "moy": 0, "pa_net": 0, "pv_ttc": 0, "pv_ht": 0, "mbu": 0, "mb_pct": 0, "rem_cat": 0, "mois": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}];
+var HORUS_CATALOGUE_DEFAUT = [{"nom":"Vismed Multi 15ml","ean":"36644900000319","format":"Flacon 15ml HA 0,18%","famille":"Sécheresse oculaire","pu_catalogue":9.95,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vismed UD 20 unidoses","ean":"34010749360302","format":"20 UD HA 0,18%","famille":"Sécheresse oculaire","pu_catalogue":6.71,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Neovis Total Multi 15ml","ean":"36644900000869","format":"Flacon 15ml","famille":"Sécheresse oculaire","pu_catalogue":9.95,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Neovis Total UD 30 unidoses","ean":"34010602101204","format":"30 UD","famille":"Sécheresse oculaire","pu_catalogue":9.35,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vismed Gel Multi 15ml","ean":"36644900002228","format":"Flacon 15ml HA 0,30%","famille":"Sécheresse oculaire","pu_catalogue":9.95,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vismed Gel UD 20 unidoses","ean":"34010799314508","format":"20 UD HA 0,30%","famille":"Sécheresse oculaire","pu_catalogue":8.94,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Tréovis 10ml","ean":"59007419637096","format":"Flacon 10ml","famille":"Sécheresse oculaire","pu_catalogue":10.0,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[25,79,0],[80,99,10],[100,9999,14]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Dulcilarmes Flacon 10ml","ean":"34009300815942","format":"Flacon 10ml 1,5%","famille":"Larmes artificielles","pu_catalogue":4.1,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9999,9.5]],"min_cmd":5,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Dulcilarmes UD 60 unidoses","ean":"34009279564783","format":"Boîte 60 UD","famille":"Larmes artificielles","pu_catalogue":4.99,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9999,6]],"min_cmd":5,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HydraMed Night Sensitive 5g","ean":"80326688730018","format":"Tube 5g - NOUVEAU","famille":"Pommade ophtalmique","pu_catalogue":4.04,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[3,9,3],[10,9999,6]],"min_cmd":3,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BAIAMA Aflibercept 40mg/mL","ean":"34009303287059","format":"Seringue préremplie biosimilaire - NOUVEAU","famille":"Anti-VEGF","pu_catalogue":212.05,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[1,2,5],[3,4,15],[5,9999,20]],"min_cmd":1,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Lenaster 3,35mg/mL 30 UD","ean":"34009303235025","format":"30 UD - NOUVEAU","famille":"Corticoïde ophtalmique","pu_catalogue":12.85,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[3,9999,9]],"min_cmd":3,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Lacryadex 1mg/5mg 10g","ean":"34009302637235","format":"Tube 10g - NOUVEAU","famille":"Corticoïde + antibiotique","pu_catalogue":3.24,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Brimazed 2mg/mL 60 UD","ean":"34009301500857","format":"60 UD","famille":"Glaucome","pu_catalogue":12.35,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,9999,6]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Latazed 5mL x1","ean":"34009302545618","format":"1 flacon 5ml","famille":"Glaucome","pu_catalogue":10.98,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,9999,6]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Latazed 2,5mL x3","ean":"34009301800130","format":"3 flacons 2,5ml","famille":"Glaucome","pu_catalogue":16.49,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,9999,6]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Sinetrav 2,5mL x1","ean":"34009300957066","format":"1 flacon 2,5ml","famille":"Glaucome","pu_catalogue":6.09,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,9999,6]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Sinetrav 2,5mL x3","ean":"34009302328288","format":"3 flacons 2,5ml","famille":"Glaucome","pu_catalogue":17.36,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,9999,6]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ODM 5 Solution 10ml","ean":"36644900225079","format":"Flacon 10ml","famille":"Anti-oedémateux cornéen","pu_catalogue":9.41,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[10,19,9],[20,34,13],[35,9999,15]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ODM 5 Pommade 5g","ean":"80572044397879","format":"Tube 5g","famille":"Anti-oedémateux cornéen","pu_catalogue":9.08,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[10,19,9],[20,34,13],[35,9999,15]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ocufen 20 UD","ean":"34009334434988","format":"20 UD Flurbiprofène","famille":"AINS ophtalmique","pu_catalogue":2.54,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ocufen 50 UD","ean":"34009335026148","format":"50 UD Flurbiprofène","famille":"AINS ophtalmique","pu_catalogue":5.68,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ketazed 0,25mg/mL 10ml","ean":"34009302196762","format":"Flacon 10ml Kétotifène","famille":"Allergie oculaire","pu_catalogue":7.05,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Monokéto 60 UD","ean":"34009222146102","format":"60 UD Kétotifène","famille":"Allergie oculaire","pu_catalogue":5.52,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Dexocol 1mg/mL 6mL","ean":"34009301797347","format":"Flacon 6mL","famille":"Corticoïde ophtalmique","pu_catalogue":6.17,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Regard 60mL","ean":"34010440443838","format":"Flacon 60ml","famille":"Solution lentilles","pu_catalogue":3.85,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,47,0],[48,9999,19]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Regard 355mL","ean":"34010791304028","format":"Flacon 355ml","famille":"Solution lentilles","pu_catalogue":10.4,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,47,0],[48,9999,19]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Regard Tripack 3x355mL","ean":"34010540271479","format":"3x355ml","famille":"Solution lentilles","pu_catalogue":25.35,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,47,0],[48,9999,19]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vitamine B12 Horus 20 UD","ean":"34009367298729","format":"Boîte 20 UD","famille":"Cicatrisant oculaire","pu_catalogue":6.65,"tva":10.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[10,29,10],[30,59,15],[60,9999,25]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vitamine B12 Horus 5mL","ean":"34009311343744","format":"Flacon 5ml","famille":"Cicatrisant oculaire","pu_catalogue":4.88,"tva":10.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[10,29,10],[30,59,15],[60,9999,25]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Monosept 30 UD","ean":"34009363668480","format":"30 UD","famille":"Antiseptique oculaire","pu_catalogue":2.64,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[10,9999,2.5]],"min_cmd":10,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Mono-Ox 20 UD","ean":"34009266191213","format":"20 UD Ofloxacine","famille":"Antibiotique oculaire","pu_catalogue":2.78,"tva":2.1,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[5,9,2],[10,19,4],[20,9999,6]],"min_cmd":5,"panachage":false,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ilast SunProtect Stick 15g","ean":"36644900072524","format":"Stick SPF50+ - NOUVEAU","famille":"Cosmétiques","pu_catalogue":10.0,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ilast Care 30mL","ean":"34010960774907","format":"Crème 30ml","famille":"Cosmétiques","pu_catalogue":19.11,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ilast HydraClean 50mL","ean":"34010960775517","format":"Gel 50ml","famille":"Cosmétiques","pu_catalogue":13.88,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ilast Lingettes 20 unités","ean":"36644900402597","format":"20 lingettes","famille":"Cosmétiques","pu_catalogue":11.07,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Camolid 15 UD","ean":"36644900003389","format":"15 unidoses","famille":"Cosmétiques","pu_catalogue":8.28,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MaculA-Z 30 capsules","ean":"34015466803176","format":"1 mois","famille":"Compléments alimentaires","pu_catalogue":20.04,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MaculA-Z Oro 60 cp","ean":"34015996119003","format":"2 mois","famille":"Compléments alimentaires","pu_catalogue":24.05,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Naturophta Macula 60 cp","ean":"36644900102529","format":"1 mois","famille":"Compléments alimentaires","pu_catalogue":29.19,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,16],[18,23,21],[24,40,25],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Naturophta Neuro 30 cp","ean":"36644900020047","format":"1 mois","famille":"Compléments alimentaires","pu_catalogue":18.38,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,16],[18,23,21],[24,40,25],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Naturophta Lacryma 30 cp","ean":"36644907002529","format":"1 mois - NOUVEAU","famille":"Compléments alimentaires","pu_catalogue":11.68,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[3,17,16],[18,23,21],[24,40,25],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MaculA-Z 120 capsules","ean":"34015212068842","format":"4 mois","famille":"Compléments alimentaires","pu_catalogue":60.48,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[18,23,16],[24,40,21],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Naturophta Macula 180 cp","ean":"36644900202519","format":"3 mois","famille":"Compléments alimentaires","pu_catalogue":77.35,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[24,40,25],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Naturophta Neuro 90 cp","ean":"36644900225799","format":"3 mois","famille":"Compléments alimentaires","pu_catalogue":53.2,"tva":5.5,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[3,17,0],[24,40,25],[41,9999,27]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}];
+
+function horusInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  condLabos[laboId].produits = HORUS_CATALOGUE_DEFAUT.map(function(p) {
+    return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-06-30';
+}
+
+var MARCHES_TOPICREM = [
+  {id:'corps_spec', label:'M1. Corps Spécifiques',  rem:0, ug_ach:0,  ug_off:0, ug_tiers:false, note:'48u \u2192 32% | 144u \u2192 35% (2 réf dont 1 parmi a/d, 3 étagères)'},
+  {id:'corps',      label:'M2. Corps',              rem:0, ug_ach:0,  ug_off:0, ug_tiers:false, note:'96u \u2192 40% | 168u \u2192 46% (4 réf dont 1 parmi a/k/m/i/j)'},
+  {id:'hygiene',    label:'M3. Hygiène',            rem:0, ug_ach:0,  ug_off:0, ug_tiers:false, note:'84u \u2192 40% | 144u \u2192 46% (4 réf dont 1 parmi a/c/g/h)'},
+  {id:'visage',     label:'M4. Visage',             rem:0, ug_ach:0,  ug_off:0, ug_tiers:false, note:'48u \u2192 30% | 84u \u2192 34% (3 réf dont 1 parmi s/y/t/aa) \u26a0 CGV : palier 34% indiqué \u00ab 34u \u00bb, à confirmer'},
+  {id:'sun',        label:'M5. Sun Protect',        rem:0, ug_ach:12, ug_off:1, ug_tiers:false, note:'48u\u219236%+1UG/dz | 84u\u219240%+2UG/dz | 120u\u219246%+4UG/dz (3 réf, dont e/f aux paliers sup)'},
+  {id:'hiver',      label:'Offre Hiver Mains & Lèvres', rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Commandes sept\u2192déc : 48u \u2192 40% | 144u \u2192 46%'}
+];
+
+var TOPICREM_CATALOGUE_DEFAUT = [{"nom":"HYDRA+ Sérum Hydratant Eclat","ean":"3700281703443","format":"30 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":18.26,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Soin Eclat Contour des Yeux","ean":"3700281703993","format":"15 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":12.75,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Crème Eclat Gel","ean":"3700281704310","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":13.16,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Crème Eclat Légère","ean":"3700281704334","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":13.16,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Crème Eclat Riche","ean":"3700281704327","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":13.16,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Crème de Jour Protectrice","ean":"3700281704907","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":15.71,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Crème Teintée Eclat Claire","ean":"3700281704846","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":15.13,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Crème Teintée Eclat Médium","ean":"3700281704853","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":15.13,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Hâle Progressif Eclat","ean":"3700281703818","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":14.18,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Masque Flash Eclat","ean":"3700281704044","format":"50 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":13.97,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Stick-Lèvres","ean":"3700281702446","format":"4 g","famille":"Offre Hiver Mains & Lèvres","marche_id":"hiver","pu_catalogue":3.56,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,40],[144,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Eau Micellaire Douceur","ean":"3700281702378","format":"200 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":7.12,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Eau Micellaire Douceur","ean":"3700281703214","format":"400 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":10.13,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Lait Démaquillant Douceur","ean":"3700281702910","format":"200 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":9.03,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HYDRA+ Gel Nettoyant Douceur","ean":"3700281702408","format":"200 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":6.72,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AH3 Sérum Global Anti-Âge","ean":"3700281703856","format":"30 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":37.09,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AH3 Soin Global Contour des Yeux Anti-Âge","ean":"3700281704341","format":"15 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":25.12,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AH3 Fluide Global Anti-Âge","ean":"3700281704020","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":28.05,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AH3 Crème Globale Anti-Âge","ean":"3700281704037","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":28.05,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Sérum Eclat Anti-Taches","ean":"3700281705003","format":"30 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":23.59,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Crème Jour Unifiante Anti-Taches SPF50","ean":"3700281704396","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":22.03,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Crème Nuit Anti-Taches Peeling Doux","ean":"3700281704730","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":21.92,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Masque Anti-Taches Eclat Minute","ean":"3700281704587","format":"50 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":16.83,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Lait Unifiant Ultra-Hydratant","ean":"3700281704464","format":"200 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":25.55,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Lait Unifiant Ultra-Hydratant","ean":"3700281704457","format":"500 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":41.31,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Concentré Anti-Taches Zones ciblées","ean":"3700281705195","format":"50 g","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":21.84,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MELA Pain Exfoliant Unifiant","ean":"3700281703955","format":"150 g","famille":"M4. Visage","marche_id":"visage","pu_catalogue":7.11,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Fluide Matifiant","ean":"3700281705669","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":11.63,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Soin Equilibrant Anti-Imperfections","ean":"3700281705072","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":11.48,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Crème Hydratante Compensatrice","ean":"3700281702781","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":11.54,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Sérum Intensif","ean":"3700281705065","format":"34 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":15.02,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Masque Purifiant","ean":"3700281704198","format":"50 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":10.44,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Eau Micellaire Purifiante","ean":"3700281704488","format":"200 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":7.05,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Eau Micellaire Purifiante","ean":"3700281704495","format":"400 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":10.03,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Gel Nettoyant Purifiant","ean":"3700281702774","format":"200 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":8.19,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"AC CONTROL Gel Nettoyant Purifiant","ean":"3700281703269","format":"400 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":11.79,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CICA+ Crème Apaisante Réparatrice","ean":"3700281702682","format":"40 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":7.55,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CICA+ Crème Apaisante Réparatrice","ean":"3700281703283","format":"100 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":11.73,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CICA+ Brume Apaisante Réparatrice","ean":"3700281705867","format":"100 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":11.9,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"CICA+ Huile Concentrée Vergetures et Cicatrices","ean":"3700281704471","format":"100 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.57,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Lait Corps","ean":"3700281702361","format":"200 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":9.56,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Lait Corps","ean":"3700281702286","format":"500 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":17.27,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Lait Corps Eco Recharge","ean":"3700281705522","format":"500 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.47,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Lait Corps","ean":"3700281702576","format":"1 L","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":24.95,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Baume Corps Réconfortant","ean":"3700281705492","format":"380 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":17.11,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Scintillant Corps","ean":"3700281702880","format":"200 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.87,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Nacré Corps","ean":"3700281703047","format":"200 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.87,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Lait de Douche","ean":"3700281705652","format":"1 L","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":13.9,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Crème Mains","ean":"3700281703252","format":"50 ml","famille":"Offre Hiver Mains & Lèvres","marche_id":"hiver","pu_catalogue":4.72,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,40],[144,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Crème Mains Douces","ean":"3700281705935","format":"50 ml - JUIN 2026","famille":"Offre Hiver Mains & Lèvres","marche_id":"hiver","pu_catalogue":4.72,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[48,143,40],[144,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Gommage Doux 3-en-1","ean":"3700281705782","format":"200 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.5,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Hâle Progressif","ean":"3700281702897","format":"200 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.8,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Gel Autobronzant Progressif","ean":"3700281705898","format":"200 ml - MARS 2026","famille":"M2. Corps","marche_id":"corps","pu_catalogue":13.8,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":true,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Gel Douche","ean":"3700281702415","format":"500 ml","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":7.14,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Gel Douche","ean":"3700281704389","format":"1 L","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":10.26,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Huile De Douche","ean":"3700281705096","format":"500 ml","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":10.42,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Huile De Douche","ean":"3700281705225","format":"1 L","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":12.44,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"ULTRA-HYDRATANT Huile De Douche Eco Recharge","ean":"3700281705515","format":"1 L","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":10.82,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DA PROTECT Baume Emollient","ean":"3700281702583","format":"200 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":12.09,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DA PROTECT Baume Emollient","ean":"3700281702736","format":"500 ml","famille":"M2. Corps","marche_id":"corps","pu_catalogue":19.02,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[96,167,40],[168,9999,46]],"min_cmd":96,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DA PROTECT Crème Emolliente Visage","ean":"3700281704556","format":"40 ml","famille":"M4. Visage","marche_id":"visage","pu_catalogue":12.21,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,30],[84,9999,34]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DA PROTECT Gel Nettoyant Surgras","ean":"3700281702835","format":"500 ml","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":12.7,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"DA PROTECT Huile Lavante Relipidante","ean":"3700281705089","format":"500 ml","famille":"M3. Hygiène","marche_id":"hygiene","pu_catalogue":14.65,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[84,143,40],[144,9999,46]],"min_cmd":84,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"UR10 Crème Lissante Anti-Rugosités","ean":"3700281703290","format":"200 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":12.37,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"UR10 Crème Lissante Anti-Rugosités","ean":"3700281703306","format":"500 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":19.03,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"UR30 Crème Anti-Rugosités Apaisante","ean":"3700281704532","format":"75 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":11.36,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PV/DS Gel Nettoyant","ean":"3700281702699","format":"200 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":11.39,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"PH5 Shampooing Douceur","ean":"3700281702323","format":"500 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":9.79,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BABY Lait Ultra-Hydratant","ean":"3700281705690","format":"200 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":9.47,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BABY Lait Ultra-Hydratant","ean":"3700281705676","format":"500 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":16.63,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BABY Gel Nettoyant Lavant Doux","ean":"3700281705683","format":"500 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":10.3,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BABY Crème de Change","ean":"3700281705300","format":"75 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":7.9,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BABY Soin Croûte de Lait","ean":"3700281705294","format":"40 ml","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":12.01,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BABY Lingettes Nettoyantes","ean":"3700281705324","format":"60 lingettes","famille":"M1. Corps Spécifiques","marche_id":"corps_spec","pu_catalogue":3.98,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,143,32],[144,9999,35]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Lait Solaire Hydratant SPF50+","ean":"3700281705256","format":"50 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":11.12,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Lait Solaire Hydratant SPF50+","ean":"3700281705249","format":"200 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":18.67,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Spray Solaire Hydratant SPF50+","ean":"3700281705553","format":"150 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":18.67,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Spray Solaire Hydratant SPF30","ean":"3700281705560","format":"150 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":17.24,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Stick Invisible SPF50+","ean":"3700281705928","format":"15 g","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":12.9,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Crème Mousse Fini Mat Visage SPF50","ean":"3700281705911","format":"50 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":13.8,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Gelée Fraîche Après-Soleil","ean":"3700281705263","format":"200 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":12.3,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"SUN PROTECT Douche Réhydratante","ean":"3700281705416","format":"200 ml","famille":"M5. Sun Protect","marche_id":"sun","pu_catalogue":5.78,"tva":20.0,"lppr":0,"colisage":1,"nouveaute":false,"remises_paliers":[[48,83,36],[84,119,40],[120,9999,46]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}];
+
+function topicremInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  condLabos[laboId].produits = TOPICREM_CATALOGUE_DEFAUT.map(function(p) {
+    return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-12-31';
+  condLabos[laboId].francoPort = 150;
+}
+
+var MARCHES_BAYER = [
+  {id:'f1',            label:'Famille 1 (toutes gammes)',        rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'4% fonction pharmacien + 16% marque d\u00e8s 80 UC toutes r\u00e9f F1 confondues = 20%'},
+  {id:'fc',            label:'Famille Conseil',                  rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'0% \u2014 1 colisage (Hydratation, Pro B12, Safran, Balance Odeur) \u2014 Boost 10 : 31,5% avr\u2192juin'},
+  {id:'rennie',        label:'Rennie / Mopralpro / Rennaxt',     rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Retail S : 36 UC\u21923% | 48 UC\u21925% (M : 48/60, L : 96/120) \u2014 avr\u2192juin, hors fonction 4%'},
+  {id:'biseptine_otc', label:'Gamme Biseptine OTC',              rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'9\u219227% | 21\u219228% | 36\u219233% | 72\u219236% | 108\u219238% | 180\u219240% | 260\u219244% | 444\u219248,7% (avr\u2192juin, livraison jusqu\u2019au 31/12)'},
+  {id:'biseptine_tfr', label:'Biseptine TFR (100/250 ml)',       rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'144 UC\u219213% | 240\u219218% | 432\u219221% (avr\u2192juin)'},
+  {id:'biotine_bep',   label:'Biotine / B\u00e9panth\u00e8ne', rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'10 UC\u219212% | 22 UC\u219215% (avr\u2192juin)'}
+];
+
+var BAYER_CATALOGUE_DEFAUT = [{"nom":"Berocca Energie Orange 30 cps effervescents","ean":"3534510000672","format":"colis. min 35","famille":"Berocca","marche_id":"f1","pu_catalogue":13.12,"tva":5.5,"lppr":0,"colisage":35,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":35,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie Orange 60 cps effervescents","ean":"3534510000696","format":"colis. min 12","famille":"Berocca","marche_id":"f1","pu_catalogue":23.19,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie Cassis 30 cps effervescents","ean":"3534510000702","format":"colis. min 15","famille":"Berocca","marche_id":"f1","pu_catalogue":13.12,"tva":5.5,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie 30 cps ananas citron éd. limitée","ean":"3534510002454","format":"colis. min 5","famille":"Berocca","marche_id":"f1","pu_catalogue":13.12,"tva":5.5,"lppr":0,"colisage":5,"nouveaute":true,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie 30 cps ananas citron (présentoir x15)","ean":"3534510002581","format":"colis. min 15","famille":"Berocca","marche_id":"f1","pu_catalogue":13.12,"tva":5.5,"lppr":0,"colisage":15,"nouveaute":true,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie 30 cps pelliculés","ean":"3534510000665","format":"colis. min 12","famille":"Berocca","marche_id":"f1","pu_catalogue":13.12,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie 60 cps pelliculés","ean":"3534510000689","format":"colis. min 8","famille":"Berocca","marche_id":"f1","pu_catalogue":23.19,"tva":5.5,"lppr":0,"colisage":8,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":8,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Energie Pro B12 10 flacons 10 ml caramel","ean":"3534510002359","format":"colis. min 10","famille":"Berocca","marche_id":"fc","pu_catalogue":12.8,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Hydratation 16 cps mangue passion (présentoir x8)","ean":"3534510002430","format":"colis. min 8","famille":"Berocca","marche_id":"fc","pu_catalogue":5.47,"tva":5.5,"lppr":0,"colisage":8,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":8,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Hydratation 16 cps agrume (présentoir x8)","ean":"3534510002416","format":"colis. min 8","famille":"Berocca","marche_id":"fc","pu_catalogue":5.47,"tva":5.5,"lppr":0,"colisage":8,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":8,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Hydratation colonne 32 UC","ean":"3534510002447","format":"colis. min 32","famille":"Berocca","marche_id":"fc","pu_catalogue":5.47,"tva":5.5,"lppr":0,"colisage":32,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":32,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Immunité Flash 30 cps effervescents","ean":"3534510001129","format":"colis. min 20","famille":"Berocca","marche_id":"f1","pu_catalogue":13.09,"tva":5.5,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Immunité Défense 2x28 gélules","ean":"3534510001136","format":"colis. min 10","famille":"Berocca","marche_id":"f1","pu_catalogue":13.38,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Immunité 60 gommes","ean":"3534510001556","format":"colis. min 12","famille":"Berocca","marche_id":"f1","pu_catalogue":13.64,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Boost 10 cps effervescents (présentoir)","ean":"3534510002263","format":"colis. min 20","famille":"Berocca","marche_id":"fc","pu_catalogue":7.17,"tva":5.5,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,9999,31.5]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Boost 20 cps effervescents","ean":"3401553606027","format":"colis. min 20","famille":"Berocca","marche_id":"f1","pu_catalogue":14.02,"tva":5.5,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Boost 14 sticks cola","ean":"3534510000122","format":"colis. min 12","famille":"Berocca","marche_id":"f1","pu_catalogue":12.67,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Berocca Magnésium 14 sachets effervescents","ean":"3534510001822","format":"colis. min 12","famille":"Berocca","marche_id":"f1","pu_catalogue":11.5,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Euphytose 120 cps","ean":"3400932897162","format":"colis. min 30","famille":"Euphytose","marche_id":"f1","pu_catalogue":10.16,"tva":10.0,"lppr":0,"colisage":30,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":30,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Euphytose 180 cps","ean":"3400930088340","format":"colis. min 30","famille":"Euphytose","marche_id":"f1","pu_catalogue":13.22,"tva":10.0,"lppr":0,"colisage":30,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":30,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit 30 cps","ean":"3401581631091","format":"colis. min 15","famille":"Euphytose","marche_id":"f1","pu_catalogue":12.31,"tva":5.5,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit 60 cps","ean":"3534510001952","format":"colis. min 12","famille":"Euphytose","marche_id":"f1","pu_catalogue":18.16,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit LP 1,9 mg 15 cps","ean":"3534510001198","format":"colis. min 15","famille":"Euphytose","marche_id":"f1","pu_catalogue":12.31,"tva":5.5,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit LP 1,9 mg 30 cps","ean":"3534510001662","format":"colis. min 15","famille":"Euphytose","marche_id":"f1","pu_catalogue":18.16,"tva":5.5,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit 20 sachets","ean":"3534510000641","format":"colis. min 10","famille":"Euphytose","marche_id":"f1","pu_catalogue":8.31,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit Gomme Myrtille 30","ean":"3534510001778","format":"colis. min 10","famille":"Euphytose","marche_id":"f1","pu_catalogue":12.31,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit Gomme Pomme 30","ean":"3534510001976","format":"colis. min 10","famille":"Euphytose","marche_id":"f1","pu_catalogue":12.31,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseNuit Spray 20 ml","ean":"3534510001914","format":"colis. min 12","famille":"Euphytose","marche_id":"f1","pu_catalogue":10.05,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":true,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseStress Concentration 30 cps","ean":"3534510000740","format":"colis. min 8","famille":"Euphytose","marche_id":"f1","pu_catalogue":10.74,"tva":5.5,"lppr":0,"colisage":8,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":8,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseStress Digestion 28 gélules","ean":"3534510000948","format":"colis. min 5","famille":"Euphytose","marche_id":"f1","pu_catalogue":14.27,"tva":5.5,"lppr":0,"colisage":5,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":5,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseStress Safran 30 gommes mangue ananas","ean":"3534510002362","format":"colis. min 9","famille":"Euphytose","marche_id":"fc","pu_catalogue":11.61,"tva":5.5,"lppr":0,"colisage":9,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":9,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"EuphytoseStress Safran 30 gommes (présentoir)","ean":"3534510002591","format":"colis. min 9","famille":"Euphytose","marche_id":"fc","pu_catalogue":11.61,"tva":5.5,"lppr":0,"colisage":9,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":9,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bepanthen Pommade 100 g","ean":"3400935940179","format":"colis. min 25","famille":"Bepanthen","marche_id":"f1","pu_catalogue":10.0,"tva":2.1,"lppr":0,"colisage":25,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":25,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bepanthen Pommade 30 g","ean":"3400935939920","format":"colis. min 20","famille":"Bepanthen","marche_id":"f1","pu_catalogue":5.57,"tva":2.1,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bepanthen Pommade 30 g + 100 g (lot)","ean":"3400930123072","format":"colis. min 15","famille":"Bepanthen","marche_id":"f1","pu_catalogue":14.06,"tva":10.0,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bepanthen Pommade 2 x 100 g (lot)","ean":"3400939199917","format":"colis. min 15","famille":"Bepanthen","marche_id":"f1","pu_catalogue":17.42,"tva":10.0,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bepanthen Pommade 3 x 100 g (lot)","ean":"3400930261170","format":"colis. min 15","famille":"Bepanthen","marche_id":"f1","pu_catalogue":23.48,"tva":10.0,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bepanthen Crème 100 g","ean":"3400935887788","format":"colis. min 10","famille":"Bepanthen","marche_id":"f1","pu_catalogue":11.28,"tva":10.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenSensicalm Crème 20 g","ean":"3401097676029","format":"colis. min 12","famille":"Bepanthen","marche_id":"f1","pu_catalogue":8.01,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenSensicalm Crème 50 g","ean":"3401040503488","format":"colis. min 15","famille":"Bepanthen","marche_id":"f1","pu_catalogue":14.12,"tva":20.0,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenSensicalm Palpebral 15 g","ean":"4064273110008","format":"colis. min 10","famille":"Bepanthen","marche_id":"f1","pu_catalogue":10.2,"tva":20.0,"lppr":0,"colisage":10,"nouveaute":true,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Nutritive Corps 400 ml pompe","ean":"3534510001020","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":15.37,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Riche Réparatrice 200 ml tube","ean":"3534510001006","format":"colis. min 4","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":12.93,"tva":20.0,"lppr":0,"colisage":4,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":4,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Riche Réparatrice 400 ml pompe","ean":"3534510000993","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":15.88,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Riche Réparatrice 400 ml éco-recharge","ean":"3534510000986","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":14.64,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Baume Réparateur Intense 200 ml","ean":"3534510001044","format":"colis. min 4","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":13.25,"tva":20.0,"lppr":0,"colisage":4,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":4,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Gel Lavant Doux 400 ml pompe","ean":"3534510000979","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":10.66,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Nutritive Reconstituante Visage 50 ml","ean":"3534510001396","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":12.34,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Riche Intense Visage 50 ml","ean":"3534510001402","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":13.08,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Gel Nettoyant Apaisant Visage 200 ml","ean":"3534510001419","format":"colis. min 3","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":7.83,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma Crème Mains Réparatrice 50 ml","ean":"3534510001501","format":"colis. min 6","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":4.57,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenTattoo Gel Lavant 200 ml","ean":"3534510001853","format":"colis. min 10","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":7.83,"tva":20.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma SensiControl Baume Relipidant 200 ml","ean":"3534510001259","format":"colis. min 4","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":14.05,"tva":20.0,"lppr":0,"colisage":4,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":4,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma SensiControl Baume Relipidant 400 ml pompe","ean":"3534510001266","format":"colis. min 4","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":17.26,"tva":20.0,"lppr":0,"colisage":4,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":4,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BepanthenDerma SensiControl Gel Lavant Protecteur 400 ml","ean":"3534510001235","format":"colis. min 4","famille":"BepanthenDerma","marche_id":"f1","pu_catalogue":13.88,"tva":20.0,"lppr":0,"colisage":4,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":4,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HydralinTest","ean":"3401528553325","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":8.86,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MycoHydralin 200 mg 3 cps","ean":"3400949398669","format":"colis. min 14","famille":"Hydralin","marche_id":"f1","pu_catalogue":7.39,"tva":2.1,"lppr":0,"colisage":14,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":14,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MycoHydralin 500 mg 1 cp","ean":"3400927965814","format":"colis. min 14","famille":"Hydralin","marche_id":"f1","pu_catalogue":7.92,"tva":2.1,"lppr":0,"colisage":14,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":14,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MycoHydralin Crème 1% 20 g","ean":"3400934194788","format":"colis. min 20","famille":"Hydralin","marche_id":"f1","pu_catalogue":6.74,"tva":2.1,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"MycoHydralin 500 mg Capsule Vaginale","ean":"3400930148334","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":9.42,"tva":2.1,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HydralinBalance 7 tubes","ean":"3401528553264","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":15.33,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HydralinBalance Ovule","ean":"3534510001969","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":15.6,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Balance Odeur 100 ml","ean":"3534510002478","format":"colis. min 6","famille":"Hydralin","marche_id":"fc","pu_catalogue":5.85,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Balance Odeur 200 ml","ean":"3534510002461","format":"colis. min 6","famille":"Hydralin","marche_id":"fc","pu_catalogue":7.65,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":true,"remises_paliers":[[1,9999,0]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin IntimiFlor 30 gélules","ean":"3534510001570","format":"colis. min 10","famille":"Hydralin","marche_id":"f1","pu_catalogue":15.46,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"HydralinConfortVaginal 30 ml","ean":"3534510001945","format":"colis. min 10","famille":"Hydralin","marche_id":"f1","pu_catalogue":12.9,"tva":20.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Gyn 400 ml","ean":"3401396868781","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":12.7,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Gyn 200 ml","ean":"3401396868613","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":8.4,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Gyn 100 ml","ean":"3401320215322","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":6.23,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Gyn Crème Gel 15 g (présentoir)","ean":"3401360170629","format":"colis. min 10","famille":"Hydralin","marche_id":"f1","pu_catalogue":6.54,"tva":20.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Gyn Crème Gel 35 g","ean":"3534510001679","format":"colis. min 10","famille":"Hydralin","marche_id":"f1","pu_catalogue":8.23,"tva":20.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Lot 2x200 ml Hydralin Quotidien + Gyn","ean":"3401397049035","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":13.87,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Lot 2x200 ml Hydralin Quotidien -20%/2e fl","ean":"3401525485582","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":12.34,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Lot 2x400 ml Hydralin Quotidien -30%/2e fl","ean":"3401325717647","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":19.27,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Quotidien 400 ml","ean":"3401343305796","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":11.38,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Quotidien 200 ml","ean":"3401376424341","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":6.85,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Quotidien 100 ml","ean":"3401320215032","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":4.04,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Quotidien Lingettes x10","ean":"3401346161986","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":3.09,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Quotidien 400 ml éco-recharge","ean":"3534510001464","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":9.59,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Fillette 150 ml","ean":"3401528557347","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":7.09,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Lot 2x200 ml Hydralin Sécheresse -20%/2e fl","ean":"3401325755786","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":15.26,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Sécheresse 400 ml","ean":"3401342272785","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":13.25,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Sécheresse 200 ml","ean":"3401347848893","format":"colis. min 12","famille":"Hydralin","marche_id":"f1","pu_catalogue":8.47,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Lubrifiant Gel Hydratant 50 ml","ean":"3401397675883","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":12.24,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Naturellement Doux 200 ml pompe","ean":"3534510001433","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":7.36,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Naturellement Doux 400 ml pompe","ean":"3534510001440","format":"colis. min 6","famille":"Hydralin","marche_id":"f1","pu_catalogue":11.56,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Hydralin Naturellement Doux 400 ml éco-recharge","ean":"3534510001457","format":"colis. min 8","famille":"Hydralin","marche_id":"f1","pu_catalogue":9.69,"tva":20.0,"lppr":0,"colisage":8,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":8,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"RennieLiquo 20 sachets","ean":"3400934380105","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":7.23,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennie 36 cps sans sucre","ean":"3400933028886","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":6.21,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennie 60 cps sans sucre","ean":"3400933029029","format":"colis. min 16","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":8.16,"tva":10.0,"lppr":0,"colisage":16,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":16,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennie 96 cps sans sucre","ean":"3400933029197","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":9.91,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennie 48 cps","ean":"3400932477708","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":7.33,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennie Orange 36 cps","ean":"3400936948075","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":6.55,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennie Déflatine 18 cps","ean":"3400933260095","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":6.49,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Rennaxt 20 gommes à mâcher","ean":"3400930259542","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":6.44,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Mopralpro 20 mg 7 cps","ean":"3400937532433","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":8.56,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Mopralpro 20 mg 14 cps","ean":"3400937532662","format":"colis. min 12","famille":"Rennie/Digestion","marche_id":"rennie","pu_catalogue":14.86,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[36,47,3],[48,9999,5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Aspro 500 mg Effervescent 20 cps","ean":"3400932062454","format":"colis. min 18","famille":"Antalgiques","marche_id":"f1","pu_catalogue":5.01,"tva":10.0,"lppr":0,"colisage":18,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":18,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Aspro 500 mg Effervescent 36 cps","ean":"3400932062515","format":"colis. min 12","famille":"Antalgiques","marche_id":"f1","pu_catalogue":7.87,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Aspirine du Rhône 500 mg 20 cps","ean":"3400935146793","format":"colis. min 10","famille":"Antalgiques","marche_id":"f1","pu_catalogue":4.62,"tva":2.1,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Aspirine du Rhône 500 mg 50 cps","ean":"3400935146854","format":"colis. min 20","famille":"Antalgiques","marche_id":"f1","pu_catalogue":8.5,"tva":2.1,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Aspirine du Rhône 500 mg 20 cps à croquer","ean":"3400933424800","format":"colis. min 10","famille":"Antalgiques","marche_id":"f1","pu_catalogue":7.38,"tva":10.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Actron 20 cps effervescents","ean":"3400931183402","format":"colis. min 10","famille":"Antalgiques","marche_id":"f1","pu_catalogue":6.48,"tva":10.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Alka Seltzer 324 mg 40 cps effervescents","ean":"3400932911042","format":"colis. min 8","famille":"Antalgiques","marche_id":"f1","pu_catalogue":9.7,"tva":10.0,"lppr":0,"colisage":8,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":8,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Alka Seltzer 324 mg 20 cps effervescents","ean":"3400932926879","format":"colis. min 10","famille":"Antalgiques","marche_id":"f1","pu_catalogue":6.08,"tva":10.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Laroscorbine sans sucre 1 g 15 cps effervescents","ean":"3400935446114","format":"colis. min 20","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":5.22,"tva":10.0,"lppr":0,"colisage":20,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":20,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Laroscorbine sans sucre 1 g 30 cps effervescents","ean":"3400935446343","format":"colis. min 15","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":9.17,"tva":10.0,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Laroscorbine 1 g 30 cps effervescents","ean":"3400935445803","format":"colis. min 15","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":8.67,"tva":10.0,"lppr":0,"colisage":15,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":15,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Laroscorbine 500 mg sans sucre 30 cps à croquer","ean":"3400935848468","format":"colis. min 12","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":9.22,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Guronsan 30 cps effervescents","ean":"3400930465639","format":"colis. min 10","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":20.55,"tva":10.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Supradyn Intensia 30 cps effervescents","ean":"3401577598926","format":"colis. min 12","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":16.09,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Supradyn Intensia 30 cps à avaler","ean":"3401578347028","format":"colis. min 12","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":16.09,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Supradyn Intensia 20 sticks","ean":"3401160096921","format":"colis. min 12","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":13.32,"tva":5.5,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Supradyn Magnésia 30 cps effervescents","ean":"3401579882627","format":"colis. min 10","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":13.84,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Supradyn Boost 20 cps effervescents","ean":"3401546652512","format":"colis. min 10","famille":"Vitamines/Toniques","marche_id":"f1","pu_catalogue":14.38,"tva":5.5,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Polaramine 2 mg 20 cps sécables","ean":"3400934227301","format":"colis. min 10","famille":"Allergie","marche_id":"f1","pu_catalogue":4.9,"tva":2.1,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[1,79,4],[80,9999,20]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BiseptineSpraid Pulvérisateur 50 ml","ean":"3400936645455","format":"colis. min 12","famille":"Biseptine","marche_id":"biseptine_otc","pu_catalogue":5.67,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[9,20,27],[21,35,28],[36,71,33],[72,107,36],[108,179,38],[180,259,40],[260,443,44],[444,9999,48.7]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BiseptineSpraid Solution 125 ml","ean":"3400935531711","format":"colis. min 12","famille":"Biseptine","marche_id":"biseptine_otc","pu_catalogue":5.33,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[9,20,27],[21,35,28],[36,71,33],[72,107,36],[108,179,38],[180,259,40],[260,443,44],[444,9999,48.7]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BiseptineCica Gel 50 g","ean":"3534510000757","format":"colis. min 10","famille":"Biseptine","marche_id":"biseptine_otc","pu_catalogue":7.81,"tva":20.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[9,20,27],[21,35,28],[36,71,33],[72,107,36],[108,179,38],[180,259,40],[260,443,44],[444,9999,48.7]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"BiseptineRoll Gel 20 g","ean":"3534510000788","format":"colis. min 9","famille":"Biseptine","marche_id":"biseptine_otc","pu_catalogue":17.54,"tva":20.0,"lppr":0,"colisage":9,"nouveaute":false,"remises_paliers":[[9,20,27],[21,35,28],[36,71,33],[72,107,36],[108,179,38],[180,259,40],[260,443,44],[444,9999,48.7]],"min_cmd":9,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Biseptine Pulvérisateur 100 ml (TFR)","ean":"3400932913282","format":"colis. min 48","famille":"Biseptine","marche_id":"biseptine_tfr","pu_catalogue":1.91,"tva":2.1,"lppr":0,"colisage":48,"nouveaute":false,"remises_paliers":[[144,239,13],[240,431,18],[432,9999,21]],"min_cmd":48,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Biseptine Solution 250 ml (TFR)","ean":"3400933054212","format":"colis. min 24","famille":"Biseptine","marche_id":"biseptine_tfr","pu_catalogue":1.8,"tva":2.1,"lppr":0,"colisage":24,"nouveaute":false,"remises_paliers":[[144,239,13],[240,431,18],[432,9999,21]],"min_cmd":24,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Bépanthène 100 mg 60 cps à avaler","ean":"3400932949243","format":"colis. min 10","famille":"Vitamines/Toniques","marche_id":"biotine_bep","pu_catalogue":13.76,"tva":10.0,"lppr":0,"colisage":10,"nouveaute":false,"remises_paliers":[[10,21,12],[22,9999,15]],"min_cmd":10,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Biotine Bayer 5 mg 60 cps à avaler","ean":"3400936909274","format":"colis. min 12","famille":"Vitamines/Toniques","marche_id":"biotine_bep","pu_catalogue":22.66,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[10,21,12],[22,9999,15]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}];
+
+function bayerInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  condLabos[laboId].produits = BAYER_CATALOGUE_DEFAUT.map(function(p) {
+    return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-12-31';
+  condLabos[laboId].francoPort = 200;
+}
+function podowellInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  condLabos[laboId].produits = PODOWELL_CATALOGUE_DEFAUT.map(function(p) {
+    return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-08-31';
+  condLabos[laboId].francoPort = 48.80;
+}
+
+// Paliers réels de l'offre UPP Théa : [Marché1 96u, Marché2 156u, Marché3 348u] par gamme
+var THEA_PALIERS_UPP = {
+  'OTC':       [45, 50, 50],
+  'BLEPHA':    [30, 30, 35],
+  'THEALOSE':  [16.5, 16.5, 16.5],
+  'VITABACT':  [45, 50, 55],
+  'MONOPROST': [2, 4, 6],
+  'NUTROF':    [30, 30, 30],
+  'CROMA':     [7, 7, 10],
+  'AUTRES':    [0, 0, 0]
+};
+function theaPaliersPourMarche(nom, mots) {
+  var nomU = (nom || '').toUpperCase();
+  var motsU = (mots || '').toUpperCase();
+  // 1) Le NOM du marché prime (ex: "Autres RX 0%" ne doit pas matcher "BLEPHA" via BLEPHADEMODEX)
+  if (nomU.indexOf('AUTRES') >= 0 || nomU.indexOf('AUTRE RX') >= 0) return THEA_PALIERS_UPP['AUTRES'];
+  for (var k in THEA_PALIERS_UPP) { if (nomU.indexOf(k) >= 0) return THEA_PALIERS_UPP[k]; }
+  // 2) Repli sur les mots-clés, du plus spécifique au moins spécifique (BLEPHA après les noms de marques)
+  var ordre = ['THEALOSE','VITABACT','MONOPROST','NUTROF','CROMA','OTC','BLEPHA','AUTRES'];
+  for (var i = 0; i < ordre.length; i++) { if (motsU.indexOf(ordre[i]) >= 0) return THEA_PALIERS_UPP[ordre[i]]; }
+  return null;
+}
+var MARCHES_THEA = [
+  {id:'otc',         label:'Gamme OTC Conseil',          rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'45% (engagement 96u/an) | 50% (156u ou 348u) \u2014 paliers = engagement annuel UPP, pas qt\u00e9 par produit'},
+  {id:'blepha',      label:'Gamme Blepha OTX',           rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'30% (96u ou 156u) | 35% (348u)'},
+  {id:'thealose',    label:'Th\u00e9alose 15 ml',       rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'16,5% \u2192 8,31 \u20ac net \u00e0 tous les niveaux d\u2019engagement'},
+  {id:'vitabact_fl', label:'Vitabact Flacon 10 ml',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'45% (96u) | 50% (156u) | 55% (348u)'},
+  {id:'monoprost',   label:'Monoprost 30 UD',            rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'2% (96u) | 4% (156u) | 6% (348u)'},
+  {id:'nutrof180',   label:'Nutrof Total 180 caps',      rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'30% \u00e0 tous les niveaux'},
+  {id:'cromadoses',  label:'Cromadoses',                 rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'7% (96u/156u) | 10% (348u)'},
+  {id:'rx_autres',   label:'Autres RX',                  rem:0, ug_ach:0, ug_off:0, ug_tiers:false, note:'Sans remise contractuelle dans l\u2019offre UPP'}
+];
+
+var THEA_CATALOGUE_DEFAUT = [{"nom":"Larmecran Flacon 10 ml (fin de stock)","ean":"3662042007354","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":11.6,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Larmecran Jour & Nuit Flacon 15 g","ean":"3662042015502","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":14.4,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":true,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Multilarm Flacon 10 ml","ean":"3662042014666","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":9.55,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Naabak Boîte 10 UD","ean":"3400934426780","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":8.16,"tva":10.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Nutrilarm Boîte 60 capsules","ean":"3401542726750","format":"multiple 3","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":18.5,"tva":5.5,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ophtakit Allergie","ean":"3662042015359","format":"multiple 6","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":14.9,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Ophtakit Œil Rouge","ean":"3662042015342","format":"multiple 6","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":14.9,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Thealoz Duo Gel Boîte 10 UD","ean":"3662042004759","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":8.04,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Theaphy Boîte 10 UD","ean":"3662042015311","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":1.86,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vitabact Boîte 10 UD","ean":"3400933714871","format":"multiple 6","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":7.5,"tva":10.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vitamine B12 Théa Boîte 20 UD","ean":"3400934855061","format":"multiple 6","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":8.4,"tva":10.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Zagrapa Flacon 5 ml","ean":"3400949250486","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":8.2,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Zaspray Flacon Spray 10 ml","ean":"8034135273109","format":"multiple 12","famille":"OTC Conseil","marche_id":"otc","pu_catalogue":15.5,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,9999,50]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Blephademodex Boîte 30 lingettes","ean":"3662042004940","format":"multiple 3","famille":"RX","marche_id":"rx_autres","pu_catalogue":14.0,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,9999,0]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Cromadoses 2% Boîte 30 UD","ean":"3400934884627","format":"multiple 12","famille":"RX","marche_id":"cromadoses","pu_catalogue":3.05,"tva":2.1,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,347,7],[348,9999,10]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Monoprost Boîte 30 UD","ean":"3400926738266","format":"multiple 24","famille":"RX","marche_id":"monoprost","pu_catalogue":7.63,"tva":2.1,"lppr":0,"colisage":24,"nouveaute":false,"remises_paliers":[[96,155,2],[156,347,4],[348,9999,6]],"min_cmd":24,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Nutrof Total Boîte 180 capsules","ean":"3662042006074","format":"multiple 3","famille":"RX","marche_id":"nutrof180","pu_catalogue":73.5,"tva":5.5,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[96,9999,30]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Nutrof Total Boîte 60 capsules","ean":"3662042006067","format":"multiple 6","famille":"RX","marche_id":"rx_autres","pu_catalogue":26.45,"tva":5.5,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,9999,0]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Nutrof Uno Boîte 90 capsules","ean":"3662042019463","format":"multiple 3","famille":"RX","marche_id":"rx_autres","pu_catalogue":38.3,"tva":5.5,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,9999,0]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Oftamac Plus Boîte 180 capsules","ean":"3662042008740","format":"multiple 3","famille":"RX","marche_id":"rx_autres","pu_catalogue":82.75,"tva":5.5,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[1,9999,0]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Oftamac Plus Boîte 60 capsules","ean":"3662042008733","format":"multiple 6","famille":"RX","marche_id":"rx_autres","pu_catalogue":37.7,"tva":5.5,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[1,9999,0]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Théalose Flacon 15 ml","ean":"3662042005664","format":"multiple 12","famille":"RX","marche_id":"thealose","pu_catalogue":9.95,"tva":20.0,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,9999,16.5]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Vitabact Flacon 10 ml","ean":"3400930262313","format":"multiple 12","famille":"RX","marche_id":"vitabact_fl","pu_catalogue":6.8,"tva":2.1,"lppr":0,"colisage":12,"nouveaute":false,"remises_paliers":[[96,155,45],[156,347,50],[348,9999,55]],"min_cmd":12,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Blepha Eyebag","ean":"3662042006920","format":"multiple 6","famille":"Blepha OTX","marche_id":"blepha","pu_catalogue":15.0,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,347,30],[348,9999,35]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Blephaclean Boîte 20 lingettes","ean":"3662042003615","format":"multiple 6","famille":"Blepha OTX","marche_id":"blepha","pu_catalogue":10.85,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,347,30],[348,9999,35]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Blephaderm Crème Stérile Tube 40 ml","ean":"3662042009952","format":"multiple 3","famille":"Blepha OTX","marche_id":"blepha","pu_catalogue":19.05,"tva":20.0,"lppr":0,"colisage":3,"nouveaute":false,"remises_paliers":[[96,347,30],[348,9999,35]],"min_cmd":3,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Blephagel Tube 30 g","ean":"3662042001949","format":"multiple 6","famille":"Blepha OTX","marche_id":"blepha","pu_catalogue":11.85,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,347,30],[348,9999,35]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]},{"nom":"Blephasol Lotion Micellaire 100 ml","ean":"3662042004001","format":"multiple 6","famille":"Blepha OTX","marche_id":"blepha","pu_catalogue":13.35,"tva":20.0,"lppr":0,"colisage":6,"nouveaute":false,"remises_paliers":[[96,347,30],[348,9999,35]],"min_cmd":6,"panachage":true,"moy":0,"pa_net":0,"pv_ttc":0,"pv_ht":0,"mbu":0,"mb_pct":0,"rem_cat":0,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}];
+
+function theaInitCatalogue(laboId) {
+  if (!condLabos[laboId]) return;
+  if (condLabos[laboId].produits && condLabos[laboId].produits.length > 0) return;
+  condLabos[laboId].produits = THEA_CATALOGUE_DEFAUT.map(function(p) {
+    return Object.assign({}, p, {moy:0,pa_net:0,pv_ttc:0,pv_ht:0,mbu:0,mb_pct:0,rem_cat:0,mois:new Array(12).fill(0)});
+  });
+  condLabos[laboId].catalogueMaj = new Date().toISOString();
+  condLabos[laboId].tarifValidite = '2026-12-31';
+  condLabos[laboId].francoPort = 114;
+}
+
+// Retourne les marchés du labo actif (MARCHES_NUTRICO pour NUTRICO, marches_negocies pour les autres)
+function getMarchesLabo(laboId) {
+  if (!laboId || !condLabos[laboId]) return MARCHES_NUTRICO;
+  var labo = condLabos[laboId];
+  var nom = (labo.nom || '').toUpperCase();
+  // NUTRI&CO → marchés spécifiques hardcodés
+  if (nom.indexOf('NUTRI') >= 0) return MARCHES_NUTRICO;
+  // THUASNE → marchés spécifiques hardcodés (remises configurées dans marches_negocies)
+  if (nom.indexOf('HORUS') >= 0 || nom.indexOf('DULCIS') >= 0) {
+    var negH = labo.marches_negocies || [];
+    return MARCHES_HORUS.map(function(m) {
+      var nH = negH.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, {rem: nH ? nH.rem : 0, rem_30: nH ? nH.rem : 0, rem_25: nH ? nH.rem : 0});
+    });
+  }
+  if (nom.indexOf('TOPICREM') >= 0 || nom.indexOf('NIGY') >= 0) {
+    var negT = labo.marches_negocies || [];
+    return MARCHES_TOPICREM.map(function(m) {
+      var nT = negT.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, {rem: nT ? nT.rem : 0, rem_30: nT ? nT.rem : 0, rem_25: nT ? nT.rem : 0});
+    });
+  }
+  if (nom.indexOf('BAYER') >= 0) {
+    var negB = labo.marches_negocies || [];
+    return MARCHES_BAYER.map(function(m) {
+      var nB = negB.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, {rem: nB ? nB.rem : 0, rem_30: nB ? nB.rem : 0, rem_25: nB ? nB.rem : 0});
+    });
+  }
+  if (nom.indexOf('MARQUE VERTE') >= 0 || nom.indexOf('MARQUEVERTE') >= 0) {
+    var negMV = labo.marches_negocies || [];
+    return MARCHES_MARQUEVERTE.map(function(m) {
+      var nMV = negMV.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, {rem: nMV ? nMV.rem : 0, rem_30: nMV ? nMV.rem : 0, rem_25: nMV ? nMV.rem : 0});
+    });
+  }
+  if (nom.indexOf('THEA') >= 0) {
+    var negTh = labo.marches_negocies || [];
+    return MARCHES_THEA.map(function(m) {
+      var nTh = negTh.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, {rem: nTh ? nTh.rem : 0, rem_30: nTh ? nTh.rem : 0, rem_25: nTh ? nTh.rem : 0});
+    });
+  }
+  if (nom.indexOf('THUASNE') >= 0) {
+    var neg2 = labo.marches_negocies || [];
+    return MARCHES_THUASNE.map(function(m) {
+      var n2 = neg2.find(function(x){ return x.marche_id === m.id; });
+      return Object.assign({}, m, { rem: n2 ? n2.rem : 0, rem_30: n2 ? n2.rem : 0, rem_25: n2 ? n2.rem : 0 });
+    });
+  }
+  // Autres labos → construire depuis marches_negocies
+  var neg = labo.marches_negocies || [];
+  if (neg.length === 0) return [];
+  return neg.map(function(m, i) {
+    return {
+      id: m.marche_id || ('marche_' + i),
+      label: m.label || m.marche_id || 'Marché ' + (i+1),
+      rem: m.rem || 0,
+      rem_30: m.rem || 0,
+      rem_25: m.rem || 0,
+      ug_ach: 0, ug_off: 0,
+      ug_tiers: false,
+      note: (m.rem || 0) + '%'
+    };
+  });
+}
+
+var NUTRICO_CATALOGUE = {"3770012764593":{"nom":"Articulations","sous_cat":"Articulations","marche":"Articulations","categorie":"Articulations","marche_id":"general"},"3770012764104":{"nom":"Curcuma Bio","sous_cat":"Articulations","marche":"Articulations","categorie":"Articulations","marche_id":"general"},"3760384160833":{"nom":"Vitamine D3 Animale","sous_cat":"Immunité","marche":"Articulations","categorie":"Immunité","marche_id":"general"},"3760384161045":{"nom":"Glucosamine & Chondroïtine","sous_cat":"Articulations","marche":"Articulations","categorie":"Articulations","marche_id":"general"},"3770012764432":{"nom":"Fer et Probiotique","sous_cat":"Minéraux","marche":"Immunité","categorie":"Minéraux","marche_id":"general"},"3760384161007":{"nom":"Propolis","sous_cat":"Immunité","marche":"Immunité"},"3760384160338":{"nom":"Vitamine B12","sous_cat":"Minéraux","marche":"Immunité","categorie":"Minéraux","marche_id":"general"},"3770012764272":{"nom":"Vitamine D3 Végétale","sous_cat":"Minéraux","marche":"Immunité","categorie":"Minéraux","marche_id":"general"},"3770012764456":{"nom":"Acide Hyaluronique","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764142":{"nom":"Antioxydant","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764647":{"nom":"Collagène Chocolat","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160673":{"nom":"Collagène Citron","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160734":{"nom":"Collagène Fruits Rouges","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384161229":{"nom":"Collagène Matcha","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160741":{"nom":"Collagène Neutre","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3770012764449":{"nom":"Collagène Pêche","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384160680":{"nom":"Collagène Vanille","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384161304":{"nom":"Collagène Neutre 3 mois","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3760384161298":{"nom":"Collagène Pêche 3 mois","sous_cat":"Collagène","marche":"Beauté","categorie":"Collagène","marche_id":"prot"},"3770012764135":{"nom":"Complexe Cheveux","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3760384160611":{"nom":"Coenzyme Q10","sous_cat":"Beauté","marche":"Beauté"},"3770012764524":{"nom":"Probiotique Peau Nette","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764562":{"nom":"Solaire","sous_cat":"Beauté","marche":"Beauté","categorie":"Beauté","marche_id":"general"},"3770012764661":{"nom":"Zinc Bisglycinate","sous_cat":"Minéraux","marche":"Beauté","categorie":"Minéraux","marche_id":"general"},"3770012764470":{"nom":"Chardon Marie Bio","sous_cat":"Digestion","marche":"Digestion","categorie":"Digestion","marche_id":"general"},"3760384160840":{"nom":"Enzymes & Pissenlit","sous_cat":"Digestion","marche":"Digestion","categorie":"Digestion","marche_id":"general"},"3770012764364":{"nom":"Fibres Bio","sous_cat":"Digestion","marche":"Digestion","categorie":"Digestion","marche_id":"general"},"3760384160864":{"nom":"Lactoferrine","sous_cat":"Digestion","marche":"Digestion"},"3760384160932":{"nom":"L-Glutamine","sous_cat":"Acides aminés","marche":"Digestion"},"3760384161236":{"nom":"Probiotiques","sous_cat":"Microbiote","marche":"Digestion"},"3760384160154":{"nom":"Probiotiques & Prébiotiques 10","sous_cat":"Microbiote","marche":"Digestion","categorie":"Microbiote","marche_id":"general"},"3770012764043":{"nom":"Probiotiques & Prébiotiques 60","sous_cat":"Microbiote","marche":"Digestion","categorie":"Microbiote","marche_id":"general"},"3760384160345":{"nom":"Brûle Graisse","sous_cat":"Minceur","marche":"Minceur","categorie":"Minceur","marche_id":"general"},"3760384161083":{"nom":"Draineur Fruits Rouges","sous_cat":"Minceur","marche":"Minceur"},"3760384161076":{"nom":"Draineur Pêche","sous_cat":"Minceur","marche":"Minceur","categorie":"Minceur","marche_id":"general"},"3760384160161":{"nom":"Formule Satiété","sous_cat":"Minceur","marche":"Minceur","categorie":"Minceur","marche_id":"general"},"3770012764760":{"nom":"Lactobacillus Gasseri","sous_cat":"Microbiote","marche":"Minceur","categorie":"Microbiote","marche_id":"general"},"3760384161014":{"nom":"Graines de Chia","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"prot"},"3760384161038":{"nom":"Poudre d'Açaï","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"general"},"3760384161021":{"nom":"Poudre de Baobab","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"general"},"3760384160789":{"nom":"Spiruline Française Bio","sous_cat":"Superaliments","marche":"Superaliments","categorie":"Superaliments","marche_id":"general"},"3760384160970":{"nom":"Glycine","sous_cat":"Acides","marche":"Stress & Sommeil","categorie":"Acides","marche_id":"general"},"3770012764005":{"nom":"Magnésium 60","sous_cat":"Minéraux","marche":"Stress & Sommeil","categorie":"Minéraux","marche_id":"general"},"3770012764166":{"nom":"Magnésium 120","sous_cat":"Minéraux","marche":"Stress & Sommeil","categorie":"Minéraux","marche_id":"general"},"3770012764586":{"nom":"Mélatonine","sous_cat":"Stress","marche":"Stress & Sommeil","categorie":"Stress","marche_id":"general"},"3760384160352":{"nom":"Probiotique Stress","sous_cat":"Microbiote","marche":"Stress & Sommeil","categorie":"Microbiote","marche_id":"general"},"3770012764678":{"nom":"Rhodiola","sous_cat":"Stress & Sommeil","marche":"Stress & Sommeil"},"3760384160376":{"nom":"Sommeil","sous_cat":"Stress","marche":"Stress & Sommeil","categorie":"Stress","marche_id":"general"},"3770012764395":{"nom":"Booster","sous_cat":"Vitalité","marche":"Vitalité & Tonus","categorie":"Vitalité","marche_id":"general"},"3770012764418":{"nom":"Le Multi 60","sous_cat":"Multivitamines","marche":"Vitalité & Tonus","categorie":"Multivitamines","marche_id":"general"},"3770012764067":{"nom":"Le Multi 90","sous_cat":"Multivitamines","marche":"Vitalité & Tonus","categorie":"Multivitamines","marche_id":"general"},"3760384161151":{"nom":"MACA Noir Bio","sous_cat":"Vitalité","marche":"Vitalité & Tonus","categorie":"Vitalité","marche_id":"general"},"3760384160949":{"nom":"Tribulus Terrestris","sous_cat":"Vitalité","marche":"Vitalité & Tonus","categorie":"Vitalité","marche_id":"general"},"3760384160987":{"nom":"Vitamine C Fraise Citron","sous_cat":"Minéraux","marche":"Vitalité & Tonus","categorie":"Minéraux","marche_id":"general"},"3760384161250":{"nom":"Vitamine C Mangue Passion","sous_cat":"Minéraux","marche":"Vitalité & Tonus","categorie":"Minéraux","marche_id":"general"},"3760384161281":{"nom":"Vitamine C Liposomale","sous_cat":"Minéraux","marche":"Vitalité & Tonus","categorie":"Minéraux","marche_id":"general"},"3770012764500":{"nom":"Confort Menstruel","sous_cat":"Santé","marche":"Santé féminine","categorie":"Santé","marche_id":"general"},"3770012764685":{"nom":"Cranberry Mannose","sous_cat":"Santé","marche":"Santé féminine","categorie":"Santé","marche_id":"general"},"3770012764715":{"nom":"Jambes Légères","sous_cat":"Santé","marche":"Santé féminine","categorie":"Santé","marche_id":"general"},"3760384160758":{"nom":"Ménopause","sous_cat":"Santé féminine","marche":"Santé féminine"},"3760384161175":{"nom":"Myo-Inositol","sous_cat":"Santé féminine","marche":"Santé féminine"},"3760384160666":{"nom":"Probiotique Flore Intime","sous_cat":"Microbiote","marche":"Santé féminine","categorie":"Microbiote","marche_id":"general"},"3760384160765":{"nom":"Ginkgo Biloba","sous_cat":"Cerveau","marche":"Cerveau","categorie":"Cerveau","marche_id":"general"},"3760384160628":{"nom":"Iode","sous_cat":"Cerveau","marche":"Cerveau"},"3770012764098":{"nom":"Oméga-3 60","sous_cat":"Acides","marche":"Cerveau","categorie":"Acides","marche_id":"general"},"3770012764111":{"nom":"Oméga-3 120","sous_cat":"Acides","marche":"Cerveau","categorie":"Acides","marche_id":"general"},"3760384161311":{"nom":"Oméga-3 240","sous_cat":"Acides","marche":"Cerveau","categorie":"Acides","marche_id":"general"},"3770012764777":{"nom":"Ashwagandha","sous_cat":"Adaptogènes","marche":"Sport","categorie":"Adaptogènes","marche_id":"general"},"3760384160796":{"nom":"BCAA Citron","sous_cat":"Acides","marche":"Sport","categorie":"Acides","marche_id":"general"},"3760384160147":{"nom":"BCAA Pêche","sous_cat":"Acides","marche":"Sport","categorie":"Acides","marche_id":"general"},"3760384161267":{"nom":"Boisson Énergétique","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384160123":{"nom":"Créatine","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"prot"},"3760384161137":{"nom":"Electrolytes Citron","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384161113":{"nom":"Electrolytes Pêche","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384161120":{"nom":"Electrolytes Fruits Rouges","sous_cat":"Sport","marche":"Sport","categorie":"Sport","marche_id":"general"},"3760384160963":{"nom":"Barres Beurre Cacahuète","sous_cat":"Barres","marche":"barres","categorie":"Barres","marche_id":"barres"},"3760384160925":{"nom":"Barres Chocolat Amande","sous_cat":"Barres","marche":"barres","categorie":"Barres","marche_id":"barres"},"3760384160994":{"nom":"Pré-workout","sous_cat":"Sport","marche":"Sport"},"3770012764357":{"nom":"Protéine Végétale Bio","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"prot"},"3760384161090":{"nom":"Whey Concentrée Chocolat","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384161106":{"nom":"Whey Concentrée Vanille","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160901":{"nom":"Whey Isolat Café","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160178":{"nom":"Whey Isolat Chocolat","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160895":{"nom":"Whey Isolat Fraise","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160185":{"nom":"Whey Isolat Neutre","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3760384160222":{"nom":"Whey Isolat Vanille","sous_cat":"Protéines","marche":"Sport","categorie":"Protéines","marche_id":"isolat"},"3770012764722":{"nom":"Pour Les Enfants","sous_cat":"Enfants","marche":"Enfants","categorie":"Enfants","marche_id":"general"},"3760384160635":{"nom":"Shaker Nutri&Co","sous_cat":"Accessoires","marche":"Sport","categorie":"Accessoires","marche_id":"general"}};
+
+var CAT_RULES = [
+  { keywords:['whey','proteine','protein','prot '],        cat:'Proteines',    scat:'Whey',             marche:'Proteines poudre' },
+  { keywords:['isolat'],                                   cat:'Proteines',    scat:'Isolat',           marche:'Proteines isolats' },
+  { keywords:['barre','bar ','bar\u00e9al'],               cat:'Proteines',    scat:'Barres',           marche:'Barres proteines' },
+  { keywords:['creatine'],                                 cat:'Performance',  scat:'Creatine',         marche:'Force & performance' },
+  { keywords:['magnesium','magn\u00e9sium'],               cat:'Mineraux',     scat:'Magnesium',        marche:'Mineraux' },
+  { keywords:['zinc'],                                     cat:'Mineraux',     scat:'Zinc',             marche:'Mineraux' },
+  { keywords:['fer ','fer g'],                             cat:'Mineraux',     scat:'Fer',              marche:'Mineraux' },
+  { keywords:['vitamine d','vit d'],                       cat:'Vitamines',    scat:'Vitamine D',       marche:'Vitamines' },
+  { keywords:['vitamine b','vit b','b12'],                 cat:'Vitamines',    scat:'Vitamine B',       marche:'Vitamines' },
+  { keywords:['vitamine c','vit c'],                       cat:'Vitamines',    scat:'Vitamine C',       marche:'Vitamines' },
+  { keywords:['omega','om\u00e9ga'],                       cat:'Acides gras',  scat:'Omega 3',          marche:'Acides gras essentiels' },
+  { keywords:['collagene','collag\u00e8ne'],               cat:'Beaute',       scat:'Collagene',        marche:'Collagene & beaute' },
+  { keywords:['probio','probiotique'],                     cat:'Microbiote',   scat:'Probiotiques',     marche:'Microbiote & digestion' },
+  { keywords:['prebio'],                                   cat:'Microbiote',   scat:'Prebiotiques',     marche:'Microbiote & digestion' },
+  { keywords:['spiruline'],                                cat:'Superaliments',scat:'Spiruline',        marche:'Superaliments' },
+  { keywords:['ashwagandha'],                              cat:'Adaptogenes',  scat:'Ashwagandha',      marche:'Stress & sommeil' },
+  { keywords:['sommeil','m\u00e9latonine','melatonine'],   cat:'Bien-etre',    scat:'Sommeil',          marche:'Stress & sommeil' },
+  { keywords:['acide hyaluronique','hyaluron','hyaluro'],  cat:'Beaute',       scat:'Acide hyaluronique',marche:'Anti-age & peau' },
+  { keywords:['curcuma'],                                  cat:'Articulations',scat:'Curcuma',          marche:'Articulations & mobilite' },
+  { keywords:['glucosamine','chondroitine','articulat'],   cat:'Articulations',scat:'Glucosamine',      marche:'Articulations & mobilite' },
+  { keywords:['fer ','fer\u00e8','iron'],                  cat:'Mineraux',     scat:'Fer',              marche:'Mineraux' },
+  { keywords:['gelee royale'],                             cat:'Superaliments',scat:'Gelee royale',     marche:'Superaliments' },
+  { keywords:['ginkgo','gingko'],                          cat:'Cognition',    scat:'Ginkgo',           marche:'Cognition & memoire' },
+  { keywords:['enzyme','enzym'],                           cat:'Digestion',    scat:'Enzymes digestives',marche:'Microbiote & digestion' },
+  { keywords:['detox','draineur'],                         cat:'Minceur',      scat:'Detox',            marche:'Minceur & detox' },
+  { keywords:['fibres','fiber'],                           cat:'Digestion',    scat:'Fibres',           marche:'Microbiote & digestion' },
+  { keywords:['chia'],                                     cat:'Superaliments',scat:'Graines',          marche:'Superaliments' },
+  { keywords:['glycine'],                                  cat:'Acides amines',scat:'Glycine',          marche:'Proteines & acides amines' },
+  { keywords:['glutamine'],                                cat:'Acides amines',scat:'Glutamine',        marche:'Proteines & acides amines' },
+  { keywords:['q10','coenzyme'],                           cat:'Antioxydants', scat:'Q10',              marche:'Antioxydants' },
+  { keywords:['antioxydant'],                              cat:'Antioxydants', scat:'Antioxydants mix', marche:'Antioxydants' },
+  { keywords:['multi ','multivitamine','multi g'],         cat:'Vitamines',    scat:'Multivitamines',   marche:'Vitamines' },
+  { keywords:['booster','energy','energi'],                cat:'Performance',  scat:'Energie',          marche:'Force & performance' },
+  { keywords:['peau nette','complexe peau','acne'],        cat:'Beaute',       scat:'Peau nette',       marche:'Peau & cheveux' },
+  { keywords:['millet','biotine','cheveux','hair'],        cat:'Beaute',       scat:'Cheveux & ongles', marche:'Peau & cheveux' },
+  { keywords:['solaire','soleil','sun'],                   cat:'Bien-etre',    scat:'Protection solaire',marche:'Saisonnalite' },
+  { keywords:['flore intime'],                             cat:'Microbiote',   scat:'Flore intime',     marche:'Sante feminine' },
+  { keywords:['fem','regles','menstruel','femme'],         cat:'Bien-etre',    scat:'Sante feminine',   marche:'Sante feminine' },
+];
+
+function catClassifierProduit(nom) {
+  var nomL = nom.toLowerCase()
+    .replace(/\u00e9/g,'e').replace(/\u00e8/g,'e').replace(/\u00ea/g,'e')
+    .replace(/\u00e0/g,'a').replace(/\u00e2/g,'a');
+  for (var i = 0; i < CAT_RULES.length; i++) {
+    var rule = CAT_RULES[i];
+    for (var j = 0; j < rule.keywords.length; j++) {
+      if (nomL.indexOf(rule.keywords[j]) >= 0) {
+        return { cat: rule.cat, scat: rule.scat, marche: rule.marche };
+      }
+    }
+  }
+  return { cat: 'Autre', scat: '', marche: 'Non classe' };
+}
+
+// ===== IMPORT CATALOGUE OFFICIEL LABO (PDF/Excel brut, fourni par le labo) — stocké sur GitHub pour accès multi-navigateurs =====
+async function condGitHubPutFile(token, path, b64, sha, message) {
+  var body = { message: message || ('Catalogue officiel ' + new Date().toISOString().slice(0,16).replace('T',' ')), content: b64, branch: GH_BRANCH };
+  if (sha) body.sha = sha;
+  return await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + path, {
+    method: 'PUT',
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+async function condGitHubGetSha(token, path) {
+  var r = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + path + '?t=' + Date.now(), {
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+  });
+  if (!r.ok) return null;
+  var j = await r.json();
+  return j.sha || null;
+}
+function catSafeName(name) {
+  return String(name || 'fichier').replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+async function catImportOfficiel(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
+  if (file.size > 20 * 1024 * 1024) { alert('Fichier trop volumineux (>20 Mo).'); return; }
+  var token = localStorage.getItem('gh_token') || '';
+  if (!token) { alert('Token GitHub requis (configure-le dans Labos configurés → Sauvegarder sur GitHub) pour que le catalogue soit accessible depuis tous tes appareils.'); return; }
+  var status = document.getElementById('cat-officiel-info');
+  if (status) status.textContent = 'Envoi vers GitHub...';
+  var b64full = await new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  var path = 'catalogues/' + catLaboActif + '_' + catSafeName(file.name);
+  try {
+    var sha = await condGitHubGetSha(token, path);
+    var put = await condGitHubPutFile(token, path, b64full, sha, 'Catalogue officiel ' + (condLabos[catLaboActif].nom || catLaboActif));
+    if (!put.ok) { var err = await put.json(); throw new Error(err.message || 'erreur GitHub'); }
+    condLabos[catLaboActif].catalogueOfficiel = { name: file.name, type: file.type, path: path, date: new Date().toISOString() };
+    try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+    await condSyncGitHubAuto();
+    catRenderOfficielInfo();
+  } catch(err) {
+    if (status) { status.textContent = '❌ ' + err.message; status.style.color = 'var(--danger)'; }
+  }
+}
+function catRenderOfficielInfo() {
+  var el = document.getElementById('cat-officiel-info');
+  if (!el) return;
+  var labo = catLaboActif ? condLabos[catLaboActif] : null;
+  var off = labo && labo.catalogueOfficiel;
+  if (!off) { el.innerHTML = ''; return; }
+  var d = new Date(off.date).toLocaleDateString('fr-FR');
+  var url = 'https://raw.githubusercontent.com/' + GH_OWNER + '/' + GH_REPO + '/' + GH_BRANCH + '/' + off.path;
+  el.innerHTML = '📎 <strong>' + off.name + '</strong> (' + d + ') — '
+    + '<a href="' + url + '" target="_blank" style="color:var(--accent-text)">Ouvrir</a> · '
+    + '<a href="#" onclick="catSupprimerOfficiel();return false" style="color:var(--danger)">Supprimer</a>';
+}
+async function catSupprimerOfficiel() {
+  if (!catLaboActif || !condLabos[catLaboActif] || !condLabos[catLaboActif].catalogueOfficiel) return;
+  if (!confirm('Supprimer le catalogue officiel importé ?')) return;
+  var off = condLabos[catLaboActif].catalogueOfficiel;
+  var token = localStorage.getItem('gh_token') || '';
+  if (token) {
+    try {
+      var sha = await condGitHubGetSha(token, off.path);
+      if (sha) {
+        await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + off.path, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Suppression catalogue officiel', sha: sha, branch: GH_BRANCH })
+        });
+      }
+    } catch(e) {}
+  }
+  delete condLabos[catLaboActif].catalogueOfficiel;
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  await condSyncGitHubAuto();
+  catRenderOfficielInfo();
+}
+
+function catExportXLSX() {
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
+  var labo = condLabos[catLaboActif];
+  var prods = labo.produits || [];
+  if (!prods.length) { alert('Aucun produit dans ce catalogue.'); return; }
+  var data = [['Nom','EAN','Format','Famille','PU Catalogue','TVA %','Colisage','Cmd min','Paliers remises','Panachage','Nouveauté']];
+  prods.forEach(function(p) {
+    var paliers = (p.remises_paliers || []).map(function(r){ return r[0]+'-'+r[1]+'u: '+r[2]+'%'; }).join(' | ');
+    data.push([p.nom||'', p.ean||'', p.format||'', p.famille||'', p.pu_catalogue||0, p.tva||0, p.colisage||1, p.min_cmd||0, paliers, p.panachage?'oui':'non', p.nouveaute?'oui':'non']);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:40},{wch:15},{wch:18},{wch:18},{wch:12},{wch:7},{wch:9},{wch:9},{wch:30},{wch:9},{wch:9}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Catalogue');
+  XLSX.writeFile(wb, 'Catalogue_' + (labo.nom||'labo').replace(/[^a-zA-Z0-9]+/g,'_') + '.xlsx');
+}
+function catApercuPDF() {
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Chargez d\'abord un labo.'); return; }
+  var labo = condLabos[catLaboActif];
+  var prods = labo.produits || [];
+  if (!prods.length) { alert('Aucun produit dans ce catalogue.'); return; }
+  var rows = prods.map(function(p) {
+    var paliers = (p.remises_paliers || []).map(function(r){ return r[0]+'-'+r[1]+'u: '+r[2]+'%'; }).join(' / ');
+    return '<tr><td>'+(p.nom||'')+'</td><td>'+(p.ean||'')+'</td><td>'+(p.format||'')+'</td><td>'+(p.famille||'')+'</td><td style="text-align:right">'+(p.pu_catalogue||0).toFixed(2)+' €</td><td style="text-align:right">'+(p.tva||0)+'%</td><td style="text-align:right">'+(p.colisage||1)+'</td><td style="text-align:right">'+(p.min_cmd||0)+'</td><td>'+paliers+'</td></tr>';
+  }).join('');
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Catalogue ' + (labo.nom||'') + '</title>'
+    + '<style>body{font-family:Arial,sans-serif;font-size:10px;margin:20px}h1{font-size:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#222;color:#fff;font-size:9px;text-transform:uppercase}tr:nth-child(even){background:#f5f5f5}</style>'
+    + '</head><body><h1>Catalogue ' + (labo.nom||'') + ' — ' + new Date().toLocaleDateString('fr-FR') + '</h1>'
+    + '<table><thead><tr><th>Nom</th><th>EAN</th><th>Format</th><th>Famille</th><th>PU Cat.</th><th>TVA</th><th>Colisage</th><th>Cmd min</th><th>Paliers remises</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<script>window.onload=function(){window.print();}<\/script></body></html>';
+  var w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+// ===== EXTRACTION PRODUITS CATALOGUE PDF PAR IA =====
+var CAT_EXTRACT_PROMPT = 'Tu analyses un catalogue tarifaire pharmacie (format GSA Healthcare / IDES PHARMA ou similaire). ' +
+'Extrais TOUS les produits listés dans les tableaux de tarifs. ' +
+'Pour chaque produit extrait : ' +
+'- nom : désignation complète du produit (string) ' +
+'- ean : code EAN/GTIN (string, sans espaces, sinon vide "") ' +
+'- acl : code ACL/CIP si présent (string, sinon "") ' +
+'- uc : quantité minimum de commande / unité de colisage (entier, défaut 1) ' +
+'- tva : taux TVA % (nombre : 2.1, 5.5, 10, ou 20) ' +
+'- pu_ht : prix unitaire HT en euros (nombre décimal) ' +
+'- famille : nom de la section/gamme/marque du tableau (string) ' +
+'Ignore : pages de couverture, images seules, pages de notes vides, textes logistiques, présentoirs sans EAN ni prix. ' +
+'Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après. ' +
+'Format exact : {"produits":[{"nom":"...","ean":"...","acl":"...","uc":1,"tva":20,"pu_ht":0.00,"famille":"..."}]}';
+
+async function catExtrarePDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisissez d\'abord un labo dans la liste.'); return; }
+
+  var apiKey = localStorage.getItem('anthropic_api_key') || '';
+  if (!apiKey) {
+    apiKey = prompt('Clé API Anthropic (sk-ant-...) — stockée localement :');
+    if (!apiKey || !apiKey.startsWith('sk-')) { alert('Clé invalide.'); return; }
+    localStorage.setItem('anthropic_api_key', apiKey);
+  }
+
+  var statusEl = document.getElementById('cat-extract-status');
+  var previewEl = document.getElementById('cat-extract-preview');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '⏳ Lecture du PDF (' + (file.size / 1024 / 1024).toFixed(1) + ' Mo)...';
+  previewEl.style.display = 'none';
+  window._catExtractedProds = null;
+
+  var b64 = await new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function() { res(r.result.split(',')[1]); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  var PASSES = [
+    { label: 'pages 1–5',   prompt: 'Analyse UNIQUEMENT les pages 1 à 5 de ce PDF. ' },
+    { label: 'pages 6–10',  prompt: 'Analyse UNIQUEMENT les pages 6 à 10 de ce PDF. ' },
+    { label: 'pages 11–15', prompt: 'Analyse UNIQUEMENT les pages 11 à 15 de ce PDF. ' },
+    { label: 'pages 16–20', prompt: 'Analyse UNIQUEMENT les pages 16 à 20 de ce PDF. ' }
+  ];
+
+  var allProds = {};
+  var errors = [];
+
+  for (var pi = 0; pi < PASSES.length; pi++) {
+    var passe = PASSES[pi];
+    statusEl.innerHTML = '⏳ Passe ' + (pi+1) + '/4 — ' + passe.label + '...';
+    try {
+      var resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+              { type: 'text', text: passe.prompt + CAT_EXTRACT_PROMPT }
+            ]
+          }]
+        })
+      });
+
+      if (resp.status === 401) { localStorage.removeItem('anthropic_api_key'); statusEl.innerHTML = '❌ Clé API invalide.'; return; }
+      var responseText = await resp.text();
+      if (!resp.ok) { errors.push('Passe ' + (pi+1) + ': erreur ' + resp.status); continue; }
+      var data;
+      try { data = JSON.parse(responseText); } catch(e) { errors.push('Passe ' + (pi+1) + ': réponse non-JSON'); continue; }
+      if (data.error) { errors.push('Passe ' + (pi+1) + ': ' + (data.error.message || JSON.stringify(data.error))); continue; }
+
+      var raw = (data.content || []).map(function(c){ return c.text || ''; }).join('').trim();
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { errors.push('Passe ' + (pi+1) + ': pas de JSON'); continue; }
+      var parsed;
+      try { parsed = JSON.parse(jsonMatch[0]); } catch(e) {
+        var txt = jsonMatch[0].replace(/,\s*$/, '');
+        var op = (txt.match(/\[/g)||[]).length - (txt.match(/\]/g)||[]).length;
+        var ob = (txt.match(/\{/g)||[]).length - (txt.match(/\}/g)||[]).length;
+        for (var k=0;k<op;k++) txt+=']';
+        for (var k=0;k<ob;k++) txt+='}';
+        try { parsed = JSON.parse(txt); } catch(e2) { errors.push('Passe ' + (pi+1) + ': JSON invalide'); continue; }
+      }
+
+      var nbPasse = 0;
+      (parsed.produits || []).forEach(function(p) {
+        if (!p.nom || !p.pu_ht || p.pu_ht <= 0) return;
+        var key = (p.ean && p.ean.length >= 8) ? p.ean.replace(/\s/g,'') : (p.acl || p.nom);
+        if (allProds[key]) return;
+        allProds[key] = {
+          nom: (p.nom || '').trim(), ean: (p.ean || '').replace(/\s/g,''), acl: (p.acl || '').replace(/\s/g,''),
+          uc: parseInt(p.uc) || 1, tva: parseFloat(p.tva) || 20, pu_catalogue: parseFloat(p.pu_ht) || 0,
+          famille: (p.famille || '').trim(), format: '', marche_id: '', colisage: parseInt(p.uc) || 1,
+          min_cmd: parseInt(p.uc) || 1, panachage: true, nouveaute: false, remises_paliers: [], lppr: 0,
+          moy:0, pa_net:0, pv_ttc:0, pv_ht:0, mbu:0, mb_pct:0, rem_cat:0, mois:[0,0,0,0,0,0,0,0,0,0,0,0]
+        };
+        nbPasse++;
+      });
+      statusEl.innerHTML = '✅ Passe ' + (pi+1) + '/4 — ' + passe.label + ' : ' + nbPasse + ' produits. Suite...';
+    } catch(err) {
+      errors.push('Passe ' + (pi+1) + ': ' + err.message);
+    }
+  }
+
+  var prods = Object.values(allProds);
+  if (prods.length === 0) {
+    statusEl.innerHTML = '❌ Aucun produit extrait.' + (errors.length ? ' Erreurs : ' + errors.join(', ') : '');
+    return;
+  }
+
+  var warn = errors.length ? ' ⚠ ' + errors.length + ' passe(s) en erreur' : '';
+  statusEl.innerHTML = '✅ <strong>' + prods.length + ' produits extraits</strong> en 4 passes.' + warn;
+
+  var familles = {};
+  prods.forEach(function(p){ familles[p.famille] = (familles[p.famille]||0)+1; });
+  var famHtml = Object.keys(familles).sort().map(function(f){
+    return '<span style="display:inline-block;margin:2px 4px;padding:2px 7px;background:var(--surface2);border-radius:10px;font-size:10px">' + f + ' (' + familles[f] + ')</span>';
+  }).join('');
+
+  previewEl.style.display = 'block';
+  previewEl.innerHTML = '<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 12px">'
+    + '<div style="font-size:12px;font-weight:600;margin-bottom:6px">Familles détectées (' + prods.length + ' produits) :</div>'
+    + '<div style="margin-bottom:10px">' + famHtml + '</div>'
+    + '<div style="font-size:11px;color:var(--text-sec);margin-bottom:10px">Les produits seront <strong>ajoutés</strong> au catalogue existant. Doublons EAN ignorés.</div>'
+    + '<button type="button" onclick="catInjecterProduits()" style="font-size:12px;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;margin-right:8px">✓ Importer ces ' + prods.length + ' produits</button>'
+    + '<button type="button" onclick="document.getElementById(\'cat-extract-preview\').style.display=\'none\'" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer">Annuler</button>'
+    + '</div>';
+
+  window._catExtractedProds = prods;
+}
+
+function catInjecterProduits() {
+  var prods = window._catExtractedProds;
+  if (!prods || !prods.length || !catLaboActif || !condLabos[catLaboActif]) return;
+  var labo = condLabos[catLaboActif];
+  if (!labo.produits) labo.produits = [];
+  var eanExist = {};
+  labo.produits.forEach(function(p){ if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true; });
+  var added = 0;
+  prods.forEach(function(p) {
+    if (p.ean && p.ean.length >= 8 && eanExist[p.ean]) return;
+    labo.produits.push(p);
+    if (p.ean && p.ean.length >= 8) eanExist[p.ean] = true;
+    added++;
+  });
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+  catChargeLabo();
+  document.getElementById('cat-extract-preview').style.display = 'none';
+  document.getElementById('cat-extract-status').innerHTML = '✅ <strong>' + added + ' produits ajoutés</strong> au catalogue de ' + (labo.nom || 'ce labo') + '. (' + (prods.length - added) + ' doublons ignorés)';
+  window._catExtractedProds = null;
+}
+
+function catInit() {
+  // Load condLabos if needed
+  if (Object.keys(condLabos).length === 0) {
+    try {
+      var saved = localStorage.getItem('cond_labos');
+      if (saved) { condLabos = JSON.parse(saved); }
+    } catch(e) {}
+  }
+  // Populate selector
+  var sel = document.getElementById('cat-labo-sel');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var labo = condLabos[id];
+    if (!labo || !labo.nom) return;
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = labo.nom + (labo.produits ? ' (' + labo.produits.length + ' prod.)' : '');
+    sel.appendChild(opt);
+  });
+}
+
+function catChargeLabo() {
+  var sel = document.getElementById('cat-labo-sel');
+  var rawId = sel ? sel.value : null;
+  // Normaliser l'ID : essayer string puis number
+  catLaboActif = rawId ? String(rawId) : null;
+  if (!catLaboActif) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
+  var labo = condLabos[catLaboActif];
+  if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
+  catRenderOfficielInfo();
+  // Pas de chargement automatique GitHub (v3.85 - trop de 404) - utiliser le bouton ☁
+  var src = labo.produits || [];
+  // Merge with existing catalogue if any
+  var existing = labo.catalogue || {};
+
+  catProduits = src.map(function(p) {
+    var key = p.ean || p.nom;
+    var saved = existing[key] || {};
+    var autoClass = catClassifierProduit(p.nom || '');
+    // Fallback NUTRICO_CATALOGUE uniquement pour NUTRI&CO
+    var isNutrico = labo && labo.nom && labo.nom.toUpperCase().indexOf('NUTRI') >= 0;
+    var nutroCat = (isNutrico && p.ean && typeof NUTRICO_CATALOGUE !== 'undefined') ? (NUTRICO_CATALOGUE[p.ean] || {}) : {};
+    return {
+      ean:          p.ean || '',
+      nom:          p.nom || p.libelle || '',
+      moy:          p.moy || 0,
+      pa_net:       p.pa_net || 0,
+      pv_ttc:       p.pv_ttc || 0,
+      categorie:    saved.categorie    || nutroCat.categorie || autoClass.cat,
+      sous_cat:     saved.sous_cat     || nutroCat.sous_cat  || autoClass.scat,
+      marche:       p.marche || saved.marche || nutroCat.marche || autoClass.marche,
+      marche_id:    saved.marche_id    || nutroCat.marche_id || '',
+      palier_id:    saved.palier_id    || '',
+      colisage:     p.colisage || saved.colisage || nutroCat.colisage || 1,
+      tva:          saved.tva !== undefined ? saved.tva : (p.tva !== undefined ? p.tva : undefined),
+      lppr:         p.lppr || 0,
+      famille:      saved.famille || p.famille || '',
+      classified:   !!(saved.categorie || nutroCat.categorie)
+    };
+  });
+
+  catRenderTable();
+  var status = document.getElementById('cat-status');
+  if (status) status.textContent = catProduits.length + ' produits charges — cliquez Auto-classifier pour classifier automatiquement.';
+}
+
+async function catClassifierAuto(useLabo) {
+  if (!catLaboActif || catProduits.length === 0) { alert('Chargez d\'abord un labo.'); return; }
+  var status = document.getElementById('cat-status');
+
+  // Option 1: Use official labo catalogue if available
+  if (useLabo) {
+    catProduits.forEach(function(p) {
+      var key = p.ean || '';
+      var entry = key ? NUTRICO_CATALOGUE[key] : null;
+      if (!entry) {
+        // Try by name matching
+        var nomL = (p.nom||'').toLowerCase();
+        Object.keys(NUTRICO_CATALOGUE).forEach(function(ean) {
+          if (!entry) {
+            var cat = NUTRICO_CATALOGUE[ean];
+            var catNom = cat.nom.toLowerCase();
+            if (nomL.indexOf(catNom.substring(0,8)) >= 0 || catNom.indexOf(nomL.substring(0,8)) >= 0) {
+              entry = cat;
+            }
+          }
+        });
+      }
+      if (entry) {
+        p.categorie  = entry.sous_cat;
+        p.sous_cat   = entry.sous_cat;
+        p.marche     = entry.marche;
+        p.classified = true;
+      } else {
+        p.categorie  = 'Autre';
+        p.classified = false;
+      }
+    });
+    catRenderTable();
+    var nClass = catProduits.filter(function(p){ return p.classified; }).length;
+    var status = document.getElementById('cat-status');
+    if (status) status.textContent = 'Catalogue labo : ' + nClass + '/' + catProduits.length + ' produits classes. Corrigez si besoin puis Sauvegarder.';
+    return;
+  }
+  // Option 2: local rule-based classification for all products
+  catProduits.forEach(function(p) {
+    var res = catClassifierProduit(p.nom);
+    p.categorie  = res.cat;
+    p.sous_cat   = res.scat;
+    p.marche     = res.marche;
+    p.classified = res.cat !== 'Autre';
+  });
+
+  catRenderTable();
+  var nonClasses = catProduits.filter(function(p){ return p.categorie === 'Autre' || !p.marche || p.marche === ''; });
+  if (status) status.textContent = 'Classification locale : ' + (catProduits.length - nonClasses.length) + ' classes, ' + nonClasses.length + ' à assigner via Claude.';
+
+  // Claude API pour tous les produits sans marché (v3.90)
+  if (nonClasses.length > 0) {
+    var BATCH = 40;
+    var totalOk = 0;
+    for (var bi = 0; bi < nonClasses.length; bi += BATCH) {
+      var batch = nonClasses.slice(bi, bi + BATCH);
+      if (status) status.textContent = 'Classification... lot ' + (Math.floor(bi/BATCH)+1) + '/' + Math.ceil(nonClasses.length/BATCH);
+      try {
+        var noms = batch.map(function(p,i){ return (i+1) + '. ' + p.nom; }).join('\n');
+        var resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 4000,
+            messages: [{role:'user', content:
+              (function(){
+                var marchesDef = (condLabos[catLaboActif] && condLabos[catLaboActif].marches_negocies) ? condLabos[catLaboActif].marches_negocies : [];
+                var marchesStr, marchesIdStr;
+                if (marchesDef.length > 0) {
+                  marchesStr = marchesDef.map(function(m){ return '"' + (m.marche_id||m.label) + '" (' + m.label + ' ' + m.rem + '%)'; }).join(', ');
+                  marchesIdStr = 'marche_id EXACT parmi: ' + marchesStr;
+                } else {
+                  marchesIdStr = 'marche_id en texte libre ex: PHOTODERM, CICALFATE, CLEANANCE, XERACALM, HYDRANCE';
+                }
+                return 'Classifie ces produits pharmaceutiques/dermo-cosmetiques. Pour chacun: cat (Soin corps, Soin visage, Solaire, Capillaire, Complement alimentaire, Hygiene...), scat (sous-categorie courte), ' + marchesIdStr + '. Assigne toujours un marche_id si possible. JSON UNIQUEMENT: {"produits":[{"idx":1,"cat":"...","scat":"...","marche_id":"..."}]}\n\n' + noms;
+              })()
+            }]
+          })
+        });
+        var data = await resp.json();
+        var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
+        var m = raw.match(/\{[\s\S]*\}/);
+        if (m) {
+          var parsed;
+          try { parsed = JSON.parse(m[0]); } catch(e) {
+            var t = m[0];
+            var op=(t.match(/\[/g)||[]).length-(t.match(/\]/g)||[]).length;
+            var ob=(t.match(/\{/g)||[]).length-(t.match(/\}/g)||[]).length;
+            for(var ki=0;ki<op;ki++) t+=']';
+            for(var ki=0;ki<ob;ki++) t+='}';
+            try { parsed=JSON.parse(t); } catch(e2) { continue; }
+          }
+          (parsed.produits||[]).forEach(function(r) {
+            var p = nonClasses[bi + r.idx - 1];
+            if (p) {
+              p.categorie = r.cat;
+              p.sous_cat  = r.scat;
+              // Résoudre marche_id → label via getMarchesLabo
+              var mid = r.marche_id || r.marche || '';
+              // Chercher directement dans marches_negocies par label (sans passer par getMarchesLabo)
+              var marchesNeg = (condLabos[catLaboActif] && condLabos[catLaboActif].marches_negocies) ? condLabos[catLaboActif].marches_negocies : [];
+              if (bi === 0 && r.idx <= 2) console.log('DEBUG marche:', mid, '| neg labels:', marchesNeg.map(function(m){return m.label;}), '| found:', !!marchesNeg.find(function(m){return m.label===mid;}));
+              // Normaliser pour comparer sans accents ni casse
+              function normStr(s){ return s ? s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'') : ''; }
+              var midN = normStr(mid);
+              var negFound = marchesNeg.find(function(m){ return m.label === mid; })
+                          || marchesNeg.find(function(m){ return normStr(m.label) === midN; })
+                          || marchesNeg.find(function(m){ return midN && normStr(m.label).indexOf(midN) >= 0; });
+              if (negFound) {
+                p.marche_id = negFound.marche_id || negFound.label;
+                p.marche    = negFound.label;
+              } else {
+                // Fallback getMarchesLabo
+                var marches = getMarchesLabo(catLaboActif);
+                var marcheDef = marches.find(function(m){ return m.label === mid || m.id === mid; });
+                if (marcheDef) {
+                  p.marche_id = marcheDef.id;
+                  p.marche    = marcheDef.label;
+                } else {
+                  p.marche_id = mid;
+                  p.marche    = mid;
+                }
+              }
+              p.classified = true;
+              totalOk++;
+            }
+          });
+        }
+      } catch(err) {
+        if (status) status.textContent += ' err lot '+(Math.floor(bi/BATCH)+1)+': '+err.message;
+      }
+    }
+  // Passe finale mots-clés : assigner les marchés manquants
+  var marchesNegFinal = (condLabos[catLaboActif] && condLabos[catLaboActif].marches_negocies) ? condLabos[catLaboActif].marches_negocies : [];
+  if (marchesNegFinal.length > 0) {
+    catProduits.forEach(function(p) {
+      if (p.marche && p.marche !== '') return;
+      var nomN = (p.nom||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+      marchesNegFinal.forEach(function(m) {
+        if (p.marche && p.marche !== '') return;
+        var mots = (m.mots_cles||m.label||'').split(',');
+        mots.forEach(function(mot) {
+          if (p.marche && p.marche !== '') return;
+          var motN = mot.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+          if (motN && nomN.indexOf(motN) >= 0) { p.marche = m.label; p.marche_id = m.marche_id||m.label; }
+        });
+      });
+    });
+  }
+    catRenderTable();
+    catSauvegarder();
+    if (status) status.textContent = 'Classification complete : ' + totalOk + '/' + nonClasses.length + ' classes. Sauvegarde automatique faite.';
+  } else {
+    catRenderTable();
+    catSauvegarder();
+    if (status) status.textContent = 'Classification complete. Sauvegarde automatique faite.';
+  }
+}
+function catUpdateProduit(idx, key, val) {
+  if (!catProduits[idx]) return;
+  catProduits[idx][key] = val;
+  // Sync marche label from marche_id
+  if (key === 'marche_id') {
+    var mDef = getMarchesLabo(catLaboActif).find(function(m){ return m.id === val; });
+    if (mDef) catProduits[idx].marche = mDef.label;
+  }
+}
+
+function catSauvegarder() {
+  if (!catLaboActif || !condLabos[catLaboActif]) return;
+  var catalogue = {};
+  catProduits.forEach(function(p) {
+    var key = p.ean || p.nom;
+    catalogue[key] = { categorie:p.categorie, sous_cat:p.sous_cat, marche:p.marche, marche_id:p.marche_id||'', palier_id:p.palier_id, colisage:p.colisage||1, tva:p.tva };
+    // Also update the produit in condLabos
+    var prods = condLabos[catLaboActif].produits || [];
+    var orig = prods.find(function(x){ return (x.ean||x.nom) === key; });
+    if (orig) { orig.categorie = p.categorie; orig.sous_cat = p.sous_cat; orig.marche = p.marche; orig.colisage = p.colisage||1; if (p.tva !== undefined) orig.tva = p.tva; }
+  });
+  condLabos[catLaboActif].catalogue = catalogue;
+  try { localStorage.setItem('cond_labos', JSON.stringify(condLabos)); } catch(e) {}
+  condSyncGitHubAuto();
+  condSauvegarderProduitsGitHub(catLaboActif);
+  var status = document.getElementById('cat-status');
+  if (status) { status.textContent = 'Sauvegarde ! ' + Object.keys(catalogue).length + ' produits classes.'; status.style.color = 'var(--accent-text)'; }
+  setTimeout(function(){ if(status) status.style.color = ''; }, 2000);
+}
+
+function catRenderTable() {
+  var tbody = document.getElementById('cat-tbody');
+  if (!tbody) return;
+  var inS  = 'font-size:10px;padding:2px 3px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:100%;box-sizing:border-box;';
+  var selS = 'font-size:10px;padding:2px 3px;border:1px solid var(--accent);border-radius:3px;background:#e8f8f0;width:100%;box-sizing:border-box;font-weight:500;cursor:pointer;';
+  var td   = 'padding:3px 5px;border-bottom:0.5px solid var(--border);font-size:10px;';
+
+  // Afficher colonne LPPR seulement pour THUASNE et GIBAUD
+  var laboNomActif = (catLaboActif && condLabos[catLaboActif]) ? (condLabos[catLaboActif].nom || '').toUpperCase() : '';
+  var showLPPR = ['THUASNE', 'GIBAUD', 'INNOTHERA'].some(function(n){ return laboNomActif.indexOf(n) >= 0; });
+  var lpprHeaderEl = document.getElementById('cat-lppr-header');
+  if (lpprHeaderEl) lpprHeaderEl.style.display = showLPPR ? '' : 'none';
+
+  // Build marche options depuis le labo actif
+  var marchesActifs = getMarchesLabo(catLaboActif);
+  var marcheOpts = '<option value="">\u2014 choisir \u2014</option>';
+  marchesActifs.forEach(function(m) {
+    marcheOpts += '<option value="' + m.label + '">' + m.label + ' \u2014 ' + (m.rem||m.rem_30||0) + '%' +
+      (m.ug_ach > 0 ? ' + ' + m.ug_ach + '+' + m.ug_off + ' UG' : '') + '</option>';
+  });
+
+  // Group by marche for display
+  var marchesMap = {};
+  catProduits.forEach(function(p,i){
+    var m = p.marche_id || '\u2014 Non affect\u00e9';
+    if (!marchesMap[m]) marchesMap[m] = [];
+    marchesMap[m].push({p:p, i:i});
+  });
+
+  var html = '';
+  var colors = ['#fff','var(--surface2)'];
+  var ci = 0;
+
+  // Sort: unaffected first, then by MARCHES_NUTRICO order
+  var marcheOrder = MARCHES_NUTRICO.map(function(m){ return m.id; });
+  var sortedKeys = Object.keys(marchesMap).sort(function(a,b){
+    if (a.indexOf('Non affect') >= 0) return -1;
+    if (b.indexOf('Non affect') >= 0) return 1;
+    var ia = marcheOrder.indexOf(a), ib = marcheOrder.indexOf(b);
+    if (ia < 0) ia = 99; if (ib < 0) ib = 99;
+    return ia - ib;
+  });
+
+  sortedKeys.forEach(function(marcheId) {
+    var items = marchesMap[marcheId];
+    var isNA  = marcheId.indexOf('Non affect') >= 0;
+    var bg    = colors[ci++ % 2];
+    var hdrBg = isNA ? '#fff3e0' : 'var(--accent-bg)';
+    var hdrClr= isNA ? '#b36000' : 'var(--accent-text)';
+
+    // Find marche label and conditions
+    var mDef = MARCHES_NUTRICO.find(function(m){ return m.id === marcheId; });
+    var marcheLabel = mDef ? mDef.label + ' \u2014 ' + mDef.rem + '%' + (mDef.ug_ach>0?' + '+mDef.ug_ach+'+'+mDef.ug_off+' UG':'') : marcheId;
+    if (isNA) marcheLabel = '\u26a0 Non affect\u00e9';
+
+    html += '<tr style="background:' + hdrBg + '"><td colspan="' + (showLPPR ? 9 : 8) + '" style="padding:5px 10px;font-size:10px;font-weight:700;color:' + hdrClr + ';text-transform:uppercase;letter-spacing:.06em">' +
+      marcheLabel + ' <span style="font-weight:400;opacity:.7">(' + items.length + ' produit' + (items.length>1?'s':'') + ')</span></td></tr>';
+
+    items.forEach(function(item) {
+      var p = item.p; var i = item.i;
+      var rowBg = isNA ? '#fff8ec' : bg;
+      html += '<tr style="background:' + rowBg + '">';
+      html += '<td style="' + td + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:200px;max-width:300px" title="' + p.nom + '">' + p.nom + '</td>';
+      html += '<td style="' + td + 'font-family:monospace;font-size:9px;color:var(--text-ter);text-align:center;white-space:nowrap;min-width:80px">' + (p.ean||'-') + '</td>';
+      html += '<td style="' + td + 'text-align:center;font-family:monospace;min-width:36px;font-size:9px">' + (p.moy||0).toFixed(1).replace('.',',') + '</td>';
+      html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.categorie||'') + '" placeholder="categorie" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'categorie\',this.value)"></td>';
+      html += '<td style="' + td + 'background:#f0f8ff"><input type="text" value="' + (p.sous_cat||'') + '" placeholder="sous-cat" style="' + inS + '" oninput="catUpdateProduit(' + i + ',\'sous_cat\',this.value)"></td>';
+      // Marche = dropdown des 5 marchés officiels
+      html += '<td style="' + td + 'background:#e8f8f0;min-width:118px"><select style="' + selS + '" onchange="catUpdateProduit(' + i + ',\'marche_id\',this.value);catRenderTable()">' +
+        (function(opts,mid,mlabel){var byId=mid && opts.indexOf('value="'+mid+'"')>=0;if(byId) return opts.replace('value="'+mid+'"','value="'+mid+'" selected');if(mlabel){var idx2=opts.indexOf('>'+mlabel+' —');if(idx2<0) idx2=opts.indexOf('>'+mlabel+'<');if(idx2>=0){var start=opts.lastIndexOf('<option',idx2);return opts.slice(0,start)+'<option selected'+opts.slice(start+7);}}return opts;})(marcheOpts,p.marche_id||'',p.marche||'') + '</select></td>';
+      // Gamme labo (famille) - éditable
+      html += '<td style="' + td + 'background:#fffbeb;min-width:80px"><input type="text" value="' + (p.famille||'') + '" placeholder="gamme" style="font-size:9px;padding:2px 3px;border:1px solid #f59e0b;border-radius:3px;background:#fffbeb;width:100%;box-sizing:border-box;font-weight:600;color:#92400e" oninput="catUpdateProduit(' + i + ',\'famille\',this.value)"></td>';
+      // Palier: conditions auto depuis marche_id
+      var palierTxt = '-';
+      if (mDef && p.marche_id === marcheId) {
+        palierTxt = mDef.note || '';
+      }
+      html += '<td style="' + td + 'text-align:center;font-size:9px;color:var(--accent-text);min-width:40px">' + palierTxt + '</td>';
+      // Colisage
+      var inSC = 'font-size:10px;padding:2px 3px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);width:42px;text-align:center;box-sizing:border-box;';
+      html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + (p.colisage||1) + '" min="1" step="1" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'colisage\',+this.value)"></td>';
+      // TVA par produit
+      var laboTvaDefault = condLabos[catLaboActif] ? (condLabos[catLaboActif].tva || 5.5) : 5.5;
+      var tvaDisplay = p.tva !== undefined ? p.tva : laboTvaDefault;
+      // Convertir 0.055 → 5.5 si la valeur est < 1
+      if (tvaDisplay > 0 && tvaDisplay < 1) tvaDisplay = Math.round(tvaDisplay * 1000) / 10;
+      html += '<td style="' + td + 'text-align:center;background:#eef"><input type="number" value="' + tvaDisplay + '" min="0" max="100" step="0.5" style="' + inSC + '" oninput="catUpdateProduit(' + i + ',\'tva\',+this.value)"></td>';
+      // LPPR (THUASNE et GIBAUD uniquement)
+      if (showLPPR) {
+        var lpprVal = p.lppr || 0;
+        var lpprStyle = lpprVal > 0 ? 'color:var(--accent-text);font-weight:500' : 'color:var(--text-ter)';
+        html += '<td style="' + td + 'text-align:right;font-family:monospace;font-size:10px;background:#f5f0ff;min-width:58px"><span style="' + lpprStyle + '">' + (lpprVal > 0 ? lpprVal.toFixed(2).replace('.',',') + ' €' : '—') + '</span></td>';
+      }
+      html += '</tr>';
+    });
+  });
+  tbody.innerHTML = html;
+}
+
+var catInited = false;
+
+
+// ===== SIMULATION =====
+var simProduitsSource = [];
+var simTop100Data = {};   // EAN -> {lib, qte_ph, pdm_ph, ordre_panel, pdm_panel, dn_pct}
+var simProxData   = {};   // EAN -> {prix_zone, ton_prix, ton_vol, prix_pan, prix_qrt, dn_zone_n, dn_zone_d}
+
+function simParseXLSX(file, callback) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      callback(null, rows);
+    } catch(err) { callback(err); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function simCleanEAN(v) {
+  if (!v) return '';
+  return String(v).replace(/\s/g,'').replace(/\xa0/g,'');
+}
+
+function simParseFloat(v) {
+  if (v === null || v === undefined) return 0;
+  var s = String(v).replace(',','.').replace(/[^\d.-]/g,'');
+  var f = parseFloat(s);
+  return isNaN(f) ? 0 : f;
+}
+
+function simImportTop100(input) {
+  var file = input.files[0]; if (!file) return;
+  var badge = document.getElementById('sim-top100-badge');
+  if (badge) badge.textContent = 'Chargement...';
+  simParseXLSX(file, function(err, rows) {
+    if (err) { if(badge) badge.textContent = 'Erreur'; return; }
+    // Row 0 = group headers, Row 1 = sub-headers, Row 2+ = data
+    // Cols: Ordre(0), EAN(1), Libelle(2), QtePharm(3), EvolPh(4), PDMph(5), dn(6), OrdrePanel(7), EvolPanel(8), PDMpanel(9), DN(10)
+    simTop100Data = {};
+    var count = 0;
+    rows.slice(2).forEach(function(r) {
+      if (!r[1]) return;
+      var ean = simCleanEAN(r[1]);
+      if (ean.length < 8) return;
+      var qte_ph = simParseFloat(r[3]);
+      var pdm_ph = simParseFloat(r[5]);
+      var ordre_panel = r[7] ? parseInt(r[7]) : 999;
+      var pdm_panel = simParseFloat(r[9]);
+      var dn_pct = simParseFloat(r[10]);
+      simTop100Data[ean] = { lib: String(r[2]||'').substring(0,45), qte_ph:qte_ph,
+        pdm_ph:pdm_ph, ordre_panel:ordre_panel, pdm_panel:pdm_panel, dn_pct:dn_pct };
+      count++;
+    });
+    if (badge) badge.textContent = '\u2713 ' + count + ' produits';
+    document.getElementById('sim-import-status').textContent = 'Top 100 : ' + count + ' produits charges.';
+    input.value = '';
+  });
+}
+
+function simImportProx(input) {
+  var file = input.files[0]; if (!file) return;
+  var badge = document.getElementById('sim-prox-badge');
+  if (badge) badge.textContent = 'Chargement...';
+  simParseXLSX(file, function(err, rows) {
+    if (err) { if(badge) badge.textContent = 'Erreur'; return; }
+    // Row 0 = group headers, Row 1 = col headers, Row 2+ = data
+    // Cols: EAN(0), Lib(1), TVA(2),
+    // Panel prox(3,4,5), Panel ayant vendu(6,7,8), Votre ville(9,10),
+    // Votre pharmacie: Volume(11), DernPrix(12)
+    // Panel: PrixMoy(13), MinMax(14)
+    // Types: Banlieue(15), Centre ville(16), Centre commercial(17), Quartier(18), Rural(19)
+    simProxData = {};
+    var count = 0;
+    rows.slice(2).forEach(function(r) {
+      if (!r[0]) return;
+      var ean = simCleanEAN(r[0]);
+      if (ean.length < 8) return;
+      // Parse prix_zone from col 6 (ex: "19.9 €DN: 2/20")
+      var col6 = String(r[6]||'');
+      var prix_zone_m = col6.match(/[\d]+[.,]?[\d]*/);
+      var prix_zone = prix_zone_m ? parseFloat(prix_zone_m[0].replace(',','.')) : null;
+      var dn_zone_m = col6.match(/DN:\s*(\d+)\/(\d+)/);
+      var dn_zone_n = dn_zone_m ? parseInt(dn_zone_m[1]) : 0;
+      var dn_zone_d = dn_zone_m ? parseInt(dn_zone_m[2]) : 20;
+      // Parse ton prix col 12
+      var col12 = String(r[12]||'');
+      var ton_prix_m = col12.match(/[\d]+[.,]?[\d]*/);
+      var ton_prix = ton_prix_m ? parseFloat(ton_prix_m[0].replace(',','.')) : null;
+      var ton_vol = r[11] ? parseFloat(r[11]) : 0;
+      // Parse prix panel col 13
+      var col13 = String(r[13]||'');
+      var prix_pan_m = col13.match(/[\d]+[.,]?[\d]*/);
+      var prix_pan = prix_pan_m ? parseFloat(prix_pan_m[0].replace(',','.')) : null;
+      // Prix quartier col 18
+      var col18 = String(r[18]||'');
+      var prix_qrt_m = col18.match(/[\d]+[.,]?[\d]*/);
+      var prix_qrt = prix_qrt_m ? parseFloat(prix_qrt_m[0].replace(',','.')) : null;
+      simProxData[ean] = { prix_zone:prix_zone, ton_prix:ton_prix, ton_vol:ton_vol,
+        prix_pan:prix_pan, prix_qrt:prix_qrt, dn_zone_n:dn_zone_n, dn_zone_d:dn_zone_d };
+      count++;
+    });
+    if (badge) badge.textContent = '\u2713 ' + count + ' produits';
+    document.getElementById('sim-import-status').textContent += ' | Prix prox. : ' + count + ' produits charges.';
+    input.value = '';
+  });
+}
+
+function simInit() {
+  if (Object.keys(condLabos).length === 0) {
+    try { var s=localStorage.getItem('cond_labos'); if(s){condLabos=JSON.parse(s);} } catch(e) {}
+  }
+  var sel = document.getElementById('sim-labo');
+  if (!sel) return;
+  while (sel.options.length > 1) sel.remove(1);
+  Object.keys(condLabos).forEach(function(id) {
+    var l = condLabos[id];
+    if (!l || !l.nom) return;
+    var o = document.createElement('option');
+    o.value = id; o.textContent = l.nom + (l.produits ? ' (' + l.produits.length + ' prod.)' : '');
+    sel.appendChild(o);
+  });
+  if (sel.options.length > 1) { sel.selectedIndex = 1; simChargeLabo(); }
+}
+
+function simChargeLabo() {
+  var idStr = document.getElementById('sim-labo').value;
+  var id = idStr ? (parseInt(idStr) || idStr) : null;
+  simProduitsSource = (id && condLabos[id] && condLabos[id].produits) ? condLabos[id].produits : [];
+  console.log('simChargeLabo: id=', id, 'prods=', simProduitsSource.length, 'keys=', Object.keys(condLabos));
+  document.getElementById('sim-result').style.display = 'none';
+}
+
+function simAjouterPalier() {
+  var div = document.getElementById('sim-paliers-inputs');
+  var inp = document.createElement('input');
+  inp.type = 'number'; inp.className = 'sim-palier-inp';
+  inp.value = ''; inp.min = 0; inp.max = 60; inp.step = 0.5;
+  inp.style.cssText = 'width:52px;font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);font-family:"DM Mono",monospace;text-align:center';
+  div.insertBefore(inp, div.lastElementChild);
+}
+
+function simGetPaliers() {
+  var inps = document.querySelectorAll('.sim-palier-inp');
+  var vals = [];
+  inps.forEach(function(inp) {
+    var v = parseFloat(inp.value);
+    if (!isNaN(v) && v > 0) vals.push(v);
+  });
+  return vals.length > 0 ? vals : [25, 30, 35];
+}
+
+function simCalcUG(qte, ugMode) {
+  if (ugMode === 'none' || !ugMode) return 0;
+  var parts = ugMode.split('+');
+  var ach = parseInt(parts[0])||0, off = parseInt(parts[1])||0;
+  return (ach > 0 && qte >= ach) ? Math.floor(qte / ach) * off : 0;
+}
+
+function simLancer() {
+  // Need at least Top100 data
+  if (Object.keys(simTop100Data).length === 0 && simProduitsSource.length === 0) {
+    alert('Importez au moins le Top 100 Panel France.');
+    return;
+  }
+
+  var tvaR      = parseFloat(document.getElementById('sim-tva').value) / 100;
+  var moisCible = parseFloat(document.getElementById('sim-mois-cible').value) || 2;
+  var nbPharmas = parseFloat(document.getElementById('sim-nb-pharmas').value) || 20;
+  var laboIdStr = document.getElementById('sim-labo').value;
+  var laboId    = laboIdStr ? (parseInt(laboIdStr) || laboIdStr) : null;
+
+  // Build unified product list
+  // Priority: Top100 as base, enrich with Prox data and LGPI rotations
+  var allEANs = Object.keys(simTop100Data);
+  if (allEANs.length === 0 && simProduitsSource.length > 0) {
+    // Fallback: use LGPI data only
+    simProduitsSource.forEach(function(p){ if(p.ean) allEANs.push(p.ean); });
+  }
+
+  var produits = allEANs.map(function(ean) {
+    var t = simTop100Data[ean] || {};
+    var p = simProxData[ean]   || {};
+    // Get marche conditions from catalogue
+    var cat = (laboId && condLabos[laboId] && condLabos[laboId].catalogue) ? condLabos[laboId].catalogue[ean] : null;
+    var marcheId = cat ? (cat.marche_id || '') : '';
+    var marcheDef = marcheId ? MARCHES_NUTRICO.find(function(m){ return m.id === marcheId; }) : null;
+    // LGPI product if available
+    var lgpi = null;
+    if (laboId && condLabos[laboId] && condLabos[laboId].produits) {
+      lgpi = condLabos[laboId].produits.find(function(x){ return x.ean === ean; }) || null;
+    }
+
+    // Rotation estimates
+    var rot_reel = lgpi ? (lgpi.moy||0) : (t.qte_ph||0) / 12;
+    var rot_pdm  = (t.pdm_ph > 0 && t.qte_ph > 0) ? (t.qte_ph / t.pdm_ph * t.pdm_panel / 12) : 0;
+    var rot_dn   = (t.dn_pct > 0) ? (t.qte_ph||0) / 12 / (t.dn_pct/100 * nbPharmas) : 0;
+
+    // PV: priority = Quartier > ton prix > panel France > LGPI
+    var pv_ttc = p.prix_qrt || p.ton_prix || p.prix_pan || (lgpi ? lgpi.pv_ttc : 0) || 0;
+    // PA Cat Net from LGPI or estimate from PA_net column
+    var pa_net = lgpi ? (lgpi.pa_net||0) : 0;
+    var rem_cat = lgpi ? (lgpi.rem_cat||30) : 30;
+    var pa_cat_brut = rem_cat > 0 ? pa_net / (1 - rem_cat/100) : pa_net;
+
+    return { ean:ean, lib:t.lib || (lgpi?lgpi.nom:''), ordre:t.ordre_panel||999,
+             marcheId: marcheDef ? marcheDef.id : 'general',
+             rot_reel:rot_reel, rot_pdm:rot_pdm, rot_dn:rot_dn,
+             pdm_ph:t.pdm_ph||0, dn_zone_n:p.dn_zone_n||0, dn_zone_d:p.dn_zone_d||nbPharmas,
+             pv_ttc:pv_ttc, pa_cat_brut:pa_cat_brut, pa_net:pa_net,
+             prix_zone:p.prix_zone||0, ton_vol:p.ton_vol||0 };
+  });
+
+  // Sort by panel order
+  produits.sort(function(a,b){ return a.ordre - b.ordre; });
+
+  // Filter: only products with some data
+  produits = produits.filter(function(p){ return p.pv_ttc > 0 || p.pa_cat_brut > 0; });
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u00a0\u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+  function f2(v){ return (+v).toFixed(2).replace('.',','); }
+
+  // Count refs in general market to determine 30% or 25%
+  var nGeneral = produits.filter(function(p){ return p.marcheId === 'general'; }).length;
+  var remGeneral = nGeneral >= 30 ? 30 : 25;
+
+  function calcScenario(prods, rem) {
+    var lignes = [];
+    var totCA=0, totMarge=0, totUG=0, totQte=0;
+    prods.forEach(function(p) {
+      var rot      = p.rot_reel > 0 ? p.rot_reel : (p.rot_dn > 0 ? p.rot_dn : p.rot_pdm);
+      var qteCmd   = Math.ceil(rot * moisCible);
+      if (qteCmd <= 0) qteCmd = 1;
+      // Use marche-specific remise
+      var mDef = p.marcheId ? MARCHES_NUTRICO.find(function(m){ return m.id === p.marcheId; }) : null;
+      var remEff = mDef ? (mDef.id === 'general' ? remGeneral : (mDef.rem_30||rem)) : rem;
+      var paNet    = p.pa_cat_brut > 0 ? p.pa_cat_brut * (1 - remEff/100) : 0;
+      var pvHT     = p.pv_ttc / (1 + tvaR);
+      var mbu      = paNet > 0 ? pvHT - paNet : 0;
+      var mb       = (pvHT > 0 && paNet > 0) ? mbu/pvHT*100 : null;
+      // UG: from marche definition or default tiers
+      var ug = 0, ugLbl = '-';
+      if (mDef && !mDef.ug_tiers && mDef.ug_ach > 0) {
+        // Fixed UG: e.g. 12+2 or 6+1
+        ug = Math.floor(qteCmd / mDef.ug_ach) * mDef.ug_off;
+        ugLbl = mDef.ug_ach + '+' + mDef.ug_off;
+      } else {
+        // General market: tiered UG
+        if (qteCmd >= 24) { ug = Math.floor(qteCmd/24)*8; ugLbl='24+8'; }
+        else if (qteCmd >= 12) { ug = Math.floor(qteCmd/12)*3; ugLbl='12+3'; }
+        else if (qteCmd >= 6)  { ug = Math.floor(qteCmd/6)*1;  ugLbl='6+1'; }
+      }
+      var caCmd  = qteCmd * p.pv_ttc;
+      var margeCmd = qteCmd * mbu;
+      totCA += caCmd; totMarge += margeCmd; totUG += ug; totQte += qteCmd;
+      lignes.push({ ean:p.ean, lib:p.lib, ordre:p.ordre,
+        rot_reel:p.rot_reel, rot_dn:p.rot_dn, rot_pdm:p.rot_pdm,
+        dn_zone_n:p.dn_zone_n, dn_zone_d:p.dn_zone_d,
+        qteCmd:qteCmd, paNet:paNet, pvTTC:p.pv_ttc, pv_qrt:p.prix_qrt||0,
+        ug:ug, ugLbl:ugLbl, mb:mb, margeCmd:margeCmd, caCmd:caCmd,
+        isNew: p.rot_reel <= 0 });
+    });
+    var caHT = totCA/(1+tvaR);
+    var mbG  = caHT > 0 ? totMarge/caHT*100 : 0;
+    return { lignes:lignes, totCA:totCA, totMarge:totMarge, totUG:totUG, totQte:totQte, mbG:mbG };
+  }
+
+  var top30  = produits.slice(0, 30);
+  var top25  = produits.slice(0, Math.min(29, produits.length));
+  var sc30   = calcScenario(top30,  30);
+  var sc25   = calcScenario(top25,  25);
+
+  // Global KPIs
+  var gainMarge = sc30.totMarge - sc25.totMarge;
+  var gainUG    = sc30.totUG - sc25.totUG;
+  var verdict   = gainMarge >= 0
+    ? 'Marche 30 refs g\u00e9n\u00e8re <b>+' + fE(gainMarge) + '</b> et <b>+' + gainUG + ' UG</b> suppl\u00e9mentaires.'
+    : 'Marche 25 refs g\u00e9n\u00e8re <b>+' + fE(-gainMarge) + '</b> de marge suppl\u00e9mentaire.';
+
+  var kpiHtml = '';
+  [{sc:sc30,rem:30,cl:'hi'},{sc:sc25,rem:25,cl:'warn'}].forEach(function(x) {
+    kpiHtml += '<div class="met ' + x.cl + '" style="text-align:center">' +
+      '<p class="lbl">March\u00e9 ' + (x.rem===30?'30':'25') + ' refs \u2014 Remise ' + x.rem + '%</p>' +
+      '<p class="val" style="font-size:22px">' + f1(x.sc.mbG) + '%</p>' +
+      '<p class="sub">MB% moyen sur ' + moisCible + ' mois de commande</p>' +
+      '<p style="font-size:14px;font-weight:600;margin:4px 0">' + fE(x.sc.totMarge) + '</p>' +
+      '<p class="sub">Marge sur commande</p>' +
+      '<p style="font-size:12px;color:var(--accent-text);font-weight:600">+' + x.sc.totUG + ' UG gratuites</p>' +
+      '<p class="sub">CA commande : ' + fE(x.sc.totCA) + ' | ' + x.sc.totQte + ' u. payantes</p>' +
+      '</div>';
+  });
+  kpiHtml += '<div class="nego" style="grid-column:1/-1">' +
+    '<p class="nego-title">Verdict</p><p class="nego-body">' + verdict + '</p></div>';
+  document.getElementById('sim-global-kpis').innerHTML = kpiHtml;
+
+  // Comparison table
+  var thS = 'padding:6px 8px;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;';
+  var html = '<thead><tr style="background:var(--text);color:#fff">';
+  html += '<th style="' + thS + 'text-align:center;width:40px">Rang</th>';
+  html += '<th style="' + thS + 'text-align:left;min-width:160px">Produit</th>';
+  html += '<th style="' + thS + 'text-align:center">Rot. r\u00e9elle<br>/mois</th>';
+  html += '<th style="' + thS + 'text-align:center">Estim. DN<br>/mois</th>';
+  html += '<th style="' + thS + 'text-align:center">DN zone</th>';
+  html += '<th style="' + thS + 'text-align:center">PV Quartier</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">PA net 30%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">MB% 30%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#1a3a20">UG 30%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#3a3a10">MB% 25%</th>';
+  html += '<th style="' + thS + 'text-align:center;background:#3a3a10">UG 25%</th>';
+  html += '</tr></thead><tbody>';
+
+  sc30.lignes.forEach(function(l, ri) {
+    var l25 = sc25.lignes[ri];
+    var bg  = ri % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var tdS = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:11px;background:' + bg;
+    var mb30c = l.mb===null?'':(l.mb>=35?'var(--accent-text)':l.mb>=28?'var(--warn)':'var(--danger)');
+    var mb25c = (l25&&l25.mb!==null)?(l25.mb>=35?'var(--accent-text)':l25.mb>=28?'var(--warn)':'var(--danger)'):'';
+    var isNew = l.rot_reel <= 0;
+    html += '<tr>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace;color:var(--text-ter)">' + l.ordre + '</td>';
+    html += '<td style="' + tdS + ';max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + l.lib + '">' +
+      l.lib + (isNew ? ' <span style="font-size:9px;background:#fff3e0;color:#b36000;padding:1px 4px;border-radius:2px">NEW</span>' : '') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace">' + (l.rot_reel>0 ? f1(l.rot_reel) : '<span style="color:var(--text-ter)">-</span>') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace;color:var(--text-sec)">' + (l.rot_dn>0 ? f1(l.rot_dn) : '-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-size:10px">' + (l.dn_zone_n>0 ? l.dn_zone_n+'/'+l.dn_zone_d : '-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace">' + (l.pv_qrt>0 ? f2(l.pv_qrt)+'\u20ac' : f2(l.pvTTC)+'\u20ac') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-family:monospace;background:#e8f5ee">' + (l.paNet>0?f2(l.paNet)+'\u20ac':'-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-weight:700;background:#e8f5ee;color:' + mb30c + '">' + (l.mb!==null?f1(l.mb)+'%':'-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;background:#e8f5ee">' + (l.ug>0?'<b style="color:var(--accent-text)">+'+l.ug+'</b><br><span style="font-size:9px">'+l.ugLbl+'</span>':'-') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;font-weight:700;background:#fffbea;color:' + mb25c + '">' + (l25&&l25.mb!==null?f1(l25.mb)+'%':'exclu') + '</td>';
+    html += '<td style="' + tdS + ';text-align:center;background:#fffbea">' + (l25&&l25.ug>0?'<b style="color:var(--warn)">+'+l25.ug+'</b>':'-') + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('sim-table').innerHTML = html;
+
+  // ===== RECOMMANDATION FINALE =====
+  var bestSc = gainMarge >= 0 ? sc30 : sc25;
+  var bestRem = gainMarge >= 0 ? 30 : 25;
+  var bestNRefs = gainMarge >= 0 ? 30 : 25;
+
+  // Products to prioritize: sort by score = mb * rot (value x volume)
+  var lignes = bestSc.lignes.slice();
+
+  // Category 1: Already selling + good MB
+  var actifs_bons = lignes.filter(function(l){ return !l.isNew && l.mb !== null && l.mb >= 28; });
+  // Category 2: Already selling + bad MB -> need negotiation
+  var actifs_faibles = lignes.filter(function(l){ return !l.isNew && l.mb !== null && l.mb < 28; });
+  // Category 3: New + good DN in zone
+  var nouveaux_dn = lignes.filter(function(l){ return l.isNew && l.dn_zone_n >= 2; });
+  // Category 4: New + no presence in zone -> opportunity
+  var nouveaux_zero = lignes.filter(function(l){ return l.isNew && l.dn_zone_n <= 1; });
+
+  // Top UG products (most units = most UG)
+  var topUG = lignes.slice().sort(function(a,b){ return b.ug - a.ug; }).filter(function(l){ return l.ug > 0; }).slice(0,5);
+
+  function fE(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '\u00a0\u20ac'; }
+  function f1(v){ return (+v).toFixed(1).replace('.',','); }
+  function f2(v){ return (+v).toFixed(2).replace('.',','); }
+
+  var recHtml = '';
+
+  // ===== BLOC 1: Quel marche prendre =====
+  var marcheColor = gainMarge >= 0 ? 'var(--accent-text)' : 'var(--warn)';
+  recHtml += '<div class="card" style="border-top:4px solid ' + marcheColor + '">';
+  recHtml += '<p class="card-title">\u2460 Quel march\u00e9 prendre ?</p>';
+  recHtml += '<div class="rgrid">';
+  recHtml += '<div class="met ' + (gainMarge>=0?'hi':'warn') + '" style="text-align:center">';
+  recHtml += '<p class="lbl">Recommandation</p>';
+  recHtml += '<p class="val" style="font-size:20px">March\u00e9 ' + bestNRefs + ' r\u00e9f\u00e9rences</p>';
+  recHtml += '<p class="sub">Remise ' + bestRem + '% + UG (6+1, 12+3 ou 24+8)</p>';
+  recHtml += '</div>';
+  recHtml += '<div class="met hi"><p class="lbl">Marge g\u00e9n\u00e9r\u00e9e</p><p class="val">' + fE(bestSc.totMarge) + '</p><p class="sub">sur ' + moisCible + ' mois de commande</p></div>';
+  recHtml += '<div class="met hi"><p class="lbl">MB% moyen</p><p class="val">' + f1(bestSc.mbG) + '%</p></div>';
+  recHtml += '<div class="met hi"><p class="lbl">UG gratuites</p><p class="val">+' + bestSc.totUG + '</p><p class="sub">unit\u00e9s offertes</p></div>';
+  recHtml += '</div>';
+
+  // Justification text
+  recHtml += '<div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;line-height:1.6">';
+  if (gainMarge >= 0) {
+    recHtml += 'Le march\u00e9 <b>30 r\u00e9f\u00e9rences \u00e0 30%</b> est plus avantageux car la remise suppl\u00e9mentaire (+5 pts vs 25%) compense largement le co\u00fbt du r\u00e9f\u00e9rencement des 5 r\u00e9f\u00e9rences suppl\u00e9mentaires. ';
+    recHtml += 'Gain : <b>+' + fE(gainMarge) + '</b> de marge et <b>+' + gainUG + ' UG</b> vs le march\u00e9 25 r\u00e9f\u00e9rences.';
+  } else {
+    recHtml += 'Le march\u00e9 <b>25 r\u00e9f\u00e9rences \u00e0 25%</b> est suffisant. Les 5 r\u00e9f\u00e9rences suppl\u00e9mentaires du march\u00e9 30 ne compensent pas la complexit\u00e9 de gestion. ';
+    recHtml += 'Gain : <b>+' + fE(-gainMarge) + '</b> de marge en restant sur 25 r\u00e9f\u00e9rences.';
+  }
+  recHtml += '</div></div>';
+
+  // ===== BLOC 2: Produits prioritaires =====
+  recHtml += '<div class="card">';
+  recHtml += '<p class="card-title">\u2461 Produits prioritaires \u00e0 r\u00e9f\u00e9rencer</p>';
+
+  if (nouveaux_dn.length > 0) {
+    recHtml += '<p style="font-size:11px;font-weight:600;color:var(--accent-text);margin:8px 0 4px">';
+    recHtml += '\u2605 D\u00e9j\u00e0 vendus dans ta zone (' + nouveaux_dn.length + ' produits) \u2014 r\u00e9f\u00e9rencement imm\u00e9diat recommand\u00e9</p>';
+    recHtml += '<div style="display:flex;flex-direction:column;gap:4px">';
+    nouveaux_dn.forEach(function(l) {
+      var mbClr = l.mb>=35?'var(--accent-text)':l.mb>=28?'var(--warn)':'var(--danger)';
+      recHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--accent-bg);border-radius:var(--radius-sm)">';
+      recHtml += '<span style="font-size:12px;font-weight:500">' + l.lib + '</span>';
+      recHtml += '<div style="display:flex;gap:12px;font-size:11px">';
+      recHtml += '<span>DN zone: <b>' + l.dn_zone_n + '/' + l.dn_zone_d + '</b></span>';
+      recHtml += '<span>PV: <b>' + f2(l.pvTTC) + '\u20ac</b></span>';
+      recHtml += '<span style="color:' + mbClr + ';font-weight:700">MB% ' + (l.mb!==null?f1(l.mb)+'%':'?') + '</span>';
+      recHtml += (l.ug>0 ? '<span style="color:var(--accent-text)">+' + l.ug + ' UG</span>' : '');
+      recHtml += '</div></div>';
+    });
+    recHtml += '</div>';
+  }
+
+  if (actifs_faibles.length > 0) {
+    recHtml += '<p style="font-size:11px;font-weight:600;color:var(--danger);margin:12px 0 4px">';
+    recHtml += '\u26a0 Produits en vente avec MB% insuffisant (' + actifs_faibles.length + ') \u2014 v\u00e9rifier prix ou n\u00e9gocier</p>';
+    recHtml += '<div style="display:flex;flex-direction:column;gap:4px">';
+    actifs_faibles.forEach(function(l) {
+      recHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#fff3f0;border-radius:var(--radius-sm)">';
+      recHtml += '<span style="font-size:12px">' + l.lib + '</span>';
+      recHtml += '<div style="display:flex;gap:12px;font-size:11px">';
+      recHtml += '<span>Rot: <b>' + f1(l.rot_reel) + '/m</b></span>';
+      recHtml += '<span>PV actuel: <b>' + f2(l.pvTTC) + '\u20ac</b></span>';
+      recHtml += '<span style="color:var(--danger);font-weight:700">MB% ' + (l.mb!==null?f1(l.mb)+'%':'?') + '</span>';
+      recHtml += '</div></div>';
+    });
+    recHtml += '</div>';
+  }
+
+  recHtml += '</div>';
+
+  // ===== BLOC 3: Commande optimale =====
+  recHtml += '<div class="card">';
+  recHtml += '<p class="card-title">\u2462 Commande optimale — ' + moisCible + ' mois de couverture</p>';
+  recHtml += '<p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">Produits tri\u00e9s par valeur d\u2019UG d\u00e9clench\u00e9es, puis par marge.</p>';
+
+  // Sort by UG desc then mb desc
+  var cmdLignes = bestSc.lignes.filter(function(l){ return l.qteCmd > 0 && l.mb !== null; })
+    .sort(function(a,b){ return (b.ug - a.ug) || (b.mb - a.mb); });
+
+  var thS2 = 'padding:6px 8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap;';
+  var cmdHtml = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+  cmdHtml += '<thead><tr style="background:var(--text);color:#fff">';
+  cmdHtml += '<th style="' + thS2 + 'text-align:left">Produit</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">Qte \u00e0 cde</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center;background:#1a3a20">PA net ' + bestRem + '%</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center;background:#1a3a20">MB%</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center;background:#1a3a20">UG</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">PV cible</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">Marge</th>';
+  cmdHtml += '<th style="' + thS2 + 'text-align:center">Statut</th>';
+  cmdHtml += '</tr></thead><tbody>';
+
+  cmdLignes.forEach(function(l, ri) {
+    var bg = ri % 2 === 0 ? '#fff' : 'var(--surface2)';
+    var tdC = 'padding:5px 8px;border-bottom:0.5px solid var(--border);background:' + bg;
+    var mbClr = l.mb>=35?'var(--accent-text)':l.mb>=28?'var(--warn)':'var(--danger)';
+    var statut = l.isNew
+      ? '<span style="font-size:9px;background:#fff3e0;color:#b36000;padding:1px 5px;border-radius:3px;font-weight:600">NOUVEAU</span>'
+      : '<span style="font-size:9px;background:var(--accent-bg);color:var(--accent-text);padding:1px 5px;border-radius:3px">EN STOCK</span>';
+    cmdHtml += '<tr>';
+    cmdHtml += '<td style="' + tdC + ';max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:' + (l.isNew?'600':'400') + '" title="' + l.lib + '">' + l.lib + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-weight:700">' + l.qteCmd + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-family:monospace;background:#e8f5ee">' + (l.paNet>0?f2(l.paNet)+'\u20ac':'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-weight:700;background:#e8f5ee;color:' + mbClr + '">' + (l.mb!==null?f1(l.mb)+'%':'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;background:#e8f5ee">' + (l.ug>0?'<b style="color:var(--accent-text)">+'+l.ug+'</b> <span style="font-size:9px;color:var(--text-ter)">'+l.ugLbl+'</span>':'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-family:monospace">' + f2(l.pv_qrt>0?l.pv_qrt:l.pvTTC) + '\u20ac</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center;font-family:monospace;font-weight:600">' + (l.margeCmd>0?fE(l.margeCmd):'-') + '</td>';
+    cmdHtml += '<td style="' + tdC + ';text-align:center">' + statut + '</td>';
+    cmdHtml += '</tr>';
+  });
+
+  // Total row
+  cmdHtml += '<tr style="background:var(--text);color:#fff;font-weight:600">';
+  cmdHtml += '<td style="padding:7px 8px">TOTAL ' + cmdLignes.length + ' r\u00e9f\u00e9rences</td>';
+  cmdHtml += '<td style="padding:7px 8px;text-align:center">' + bestSc.totQte + ' u.</td>';
+  cmdHtml += '<td colspan="2" style="padding:7px 8px;text-align:center;background:#1a3a20">' + f1(bestSc.mbG) + '% MB moyen</td>';
+  cmdHtml += '<td style="padding:7px 8px;text-align:center;background:#1a3a20">+' + bestSc.totUG + ' UG</td>';
+  cmdHtml += '<td style="padding:7px 8px"></td>';
+  cmdHtml += '<td style="padding:7px 8px;text-align:center">' + fE(bestSc.totMarge) + '</td>';
+  cmdHtml += '<td style="padding:7px 8px"></td>';
+  cmdHtml += '</tr></tbody></table></div>';
+
+  recHtml += cmdHtml + '</div>';
+
+  document.getElementById('sim-recommandation').innerHTML = recHtml;
+  document.getElementById('sim-result').style.display = 'block';
+}
+
+var simInited = false;
+
+window.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function(){ showTab('workflow'); }, 100);
+});
+
+
+// ===== DECISION RDV =====
+var decOspharmData = null;
+var decOspharmProds = null;
+var decOspharmProdsN1 = null;
+
+function decFiltrerLabos(q) {
+  var list = document.getElementById('dec-labo-list');
+  if (!list) return;
+  q = (q || '').toUpperCase().trim();
+  if (!decOspharmData || q.length < 2) { list.style.display = 'none'; return; }
+  var matches = Object.keys(decOspharmData)
+    .filter(function(l) { return l.toUpperCase().indexOf(q) >= 0; })
+    .sort(function(a, b) { return decOspharmData[b] - decOspharmData[a]; })
+    .slice(0, 10);
+  if (matches.length === 0) {
+    list.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--text-ter)">Aucun résultat</div>';
+    list.style.display = 'block';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < matches.length; i++) {
+    var l = matches[i];
+    var ca = Math.round(decOspharmData[l]);
+    html += '<div data-labo="' + l.replace(/"/g, '&quot;') + '" class="dec-labo-item"'
+      + ' style="padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:0.5px solid var(--border)">'
+      + '<strong>' + l + '</strong>'
+      + ' <span style="color:var(--text-ter)">— ' + ca.toLocaleString('fr') + ' € HT</span></div>';
+  }
+  list.innerHTML = html;
+  list.style.display = 'block';
+  // Ajouter event listeners sur les items
+  var items = list.querySelectorAll('.dec-labo-item');
+  for (var j = 0; j < items.length; j++) {
+    items[j].addEventListener('click', function() {
+      var labo = this.getAttribute('data-labo');
+      document.getElementById('dec-labo-input').value = labo;
+      document.getElementById('dec-labo-list').style.display = 'none';
+      document.getElementById('dec-labo-choisi').textContent = '✓ ' + labo;
+      decAfficherResume(labo);
+    });
+  }
+}
+
+function decImportOspharm(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('dec-status');
+  status.textContent = 'Lecture...';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      // Lire header ligne 1
+      var header = rows[0];
+      var cols = {};
+      for (var i = 0; i < header.length; i++) {
+        var h = String(header[i] || '').trim();
+        if (h) cols[h] = i;
+      }
+      // Lire les données
+      var labos = {};
+      var prods = {};
+      for (var r = 1; r < rows.length; r++) {
+        var row = rows[r];
+        var labo = String(row[cols['Libellé laboratoire']] || '').trim();
+        if (!labo) continue;
+        var caht  = parseFloat(String(row[cols['CA HT']]           || '0').replace(/[^\d.-]/g,'')) || 0;
+        var marge = parseFloat(String(row[cols['Marge']]            || '0').replace(/[^\d.-]/g,'')) || 0;
+        var qte   = parseFloat(String(row[cols['Quantité']]         || '0').replace(/[^\d.-]/g,'')) || 0;
+        var paht  = parseFloat(String(row[cols['Prix achat HT']]    || '0').replace(/[^\d.-]/g,'')) || 0;
+        var stock = parseFloat(String(row[cols['Stocks quantité']]  || '0').replace(/[^\d.-]/g,'')) || 0;
+        var lib   = String(row[cols['Libellé produit']] || '').trim();
+        var eanKey = Object.keys(cols).find(function(k){ return /EAN|CIP|ACL/i.test(k); });
+        var ean = eanKey ? String(row[cols[eanKey]] || '').replace(/\D/g, '') : '';
+        if (!labos[labo]) labos[labo] = 0;
+        labos[labo] += caht;
+        if (!prods[labo]) prods[labo] = [];
+        prods[labo].push({lib:lib, ean:ean, caht:caht, marge:marge, qte:qte, paht:paht, stock:stock});
+      }
+      decOspharmData = labos;
+      decOspharmProds = prods;
+      var nb = Object.keys(labos).length;
+      status.textContent = '✅ ' + nb + ' labos chargés';
+      status.style.color = 'var(--accent-text)';
+      document.getElementById('dec-search-wrap').style.display = 'block';
+    } catch(err) {
+      status.textContent = '❌ ' + err.message;
+      status.style.color = 'var(--danger)';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function decImportOspharmN1(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var status = document.getElementById('dec-status-n1');
+  status.textContent = 'Lecture...';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      var header = rows[0];
+      var cols = {};
+      for (var i = 0; i < header.length; i++) {
+        var h = String(header[i] || '').trim();
+        if (h) cols[h] = i;
+      }
+      var prods = {};
+      for (var r = 1; r < rows.length; r++) {
+        var row = rows[r];
+        var labo = String(row[cols['Libellé laboratoire']] || '').trim();
+        if (!labo) continue;
+        var qte = parseFloat(String(row[cols['Quantité']] || '0').replace(/[^\d.-]/g,'')) || 0;
+        var lib = String(row[cols['Libellé produit']] || '').trim();
+        var eanKey = Object.keys(cols).find(function(k){ return /EAN|CIP|ACL/i.test(k); });
+        var ean = eanKey ? String(row[cols[eanKey]] || '').replace(/\D/g, '') : '';
+        if (!prods[labo]) prods[labo] = [];
+        prods[labo].push({lib:lib, ean:ean, qte:qte});
+      }
+      decOspharmProdsN1 = prods;
+      var nb = Object.keys(prods).length;
+      status.textContent = '✅ ' + nb + ' labos chargés (N-1)';
+      status.style.color = 'var(--accent-text)';
+      // Si un labo est déjà affiché, rafraîchir le résumé pour afficher la comparaison
+      if (decCurrentStats && decCurrentStats.labo) decAfficherResume(decCurrentStats.labo);
+    } catch(err) {
+      status.textContent = '❌ ' + err.message;
+      status.style.color = 'var(--danger)';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Rapprochement N-1 : EAN exact, puis libellé normalisé en repli
+function decTrouverQteN1(p, prodsN1) {
+  if (!prodsN1 || !prodsN1.length) return null;
+  if (p.ean && p.ean.length >= 8) {
+    for (var i = 0; i < prodsN1.length; i++) {
+      if (prodsN1[i].ean && prodsN1[i].ean === p.ean) return prodsN1[i].qte;
+    }
+  }
+  var libNorm = decCarteNorm(p.lib);
+  for (var j = 0; j < prodsN1.length; j++) {
+    if (decCarteNorm(prodsN1[j].lib) === libNorm) return prodsN1[j].qte;
+  }
+  return null;
+}/* v4.00 */

@@ -6937,7 +6937,7 @@ function catChargeLabo() {
       marche:       p.marche || saved.marche || nutroCat.marche || autoClass.marche,
       marche_id:    saved.marche_id    || nutroCat.marche_id || '',
       palier_id:    saved.palier_id    || '',
-      colisage:     saved.colisage     || nutroCat.colisage  || p.colisage || 1,
+      colisage:     p.colisage || saved.colisage || nutroCat.colisage || 1,
       tva:          saved.tva !== undefined ? saved.tva : (p.tva !== undefined ? p.tva : undefined),
       lppr:         p.lppr || 0,
       famille:      saved.famille || p.famille || '',

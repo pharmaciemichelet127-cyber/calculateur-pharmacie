@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v4.14</div>
+  <div class="ver">v4.15</div>
 </header>
 <div class="main">
 
@@ -1242,6 +1242,12 @@ git push origin main</pre>
           <input type="file" id="dec-file-n1" accept=".xlsx,.xls" onchange="decImportOspharmN1(this)" style="font-size:12px">
           <p id="dec-status-n1" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
+          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'état des ventes LGPI (PDF) pour avoir le stock à l'instant T, plus fiable.</p>
+          <input type="file" id="dec-file-stock" accept=".pdf" onchange="decImporterStockLGPI(this)" style="font-size:12px">
+          <p id="dec-stock-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
+        </div>
       </div>
       <div id="dec-search-wrap" style="display:none;margin-top:12px">
         <p style="font-size:12px;font-weight:600;margin:0 0 8px">Rechercher le labo</p>
@@ -1252,6 +1258,7 @@ git push origin main</pre>
         <p id="dec-labo-choisi" style="font-size:12px;font-weight:600;color:var(--accent-text);margin:6px 0 0"></p>
         <div style="margin-top:10px"><label style="font-size:10px;color:var(--text-ter);display:block;margin-bottom:3px">Période de l'export Ospharm</label><select id="dec-periode" onchange="decChangerPeriode()" style="font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff"><option value="lissee">Année lissée (12 derniers mois)</option><option value="encours">Année en cours (1er janv → dernier mois échu)</option></select></div>
         <div id="dec-conditions" style="display:none;margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
+        <div id="dec-cond-commerciales" style="display:none;margin-top:10px;padding:12px;background:var(--accent-bg);border-radius:var(--radius-sm)"></div>
         <div id="dec-verdict" style="display:none;margin-top:10px"></div>
         <div id="dec-palier-analyse" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
         <div id="dec-thea" style="display:none;margin-top:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)"></div>
@@ -1622,9 +1629,9 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v414.js"></script>
+<script src="/app-v415.js"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.14</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.15</div>
 </body>
 </html>

@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v4.05</div>
+  <div class="ver">v4.06</div>
 </header>
 <div class="main">
 
@@ -1180,6 +1180,16 @@ git push origin main</pre>
 
       <div class="card">
         <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Paliers par nombre de références</span>
+          <span style="font-size:10px;color:var(--text-ter)">Ces remises s\'appliquent dans l'onglet Commande</span>
+        </p>
+        <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">Pour les labos avec remise fonction du nombre de références commandées (ex : MAM — 25 réf = 30%, 35 réf = 33%, 43 réf = 36%, 50 réf = 40%). La remise s'applique à toutes les lignes de la commande selon le palier atteint.</p>
+        <div id="cond-paliers-list" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button type="button" onclick="condAjouterPalier()" style="margin-top:8px;font-size:12px;padding:4px 12px;background:transparent;color:var(--accent-text);border:1px solid var(--accent);border-radius:var(--radius-sm);cursor:pointer;">+ Palier</button>
+      </div>
+
+      <div class="card">
+        <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
           <span>Conditions negociees</span>
           <div style="display:flex;gap:6px">
             <button type="button" onclick="condAjouterUG()" style="font-size:11px;padding:4px 10px;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(139,28,28,.2);border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ UG</button>
@@ -1589,10 +1599,10 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v404.js"></script>
+<script src="/app-v406.js"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.05</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.06</div>
 </body>
 </html>
 /* cache bust lun. 15 juin 2026 21:47:47 CEST */

@@ -6934,7 +6934,7 @@ function catChargeLabo() {
       pv_ttc:       p.pv_ttc || 0,
       categorie:    saved.categorie    || nutroCat.categorie || autoClass.cat,
       sous_cat:     saved.sous_cat     || nutroCat.sous_cat  || autoClass.scat,
-      marche:       saved.marche       || nutroCat.marche    || autoClass.marche,
+      marche:       p.marche || saved.marche || nutroCat.marche || autoClass.marche,
       marche_id:    saved.marche_id    || nutroCat.marche_id || '',
       palier_id:    saved.palier_id    || '',
       colisage:     saved.colisage     || nutroCat.colisage  || p.colisage || 1,

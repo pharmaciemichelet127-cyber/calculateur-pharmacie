@@ -109,7 +109,7 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v4.15</div>
+  <div class="ver">v4.16</div>
 </header>
 <div class="main">
 
@@ -1244,8 +1244,8 @@ git push origin main</pre>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
-          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'état des ventes LGPI (PDF) pour avoir le stock à l'instant T, plus fiable.</p>
-          <input type="file" id="dec-file-stock" accept=".pdf" onchange="decImporterStockLGPI(this)" style="font-size:12px">
+          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'export LGPI « Stock » (Excel) pour avoir le stock à l'instant T, plus fiable.</p>
+          <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px">
           <p id="dec-stock-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         </div>
       </div>
@@ -1629,9 +1629,9 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v415.js"></script>
+<script src="/app-v416.js"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.15</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.16</div>
 </body>
 </html>

@@ -109,13 +109,13 @@
 <body>
 <header>
   <div class="logo">Pharmacie Michelet <span>Prix & Négociation</span></div>
-  <div class="ver">v4.04</div>
+  <div class="ver">v4.05</div>
 </header>
 <div class="main">
 
   <div class="tabs">
     <button type="button" class="tab-btn active" id="tab-workflow" onclick="showTab('workflow')">Workflow</button>
-    <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Labos configurés</button>
+    <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Conditions commerciales</button>
     <button type="button" class="tab-btn" id="tab-decision" onclick="showTab('decision')">⚡ Décision RDV</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
@@ -1012,7 +1012,7 @@ git push origin main</pre>
         </div>
       </details>
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>Labos configurés</span>
+        <span>Conditions commerciales</span>
         <div style="display:flex;gap:8px">
           <button type="button" onclick="condNouveauLabo()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ Nouveau labo</button>
           <button type="button" onclick="condSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
@@ -1592,7 +1592,7 @@ git push origin main</pre>
 <script src="/app-v404.js"></script>
 
 
-<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.04</div>
+<div id="app-version" title="Version de l'application — comparer avec le numéro annoncé par Claude à chaque livraison. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">v4.05</div>
 </body>
 </html>
 /* cache bust lun. 15 juin 2026 21:47:47 CEST */

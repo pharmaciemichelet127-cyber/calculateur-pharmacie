@@ -1244,8 +1244,8 @@ git push origin main</pre>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">🏪 Vue COALIA (centrale d'achat, multi-labos)</p>
-          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Agrège, à travers tous les labos présents dans l'export ci-dessus, uniquement les références du TSRF COALIA (importé comme Catalogue du labo "COALIA"). Réimporte après chaque nouvel export de ventes.</p>
-          <button type="button" onclick="decConstruireCoalia()" style="font-size:12px;padding:6px 14px;background:#003B7A;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">🔄 Construire la vue COALIA</button>
+          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Agrège automatiquement, à chaque import de ventes ci-dessus ou de mise à jour du TSRF COALIA (Catalogue), uniquement les références du TSRF parmi tous les labos présents dans l'export. Le bouton ouvre directement la vue.</p>
+          <button type="button" onclick="decConstruireCoalia()" style="font-size:12px;padding:6px 14px;background:#003B7A;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">🏪 Voir la vue COALIA</button>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
@@ -1650,7 +1650,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v440.js"></script>
+<script src="/app-v441.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

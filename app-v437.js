@@ -8101,6 +8101,7 @@ async function catClassifierAuto(useLabo) {
   // Option 1: Use official labo catalogue if available
   if (useLabo) {
     catProduits.forEach(function(p) {
+      if (p.marche) return; // deja classe (a la main ou par un run precedent) - ne jamais ecraser une decision existante
       var key = p.ean || '';
       var entry = key ? NUTRICO_CATALOGUE[key] : null;
       if (!entry) {
@@ -8132,8 +8133,10 @@ async function catClassifierAuto(useLabo) {
     if (status) status.textContent = 'Catalogue labo : ' + nClass + '/' + catProduits.length + ' produits classes. Corrigez si besoin puis Sauvegarder.';
     return;
   }
-  // Option 2: local rule-based classification for all products
+  // Option 2: local rule-based classification - UNIQUEMENT pour les produits jamais encore classes
+  // (marche vide) ; ne touche jamais a une classification existante, manuelle ou automatique.
   catProduits.forEach(function(p) {
+    if (p.marche) return; // deja classe - protege le travail manuel (composeur, dropdown, Hors marche...)
     var res = catClassifierProduit(p.nom);
     p.categorie  = res.cat;
     p.sous_cat   = res.scat;
@@ -8142,7 +8145,7 @@ async function catClassifierAuto(useLabo) {
   });
 
   catRenderTable();
-  var nonClasses = catProduits.filter(function(p){ return p.categorie === 'Autre' || !p.marche || p.marche === ''; });
+  var nonClasses = catProduits.filter(function(p){ return !p.marche; }); // jamais classe du tout - seuls ceux-la passent par Claude
   if (status) status.textContent = 'Classification locale : ' + (catProduits.length - nonClasses.length) + ' classes, ' + nonClasses.length + ' à assigner via Claude.';
 
   // Claude API pour tous les produits sans marché (v3.90)

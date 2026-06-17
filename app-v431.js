@@ -2625,8 +2625,14 @@ function condRenderMarches() {
     dureeTxt + '</div>';
 
   if (marches.length === 0) {
-    container.innerHTML = engHtml + '<p style="font-size:12px;color:var(--text-ter);padding:8px 0">Aucun marché ouvert. Cliquez sur + Marché.</p>';
+    container.innerHTML = engHtml + '<p style="font-size:12px;color:var(--text-ter);padding:8px 0">Aucun marché ouvert. Cliquez sur + Marché.</p>' + condGroupesLiesHTML();
     return;
+  }
+  var kenvueBtn = '';
+  if (labo.nom && labo.nom.toUpperCase().indexOf('KENVUE') >= 0) {
+    kenvueBtn = '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">' +
+      '<button type="button" onclick="if(confirm(\'Appliquer/ecraser les paliers Digestif, Biafine, Hextril-Listerine (groupe lie) et scinder Sevrage tabagique en 5 formats avec les valeurs definies ensemble ?\')) condAppliquerConfigKenvue()" style="font-size:11px;padding:6px 12px;background:#0f6e56;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">⚡ Appliquer la configuration KENVUE (paliers + groupe lié + scission Sevrage)</button>' +
+      '</div>';
   }
   container.innerHTML = engHtml + marches.map(function(m, i) {
     return '<div style="display:flex;flex-direction:column;gap:4px;background:var(--surface2);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--accent)">' +
@@ -2640,7 +2646,7 @@ function condRenderMarches() {
       '</div>' +
       condPaliersMarcheHTML(i) +
       '</div>';
-  }).join('');
+  }).join('') + condGroupesLiesHTML() + kenvueBtn;
 }
 
 function condUpdateEngagementMarches(key, val) {
@@ -2658,8 +2664,9 @@ function condPaliersMarcheHTML(mi) {
   if (!m.paliers) m.paliers = [];
   var paliersTries = m.paliers.slice().sort(function(a,b){ return (a.volume||0) - (b.volume||0); });
   var inS2 = 'font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:3px;background:#fff;width:64px;box-sizing:border-box;';
+  var inS3 = 'font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:3px;background:#fff;width:46px;box-sizing:border-box;';
   var html = '<div style="margin-top:2px;padding:6px 8px;background:#fff;border-radius:var(--radius-sm);border:1px dashed var(--border-med)">';
-  html += '<div style="font-size:10px;color:var(--text-ter);margin-bottom:4px">Paliers volume annuel (engagement) — le palier actif fixe la remise négociée ci-dessus</div>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-bottom:4px">Paliers volume + références annuel (engagement) — condition double, le palier actif fixe la remise négociée ci-dessus</div>';
   if (paliersTries.length === 0) {
     html += '<p style="font-size:11px;color:var(--text-ter);margin:0 0 4px 0">Aucun palier defini.</p>';
   } else {
@@ -2669,7 +2676,9 @@ function condPaliersMarcheHTML(mi) {
       html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px;' + (actif ? 'background:var(--accent-bg);border-radius:3px;padding:2px 4px' : '') + '">';
       html += '<span style="font-size:10px;color:var(--text-sec)">A partir de</span>';
       html += '<input type="number" value="' + (p.volume||0) + '" min="0" step="1" style="' + inS2 + '" oninput="condUpdatePalierMarche(' + mi + ',' + pi + ',\'volume\',this.value)">';
-      html += '<span style="font-size:10px;color:var(--text-sec)">u →</span>';
+      html += '<span style="font-size:10px;color:var(--text-sec)">u et</span>';
+      html += '<input type="number" value="' + (p.refs||0) + '" min="0" step="1" style="' + inS3 + '" oninput="condUpdatePalierMarche(' + mi + ',' + pi + ',\'refs\',this.value)">';
+      html += '<span style="font-size:10px;color:var(--text-sec)">réf. →</span>';
       html += '<input type="number" value="' + (p.remise||0) + '" min="0" max="60" step="0.5" style="' + inS2 + 'width:50px;font-weight:600;color:var(--accent-text)" oninput="condUpdatePalierMarche(' + mi + ',' + pi + ',\'remise\',this.value)"> %';
       html += '<button type="button" onclick="condActiverPalierMarche(' + mi + ',' + pi + ')" style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid var(--accent);background:' + (actif ? 'var(--accent)' : '#fff') + ';color:' + (actif ? '#fff' : 'var(--accent-text)') + ';cursor:pointer">' + (actif ? '✓ Actif' : 'Activer') + '</button>';
       html += '<button type="button" onclick="condSupprimerPalierMarche(' + mi + ',' + pi + ')" style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>';
@@ -2679,10 +2688,12 @@ function condPaliersMarcheHTML(mi) {
   html += '<button type="button" onclick="condAjouterPalierMarche(' + mi + ')" style="margin-top:2px;font-size:10px;padding:3px 8px;border:1px dashed var(--border-med);border-radius:3px;background:#fff;color:var(--text-sec);cursor:pointer">+ Palier volume</button>';
   if (m.palier_actif && achatsLabos[condLaboActif]) {
     var realiseM = condAchatsRealiseMarche(condLaboActif, m.label);
+    var realiseRefsM = condAchatsNbRefMarche(condLaboActif, m.label);
     var palActifObj = m.paliers.find(function(p){ return p.id === m.palier_actif; });
     if (palActifObj) {
       var pctM = palActifObj.volume > 0 ? (realiseM / palActifObj.volume * 100) : 0;
-      html += '<div style="margin-top:4px;font-size:11px;color:var(--text-sec)">Réalisé (sell-in) : <strong>' + Math.round(realiseM) + '</strong> / ' + palActifObj.volume + ' u (<strong>' + pctM.toFixed(0) + '%</strong>)</div>';
+      var refsOk = realiseRefsM >= (palActifObj.refs||0);
+      html += '<div style="margin-top:4px;font-size:11px;color:var(--text-sec)">Réalisé (sell-in) : <strong>' + Math.round(realiseM) + '</strong> / ' + palActifObj.volume + ' u (<strong>' + pctM.toFixed(0) + '%</strong>) · <strong>' + realiseRefsM + '</strong> / ' + (palActifObj.refs||0) + ' réf. ' + (refsOk ? '✓' : '<span style="color:var(--danger)">manque ' + ((palActifObj.refs||0) - realiseRefsM) + '</span>') + '</div>';
     }
   }
   html += '</div>';
@@ -2702,12 +2713,43 @@ function condAchatsRealiseMarche(laboId, marcheLabel) {
   return total;
 }
 
+// Nombre de references DISTINCTES achetees (qte > 0) pour un marche donne - condition "X references minimum"
+function condAchatsNbRefMarche(laboId, marcheLabel) {
+  var labo = condLabos[laboId];
+  var ach = achatsLabos[laboId];
+  if (!labo || !ach || !ach.lignes) return 0;
+  var nb = 0;
+  (labo.produits || []).forEach(function(p) {
+    if ((p.marche || '') !== marcheLabel) return;
+    var key = p.ean || p.nom;
+    if (ach.lignes.hasOwnProperty(key) && (parseFloat(ach.lignes[key]) || 0) > 0) nb++;
+  });
+  return nb;
+}
+
+// Variante "groupe" : compte volume/references sur l'UNION de plusieurs marches (ex: Hextril+Listerine lies)
+function condAchatsRealiseGroupe(laboId, marcheLabels) {
+  var labo = condLabos[laboId];
+  var ach = achatsLabos[laboId];
+  if (!labo || !ach || !ach.lignes) return { volume: 0, refs: 0 };
+  var volume = 0, nbRefs = 0;
+  (labo.produits || []).forEach(function(p) {
+    if (marcheLabels.indexOf(p.marche || '') < 0) return;
+    var key = p.ean || p.nom;
+    if (!ach.lignes.hasOwnProperty(key)) return;
+    var q = parseFloat(ach.lignes[key]) || 0;
+    volume += q;
+    if (q > 0) nbRefs++;
+  });
+  return { volume: volume, refs: nbRefs };
+}
+
 function condAjouterPalierMarche(mi) {
   if (!condLaboActif || !condLabos[condLaboActif]) return;
   var m = (condLabos[condLaboActif].marches_negocies || [])[mi];
   if (!m) return;
   if (!m.paliers) m.paliers = [];
-  m.paliers.push({ id: 'p' + Date.now() + Math.floor(Math.random()*1000), volume:0, remise:0 });
+  m.paliers.push({ id: 'p' + Date.now() + Math.floor(Math.random()*1000), volume:0, refs:0, remise:0 });
   condRenderMarches();
   condSauvegarder();
 }
@@ -2753,6 +2795,314 @@ function condAjouterMarche() {
   condLabos[condLaboActif].marches_negocies.push({ label:'', marche_id:'', rem:30, paliers:[], palier_actif:null });
   condRenderMarches();
   condSauvegarder();
+}
+
+// ===== MARCHES LIES (ex: KENVUE Hextril + Listerine) =====
+// Mecanique : un seuil de volume COMBINE entre 2 marches debloque un taux de base par marche,
+// puis un bonus de references (compte sur les 2 marches ensemble) s'ajoute UNIQUEMENT au taux
+// du marche designe par bonus_marche. Le resultat est repercute directement dans m.rem des 2
+// marches concernes, donc le reste de l'app (Decision RDV, achats, etc.) n'a rien a savoir de
+// cette complexite : il lit juste m.rem comme d'habitude.
+function condGroupesLiesHTML() {
+  var labo = condLabos[condLaboActif];
+  if (!labo) return '';
+  var groupes = labo.groupesLies || [];
+  var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">';
+  html += '<div style="font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:6px">Marchés liés (seuil de volume + bonus de références partagés)</div>';
+  groupes.forEach(function(g, gi) { html += condGroupeLieHTML(gi); });
+  if (labo.marches_negocies && labo.marches_negocies.length >= 2) {
+    html += '<button type="button" onclick="condAjouterGroupeLie()" style="margin-top:4px;font-size:10px;padding:3px 8px;border:1px dashed var(--border-med);border-radius:3px;background:#fff;color:var(--text-sec);cursor:pointer">+ Groupe lié</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function condGroupeLieHTML(gi) {
+  var labo = condLabos[condLaboActif];
+  var g = labo && (labo.groupesLies || [])[gi];
+  if (!g) return '';
+  if (!g.marches) g.marches = ['', ''];
+  if (!g.base_remises) g.base_remises = {};
+  if (!g.bonus_paliers) g.bonus_paliers = [];
+  var marchesOpts = (labo.marches_negocies || []).map(function(m){ return m.label; }).filter(Boolean);
+  var inS2 = 'font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:3px;background:#fff;width:60px;box-sizing:border-box;';
+  var html = '<div style="background:#fff7ed;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:8px">';
+  html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">';
+  html += '<input type="text" value="' + (g.label||'') + '" placeholder="Nom du groupe (ex: Hextril + Listerine)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);flex:1;min-width:160px" oninput="condUpdateGroupeLie(' + gi + ',\'label\',this.value)">';
+  html += '<button type="button" onclick="condSupprimerGroupeLie(' + gi + ')" style="font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px"><span style="color:var(--text-sec)">Marchés :</span>';
+  [0,1].forEach(function(slot) {
+    var sel = '<select onchange="condUpdateGroupeLieMarche(' + gi + ',' + slot + ',this.value)" style="font-size:11px;padding:2px 4px">';
+    sel += '<option value="">\u2014</option>';
+    marchesOpts.forEach(function(lbl) { sel += '<option value="' + lbl + '"' + (g.marches[slot]===lbl?' selected':'') + '>' + lbl + '</option>'; });
+    sel += '</select>';
+    html += sel;
+  });
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px"><span style="color:var(--text-sec)">Seuil volume combiné \u2265</span>' +
+    '<input type="number" value="' + (g.volume_min||0) + '" min="0" step="1" style="' + inS2 + '" oninput="condUpdateGroupeLie(' + gi + ',\'volume_min\',this.value)"> u</div>';
+  html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px">';
+  g.marches.forEach(function(lbl) {
+    if (!lbl) return;
+    html += '<span style="color:var(--text-sec)">Base ' + lbl + '</span><input type="number" value="' + (g.base_remises[lbl]||0) + '" min="0" max="60" step="0.5" style="' + inS2 + '" oninput="condUpdateGroupeLieBase(' + gi + ',\'' + lbl.replace(/'/g,"\\'") + '\',this.value)"> %';
+  });
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px"><span style="color:var(--text-sec)">Le bonus de références profite à :</span>';
+  var selBonus = '<select onchange="condUpdateGroupeLie(' + gi + ',\'bonus_marche\',this.value)" style="font-size:11px;padding:2px 4px"><option value="">\u2014</option>';
+  g.marches.forEach(function(lbl) { if (lbl) selBonus += '<option value="' + lbl + '"' + (g.bonus_marche===lbl?' selected':'') + '>' + lbl + '</option>'; });
+  selBonus += '</select>';
+  html += selBonus + '</div>';
+  html += '<div style="font-size:10px;color:var(--text-ter);margin-bottom:4px">Bonus par palier de références (compté sur les 2 marchés ensemble)</div>';
+  g.bonus_paliers.forEach(function(bp, bi) {
+    var actif = !!bp.id && g.bonus_palier_actif === bp.id;
+    html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px;' + (actif?'background:#fde68a;border-radius:3px;padding:2px 4px':'') + '">';
+    html += '<span style="font-size:10px;color:var(--text-sec)">A partir de</span>' +
+      '<input type="number" value="' + (bp.refs||0) + '" min="0" step="1" style="' + inS2 + 'width:50px" oninput="condUpdateBonusPalierGroupeLie(' + gi + ',' + bi + ',\'refs\',this.value)"> réf. \u2192' +
+      '<input type="number" value="' + (bp.bonus||0) + '" min="0" max="30" step="0.5" style="' + inS2 + 'width:50px;font-weight:600;color:#92400e" oninput="condUpdateBonusPalierGroupeLie(' + gi + ',' + bi + ',\'bonus\',this.value)"> pts' +
+      '<button type="button" onclick="condActiverBonusGroupeLie(' + gi + ',' + bi + ')" style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid #f59e0b;background:' + (actif?'#f59e0b':'#fff') + ';color:' + (actif?'#fff':'#92400e') + ';cursor:pointer">' + (actif?'\u2713 Actif':'Activer') + '</button>' +
+      '<button type="button" onclick="condSupprimerBonusPalierGroupeLie(' + gi + ',' + bi + ')" style="font-size:12px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>';
+    html += '</div>';
+  });
+  html += '<button type="button" onclick="condAjouterBonusPalierGroupeLie(' + gi + ')" style="margin-top:2px;font-size:10px;padding:3px 8px;border:1px dashed #f59e0b;border-radius:3px;background:#fff;color:#92400e;cursor:pointer">+ Palier bonus</button>';
+  if (achatsLabos[condLaboActif] && g.marches.filter(Boolean).length === 2) {
+    var real = condAchatsRealiseGroupe(condLaboActif, g.marches);
+    html += '<div style="margin-top:6px;font-size:11px;color:var(--text-sec)">Réalisé (sell-in, combiné) : <strong>' + Math.round(real.volume) + '</strong> u (seuil ' + (g.volume_min||0) + ') · <strong>' + real.refs + '</strong> réf.</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function condAjouterGroupeLie() {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  if (!condLabos[condLaboActif].groupesLies) condLabos[condLaboActif].groupesLies = [];
+  condLabos[condLaboActif].groupesLies.push({ label:'', marches:['',''], volume_min:0, base_remises:{}, bonus_marche:'', bonus_paliers:[], bonus_palier_actif:null });
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condUpdateGroupeLie(gi, key, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  if (!g) return;
+  if (key === 'label' || key === 'bonus_marche') g[key] = val; else g[key] = parseFloat(val) || 0;
+  condSauvegarder();
+}
+
+function condUpdateGroupeLieMarche(gi, slot, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  if (!g) return;
+  if (!g.marches) g.marches = ['', ''];
+  g.marches[slot] = val;
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condUpdateGroupeLieBase(gi, marcheLabel, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  if (!g) return;
+  if (!g.base_remises) g.base_remises = {};
+  g.base_remises[marcheLabel] = parseFloat(val) || 0;
+  if (g.bonus_marche !== marcheLabel) {
+    var m = (condLabos[condLaboActif].marches_negocies || []).find(function(mm){ return mm.label === marcheLabel; });
+    if (m) m.rem = g.base_remises[marcheLabel];
+  } else {
+    condAppliquerBonusGroupeLie(gi);
+  }
+  condSauvegarder();
+}
+
+function condSupprimerGroupeLie(gi) {
+  if (!condLaboActif || !condLabos[condLaboActif] || !condLabos[condLaboActif].groupesLies) return;
+  condLabos[condLaboActif].groupesLies.splice(gi, 1);
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condAjouterBonusPalierGroupeLie(gi) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  if (!g) return;
+  if (!g.bonus_paliers) g.bonus_paliers = [];
+  g.bonus_paliers.push({ id: 'b' + Date.now() + Math.floor(Math.random()*1000), refs:0, bonus:0 });
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condUpdateBonusPalierGroupeLie(gi, bi, key, val) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  var bp = g && (g.bonus_paliers || [])[bi];
+  if (!bp) return;
+  bp[key] = parseFloat(val) || 0;
+  if (bp.id && g.bonus_palier_actif === bp.id) condAppliquerBonusGroupeLie(gi);
+  condSauvegarder();
+}
+
+function condSupprimerBonusPalierGroupeLie(gi, bi) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  if (!g || !g.bonus_paliers) return;
+  var bp = g.bonus_paliers[bi];
+  if (bp && g.bonus_palier_actif === bp.id) g.bonus_palier_actif = null;
+  g.bonus_paliers.splice(bi, 1);
+  condRenderMarches();
+  condSauvegarder();
+}
+
+function condActiverBonusGroupeLie(gi, bi) {
+  if (!condLaboActif || !condLabos[condLaboActif]) return;
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  var bp = g && (g.bonus_paliers || [])[bi];
+  if (!bp) return;
+  g.bonus_palier_actif = bp.id;
+  condAppliquerBonusGroupeLie(gi);
+  condRenderMarches();
+  condSauvegarder();
+}
+
+// Recalcule m.rem pour les 2 marches du groupe : base + bonus (si c'est le marche cible par le bonus), base seule sinon.
+function condAppliquerBonusGroupeLie(gi) {
+  var g = (condLabos[condLaboActif].groupesLies || [])[gi];
+  if (!g) return;
+  var bonusActif = (g.bonus_paliers || []).find(function(bp){ return bp.id === g.bonus_palier_actif; });
+  var bonusVal = bonusActif ? (bonusActif.bonus || 0) : 0;
+  (g.marches || []).forEach(function(lbl) {
+    if (!lbl) return;
+    var m = (condLabos[condLaboActif].marches_negocies || []).find(function(mm){ return mm.label === lbl; });
+    if (!m) return;
+    var base = (g.base_remises || {})[lbl] || 0;
+    m.rem = (lbl === g.bonus_marche) ? (base + bonusVal) : base;
+  });
+}
+
+// ===== SCISSION SEVRAGE TABAGIQUE EN 5 FORMATS (chaque conditionnement a son propre palier) =====
+// Le format (105/210/30 gommes, 80/100/160 comprimes, spray) est deja non-ambigu dans le nom du
+// produit ("BT 105", "BT 210", etc.) et la Sous-categorie existante (Gomme/Comprime/Spray nicotine) -
+// pas besoin de retagger quoi que ce soit a la main.
+function condDetecterFormatSevrage(p) {
+  var nom = (p.nom || '').toUpperCase();
+  var sc = (p.sous_cat || '').toUpperCase();
+  if (sc.indexOf('GOMME') >= 0) {
+    if (nom.indexOf('BT 105') >= 0) return 'SEVRAGE TABAGIQUE - GOMMES 105';
+    if (nom.indexOf('BT 210') >= 0) return 'SEVRAGE TABAGIQUE - GOMMES 210';
+    return null; // BT 30 L.A. - aucun palier connu pour ce format
+  }
+  if (sc.indexOf('COMPRIME') >= 0) {
+    if (nom.indexOf('BT 80') >= 0) return 'SEVRAGE TABAGIQUE - COMPRIMES 80';
+    if (nom.indexOf('BT 160') >= 0) return 'SEVRAGE TABAGIQUE - COMPRIMES 160';
+    return null; // BT 100 (Microtab) - aucun palier connu pour ce format
+  }
+  if (sc.indexOf('SPRAY') >= 0) return 'SEVRAGE TABAGIQUE - SPRAY';
+  return null; // Patch, ou autre conditionnement non couvert par les paliers connus
+}
+
+function condMigrerSevrageTabagique(silencieux) {
+  if (!condLaboActif || !condLabos[condLaboActif]) { if (!silencieux) alert('Ouvrez d\'abord le labo concerné.'); return; }
+  var labo = condLabos[condLaboActif];
+  if (!labo.marches_negocies) labo.marches_negocies = [];
+  var mn = labo.marches_negocies;
+  var ancien = mn.find(function(m){ return m.label === 'SEVRAGE TABAGIQUE'; });
+  if (ancien) mn.splice(mn.indexOf(ancien), 1);
+
+  function idPal() { return 'p' + Date.now() + Math.floor(Math.random()*100000); }
+  function creerFormat(label, paliersDef, activerVolumeEtRefs) {
+    if (mn.find(function(m){ return m.label === label; })) return; // deja scinde, ne pas dupliquer
+    var paliers = paliersDef.map(function(p){ return { id: idPal(), volume:p.volume, refs:p.refs, remise:p.remise }; });
+    var m = { label: label, marche_id: label, rem: 0, paliers: paliers, palier_actif: null };
+    if (activerVolumeEtRefs) {
+      var act = paliers.find(function(p){ return p.volume === activerVolumeEtRefs.volume && p.refs === activerVolumeEtRefs.refs; });
+      if (act) { m.palier_actif = act.id; m.rem = act.remise; }
+    }
+    mn.push(m);
+  }
+
+  creerFormat('SEVRAGE TABAGIQUE - GOMMES 105', [
+    { volume:24, refs:0, remise:8.6 }, { volume:24, refs:4, remise:12.6 }, { volume:24, refs:6, remise:14.6 }
+  ], { volume:24, refs:6 }); // actif confirme par Maurice (14,6%)
+  creerFormat('SEVRAGE TABAGIQUE - GOMMES 210', [
+    { volume:12, refs:0, remise:8.6 }, { volume:12, refs:3, remise:14.6 }, { volume:12, refs:4, remise:16.6 }
+  ]);
+  creerFormat('SEVRAGE TABAGIQUE - COMPRIMES 80', [
+    { volume:12, refs:0, remise:8.6 }, { volume:12, refs:2, remise:12.6 }
+  ]);
+  creerFormat('SEVRAGE TABAGIQUE - COMPRIMES 160', [
+    { volume:12, refs:0, remise:8.6 }, { volume:12, refs:2, remise:14.6 }
+  ]);
+  creerFormat('SEVRAGE TABAGIQUE - SPRAY', [
+    { volume:6, refs:1, remise:5 }, { volume:6, refs:3, remise:8.6 }
+  ]);
+  if (!mn.find(function(m){ return m.label === 'SEVRAGE TABAGIQUE - AUTRES (non couvert)'; })) {
+    mn.push({ label:'SEVRAGE TABAGIQUE - AUTRES (non couvert)', marche_id:'SEVRAGE TABAGIQUE - AUTRES (non couvert)', rem: ancien ? (ancien.rem||0) : 0, paliers:[], palier_actif:null });
+  }
+
+  var nbReclasses = 0, nbRepli = 0;
+  (labo.produits || []).forEach(function(p) {
+    if ((p.marche || '') !== 'SEVRAGE TABAGIQUE') return;
+    var fmt = condDetecterFormatSevrage(p);
+    if (fmt) { p.marche = fmt; nbReclasses++; } else { p.marche = 'SEVRAGE TABAGIQUE - AUTRES (non couvert)'; nbRepli++; }
+  });
+
+  if (!silencieux) {
+    condRenderMarches();
+    condSauvegarder();
+    alert('Sevrage tabagique scinde en 5 formats. ' + nbReclasses + ' produits reclasses automatiquement, ' + nbRepli + ' dans le marche de repli (conditionnement sans palier connu).');
+  }
+  return { nbReclasses: nbReclasses, nbRepli: nbRepli };
+}
+
+// ===== CONFIGURATION KENVUE EN UN CLIC (Digestif, Biafine, Hextril/Listerine, Sevrage 5 formats) =====
+function condAppliquerConfigKenvue() {
+  if (!condLaboActif || !condLabos[condLaboActif]) { alert('Ouvrez d\'abord le labo KENVUE.'); return; }
+  var labo = condLabos[condLaboActif];
+  if (!labo.marches_negocies) labo.marches_negocies = [];
+  var mn = labo.marches_negocies;
+
+  function idPal() { return 'p' + Date.now() + Math.floor(Math.random()*100000); }
+  function trouverOuCreer(label) {
+    var m = mn.find(function(x){ return x.label === label; });
+    if (!m) { m = { label:label, marche_id:label, rem:0, paliers:[], palier_actif:null }; mn.push(m); }
+    if (!m.paliers) m.paliers = [];
+    return m;
+  }
+  function definirPaliers(m, liste, activerVolume) {
+    m.paliers = liste.map(function(p){ return { id: idPal(), volume:p.volume, refs:p.refs||0, remise:p.remise }; });
+    if (activerVolume !== undefined) {
+      var act = m.paliers.find(function(p){ return p.volume === activerVolume; });
+      if (act) { m.palier_actif = act.id; m.rem = act.remise; }
+    }
+  }
+
+  var digestif = trouverOuCreer('DIGESTIF');
+  definirPaliers(digestif, [{ volume:450, refs:11, remise:30 }, { volume:750, refs:12, remise:31 }], 450);
+
+  var biafine = trouverOuCreer('BIAFINE');
+  definirPaliers(biafine, [{ volume:90, refs:3, remise:26 }], 90);
+
+  var hextril = trouverOuCreer('BAINS DE BOUCHE-HEXTRIL');
+  var listerine = trouverOuCreer('BAINS DE BOUCHE-LISTERINE');
+  hextril.paliers = []; hextril.palier_actif = null;
+  listerine.paliers = []; listerine.palier_actif = null;
+
+  if (!labo.groupesLies) labo.groupesLies = [];
+  var groupeHL = labo.groupesLies.find(function(g){ return (g.marches||[]).indexOf('BAINS DE BOUCHE-HEXTRIL') >= 0 && (g.marches||[]).indexOf('BAINS DE BOUCHE-LISTERINE') >= 0; });
+  if (!groupeHL) { groupeHL = { label:'Hextril + Listerine', marches:['BAINS DE BOUCHE-HEXTRIL','BAINS DE BOUCHE-LISTERINE'] }; labo.groupesLies.push(groupeHL); }
+  groupeHL.volume_min = 100;
+  groupeHL.base_remises = { 'BAINS DE BOUCHE-HEXTRIL':20, 'BAINS DE BOUCHE-LISTERINE':30 };
+  groupeHL.bonus_marche = 'BAINS DE BOUCHE-HEXTRIL';
+  var b4id = idPal(), b8id = idPal();
+  groupeHL.bonus_paliers = [{ id:b4id, refs:4, bonus:4 }, { id:b8id, refs:8, bonus:6 }];
+  groupeHL.bonus_palier_actif = b4id; // actif confirme par Maurice : 24% sur Hextril
+  var giHL = labo.groupesLies.indexOf(groupeHL);
+  condAppliquerBonusGroupeLie(giHL);
+
+  var resSevrage = condMigrerSevrageTabagique(true);
+
+  condRenderMarches();
+  condSauvegarder();
+  alert('Configuration KENVUE appliquee : Digestif, Biafine, Hextril+Listerine (groupe lie) et Sevrage tabagique (5 formats, ' + resSevrage.nbReclasses + ' produits reclasses) sont en place avec les paliers actifs definis ensemble. Verifie et corrige si besoin.');
 }
 
 function condUpdateMarche(i, key, val) {
@@ -6048,38 +6398,77 @@ function decAnalysePalier() {
     }
   }
 
-  // 3) Paliers volume annuel par marche (ex: KENVUE) - definis sur marches_negocies[i].paliers,
-  // alimentes par l'historique achats (sell-in LGPI), projetes sur la duree totale de l'engagement
-  // au rythme observe sur la periode d'achats importee.
+  // 3) Paliers volume + references annuel par marche (ex: KENVUE) - definis sur marches_negocies[i].paliers,
+  // alimentes par l'historique achats (sell-in LGPI). Le volume est projete sur la duree totale de
+  // l'engagement au rythme observe ; les references sont une condition discrete (deja acquises ou non,
+  // pas de notion de "projection" puisqu'une reference achetee une fois compte pour le reste de l'annee).
   var laboObjId = achGetLaboId(laboObj);
   var achD = laboObjId ? achatsLabos[laboObjId] : null;
   var dEngD = laboObj.dateDebutEngagementMarches, dEngF = laboObj.dateFinEngagementMarches;
+  var moisTotalEngM = 0, moisAchatsM = 0;
   if (achD && achD.lignes && dEngD && dEngF && laboObj.marches_negocies && laboObj.marches_negocies.length) {
-    var moisTotalEngM = Math.max(1, decMoisInclusif(new Date(dEngD), new Date(dEngF)));
-    var moisAchatsM = (achD.periode_debut && achD.periode_fin) ? Math.max(1, decMoisInclusif(new Date(achD.periode_debut), new Date(achD.periode_fin))) : moisTotalEngM;
+    moisTotalEngM = Math.max(1, decMoisInclusif(new Date(dEngD), new Date(dEngF)));
+    moisAchatsM = (achD.periode_debut && achD.periode_fin) ? Math.max(1, decMoisInclusif(new Date(achD.periode_debut), new Date(achD.periode_fin))) : moisTotalEngM;
     laboObj.marches_negocies.forEach(function(m) {
       if (!m.paliers || !m.paliers.length) return;
       var realiseM = condAchatsRealiseMarche(laboObjId, m.label);
+      var realiseRefsM = condAchatsNbRefMarche(laboObjId, m.label);
       var rythmeM = realiseM / moisAchatsM;
       var projeteM = rythmeM * moisTotalEngM;
-      var pal = m.paliers.slice().sort(function(a,b){ return (a.volume||0) - (b.volume||0); });
+      var pal = m.paliers.slice().sort(function(a,b){ return (a.volume||0) - (b.volume||0) || (a.refs||0) - (b.refs||0); });
       var actuelM = null, suivantM = null;
       for (var k = 0; k < pal.length; k++) {
-        if (projeteM >= pal[k].volume) actuelM = pal[k];
+        var atteintM = projeteM >= (pal[k].volume||0) && realiseRefsM >= (pal[k].refs||0);
+        if (atteintM) actuelM = pal[k];
         else { suivantM = pal[k]; break; }
       }
       if (suivantM) {
-        var ecartM = (suivantM.volume - projeteM) / suivantM.volume * 100;
+        var ecartM = suivantM.volume > 0 ? (suivantM.volume - projeteM) / suivantM.volume * 100 : 0;
+        var manqueRefsM = Math.max(0, (suivantM.refs||0) - realiseRefsM);
         resultats.push({
           type: 'marche_volume', marche: m.label,
           actuel: actuelM, suivant: suivantM,
           valeurActuelle: projeteM, realise: realiseM,
-          ecartPct: ecartM, atteignable: ecartM <= 20, unite: 'u'
+          realiseRefs: realiseRefsM, manqueRefs: manqueRefsM,
+          ecartPct: ecartM, atteignable: manqueRefsM === 0 && ecartM <= 20, unite: 'u'
         });
       } else if (actuelM) {
-        resultats.push({ type: 'marche_volume', marche: m.label, actuel: actuelM, suivant: null, valeurActuelle: projeteM, realise: realiseM, ecartPct: 0, atteignable: false, unite: 'u', maxAtteint: true });
+        resultats.push({ type: 'marche_volume', marche: m.label, actuel: actuelM, suivant: null, valeurActuelle: projeteM, realise: realiseM, realiseRefs: realiseRefsM, manqueRefs: 0, ecartPct: 0, atteignable: false, unite: 'u', maxAtteint: true });
       }
     });
+  }
+
+  // 4) Groupes lies (ex: KENVUE Hextril + Listerine) - seuil de volume combine + bonus de references
+  // partage qui ne profite qu'au marche designe (bonus_marche).
+  if (laboObjId && laboObj.groupesLies && laboObj.groupesLies.length && dEngD && dEngF) {
+    var achGD = achatsLabos[laboObjId];
+    if (achGD && achGD.lignes) {
+      var moisTotalEngG = Math.max(1, decMoisInclusif(new Date(dEngD), new Date(dEngF)));
+      var moisAchatsG = (achGD.periode_debut && achGD.periode_fin) ? Math.max(1, decMoisInclusif(new Date(achGD.periode_debut), new Date(achGD.periode_fin))) : moisTotalEngG;
+      laboObj.groupesLies.forEach(function(g) {
+        var marchesG = (g.marches || []).filter(Boolean);
+        if (marchesG.length !== 2) return;
+        var realG = condAchatsRealiseGroupe(laboObjId, marchesG);
+        var projeteG = (realG.volume / moisAchatsG) * moisTotalEngG;
+        var volumeOk = projeteG >= (g.volume_min || 0);
+        var pal = (g.bonus_paliers || []).slice().sort(function(a,b){ return (a.refs||0) - (b.refs||0); });
+        var actuelG = null, suivantG = null;
+        for (var k2 = 0; k2 < pal.length; k2++) {
+          if (realG.refs >= (pal[k2].refs||0)) actuelG = pal[k2]; else { suivantG = pal[k2]; break; }
+        }
+        if (suivantG) {
+          var manqueRefsG = Math.max(0, (suivantG.refs||0) - realG.refs);
+          resultats.push({
+            type: 'groupe_lie', groupe: g.label || marchesG.join(' + '), bonusMarche: g.bonus_marche,
+            volumeOk: volumeOk, volumeMin: g.volume_min || 0, volumeProjete: projeteG,
+            actuel: actuelG, suivant: suivantG, realiseRefs: realG.refs, manqueRefs: manqueRefsG,
+            atteignable: volumeOk && manqueRefsG === 0
+          });
+        } else if (actuelG) {
+          resultats.push({ type: 'groupe_lie', groupe: g.label || marchesG.join(' + '), bonusMarche: g.bonus_marche, volumeOk: volumeOk, volumeMin: g.volume_min || 0, volumeProjete: projeteG, actuel: actuelG, suivant: null, realiseRefs: realG.refs, manqueRefs: 0, atteignable: false, maxAtteint: true });
+        }
+      });
+    }
   }
 
   return resultats.length > 0 ? resultats : null;
@@ -6117,13 +6506,26 @@ function decRenderPalierAnalyse() {
     } else if (a.type === 'marche_volume') {
       var col3 = a.atteignable ? 'var(--accent-text)' : 'var(--text-sec)';
       var icone3 = a.atteignable ? '🎯' : '○';
+      var refsTxt3 = a.realiseRefs + ' réf.' + (a.manqueRefs > 0 ? ' (<span style="color:var(--danger)">manque ' + a.manqueRefs + '</span>)' : ' ✓');
       if (a.maxAtteint) {
-        html += '<div style="font-size:12px;color:var(--accent-text);margin-bottom:6px">✓ ' + a.marche + ' — palier maximum atteint au rythme actuel : <strong>' + a.actuel.remise + '%</strong> (réalisé ' + Math.round(a.realise) + ' u, projection ' + Math.round(a.valeurActuelle) + ' u)</div>';
+        html += '<div style="font-size:12px;color:var(--accent-text);margin-bottom:6px">✓ ' + a.marche + ' — palier maximum atteint au rythme actuel : <strong>' + a.actuel.remise + '%</strong> (réalisé ' + Math.round(a.realise) + ' u, projection ' + Math.round(a.valeurActuelle) + ' u, ' + refsTxt3 + ')</div>';
       } else {
         html += '<div style="font-size:12px;color:' + col3 + ';margin-bottom:6px;padding:8px;background:' + (a.atteignable ? 'var(--accent-bg)' : 'var(--surface2)') + ';border-radius:var(--radius-sm)">';
-        html += icone3 + ' <strong>' + a.marche + '</strong> — réalisé : ' + Math.round(a.realise) + ' u · au rythme actuel, projection fin engagement : <strong>' + Math.round(a.valeurActuelle) + ' u</strong> → Palier suivant : <strong>' + a.suivant.remise + '%</strong> à ' + a.suivant.volume + ' u';
-        html += ' — écart : <strong>' + a.ecartPct.toFixed(1) + '%</strong>';
-        if (a.atteignable) html += ' <strong>→ ATTEIGNABLE</strong> (≤20% d\'écart, soit ' + Math.ceil(a.suivant.volume - a.valeurActuelle) + ' u à ajouter au rythme de commande)';
+        html += icone3 + ' <strong>' + a.marche + '</strong> — réalisé : ' + Math.round(a.realise) + ' u, ' + refsTxt3 + ' · au rythme actuel, projection fin engagement : <strong>' + Math.round(a.valeurActuelle) + ' u</strong> → Palier suivant : <strong>' + a.suivant.remise + '%</strong> à ' + a.suivant.volume + ' u et ' + a.suivant.refs + ' réf.';
+        html += ' — écart volume : <strong>' + a.ecartPct.toFixed(1) + '%</strong>';
+        if (a.atteignable) html += ' <strong>→ ATTEIGNABLE</strong> (≤20% d\'écart volume, références déjà acquises, soit ' + Math.ceil(a.suivant.volume - a.valeurActuelle) + ' u à ajouter au rythme de commande)';
+        html += '</div>';
+      }
+    } else if (a.type === 'groupe_lie') {
+      var refsTxt4 = a.realiseRefs + ' réf.' + (a.manqueRefs > 0 ? ' (<span style="color:var(--danger)">manque ' + a.manqueRefs + '</span>)' : ' ✓');
+      var col4 = a.atteignable ? 'var(--accent-text)' : 'var(--text-sec)';
+      var icone4 = a.atteignable ? '🎯' : '○';
+      if (a.maxAtteint) {
+        html += '<div style="font-size:12px;color:var(--accent-text);margin-bottom:6px">✓ ' + a.groupe + ' — bonus maximum atteint : <strong>+' + a.actuel.bonus + ' pts sur ' + a.bonusMarche + '</strong> (' + refsTxt4 + ', volume projeté ' + Math.round(a.volumeProjete) + ' u' + (a.volumeOk ? '' : ' — seuil combiné ' + a.volumeMin + ' u pas encore atteint') + ')</div>';
+      } else {
+        html += '<div style="font-size:12px;color:' + col4 + ';margin-bottom:6px;padding:8px;background:' + (a.atteignable ? 'var(--accent-bg)' : 'var(--surface2)') + ';border-radius:var(--radius-sm)">';
+        html += icone4 + ' <strong>' + a.groupe + '</strong> — seuil volume combiné : ' + (a.volumeOk ? '<strong>✓ atteint</strong>' : 'projeté ' + Math.round(a.volumeProjete) + ' / ' + a.volumeMin + ' u') + ' · ' + refsTxt4 + ' → bonus suivant : <strong>+' + a.suivant.bonus + ' pts sur ' + a.bonusMarche + '</strong> à ' + a.suivant.refs + ' réf.';
+        if (a.atteignable) html += ' <strong>→ ATTEIGNABLE</strong>';
         html += '</div>';
       }
     }

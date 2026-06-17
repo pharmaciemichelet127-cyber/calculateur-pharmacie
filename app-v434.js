@@ -3080,14 +3080,17 @@ function condAppliquerConfigKenvue() {
 
   var biafine = trouverOuCreer('BIAFINE');
   definirPaliers(biafine, [{ volume:90, refs:3, remise:26 }], 90);
-  // Le marche BIAFINE negocie ne couvre que les 3 emulsions cutanees (pas la gamme cosmetique
-  // Biafine plus large : laits/baumes/cremes/serums, qui restent une marque mais hors perimetre negocie).
-  var biafineEansValides = ['3400932857012', '3400937832090', '3400931922827'];
+  // Le marche BIAFINE negocie ne couvre QUE les produits dont le nom commence par "BIAFINE"
+  // (donc pas CICABIAFINE, qui est une autre gamme malgre le nom proche), en excluant aussi les
+  // unites de merchandising (meuble/presentoir) qui ne sont pas de vraies references vendables.
+  // Base sur le nom plutot qu'une liste d'EAN figee, pour rester correct si le catalogue est
+  // ré-importe ou si l'IA reclasse de nouveaux produits par la suite.
   var nbBiafineExclus = 0;
   (labo.produits || []).forEach(function(p) {
-    if ((p.marche || '') === 'BIAFINE' && biafineEansValides.indexOf(String(p.ean || '')) < 0) {
-      p.marche = 'HORS_MARCHE'; p.marche_id = 'HORS_MARCHE'; nbBiafineExclus++;
-    }
+    if ((p.marche || '') !== 'BIAFINE') return;
+    var nomU = (p.nom || '').toUpperCase().trim();
+    var estBiafineValide = nomU.indexOf('BIAFINE') === 0 && nomU.indexOf('MEUBLE') < 0 && nomU.indexOf('PRESENTOIR') < 0;
+    if (!estBiafineValide) { p.marche = 'HORS_MARCHE'; p.marche_id = 'HORS_MARCHE'; nbBiafineExclus++; }
   });
 
   var hextril = trouverOuCreer('BAINS DE BOUCHE-HEXTRIL');

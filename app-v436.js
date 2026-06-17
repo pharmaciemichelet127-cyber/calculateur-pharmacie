@@ -5912,6 +5912,13 @@ function decNormaliserCond(c) {
   delete c.remise;
   return c;
 }
+// Match un mot-cle en tant que MOT ENTIER (limite de mot), pas une simple sous-chaine -
+// sinon le mot-cle "BIAFINE" matche aussi "CICABIAFINE" (sous-chaine presente), ce qui est faux.
+function motCleMatch(lib, motCle) {
+  if (!motCle) return false;
+  var echappe = motCle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  try { return new RegExp('\\b' + echappe + '\\b').test(lib); } catch(e) { return lib.indexOf(motCle) !== -1; }
+}
 function decAffecterMarches(labo, marches, prodsOverride, eanToMarche) {
   // Affecte chaque produit Ospharm a son marche :
   // 1) PRIORITE : marche officiel saisi dans le Catalogue (eanToMarche, par EAN), si le produit y est connu.
@@ -5941,7 +5948,7 @@ function decAffecterMarches(labo, marches, prodsOverride, eanToMarche) {
     if (idx === -1) {
       for (var j = 0; j < marches.length; j++) {
         var hit = false;
-        for (var k = 0; k < motsM[j].length; k++) { if (lib.indexOf(motsM[j][k]) !== -1) { hit = true; break; } }
+        for (var k = 0; k < motsM[j].length; k++) { if (motCleMatch(lib, motsM[j][k])) { hit = true; break; } }
         if (hit) { idx = j; break; }
       }
     }
@@ -6245,7 +6252,7 @@ function decRenderConditionsCommerciales(labo) {
         }
         if (found === -1) {
           for (var mj = 0; mj < marches.length; mj++) {
-            for (var k = 0; k < motsM[mj].length; k++) { if (lib.indexOf(motsM[mj][k]) !== -1) { found = mj; break; } }
+            for (var k = 0; k < motsM[mj].length; k++) { if (motCleMatch(lib, motsM[mj][k])) { found = mj; break; } }
             if (found >= 0) break;
           }
         }

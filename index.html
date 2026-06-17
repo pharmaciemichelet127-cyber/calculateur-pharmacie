@@ -1544,6 +1544,20 @@ git push origin main</pre>
       <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">
         Importez d abord l etat des ventes dans l onglet Cond. commerciales. Cliquez sur Auto-classifier pour que Claude analyse les noms et propose Categorie, Sous-categorie et Marche. Corrigez ensuite manuellement si besoin.
       </p>
+      <div class="card" style="background:#f4faf8;border:1px solid #0f6e56;margin-bottom:14px">
+        <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+          <span>Achats (sell-in) — alimente les paliers volume par marché</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text-sec)">Période achats : <span id="cat-achats-periode" style="display:inline-flex;gap:4px;align-items:center"></span></span>
+            <button type="button" onclick="catChargerAchats()" style="font-size:12px;padding:5px 12px;background:#0f6e56;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">&#9729; Charger achats</button>
+            <label style="font-size:12px;padding:5px 12px;border:1px solid #0f6e56;border-radius:var(--radius-sm);background:#e6f4f1;cursor:pointer;font-weight:500;color:#0f6e56;">&#8593; Importer achats (XLSX)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterAchats(this)"></label>
+            <button type="button" onclick="catEnregistrerAchats()" style="font-size:12px;padding:5px 12px;background:#0f6e56;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">&#9729; Enregistrer achats</button>
+          </div>
+        </p>
+        <p style="font-size:11px;color:var(--text-ter);margin:0 0 6px 0">Saisissez la quantité achetée directement dans la colonne du tableau, ou importez un export LGPI (colonnes Produits / Nb d'unités) — les lignes non reconnues sont listées ci-dessous pour assignation manuelle.</p>
+        <span id="cat-achats-status" style="font-size:11px;color:var(--text-sec)"></span>
+        <div id="cat-achats-unmatched" style="display:none;margin-top:8px;padding:10px;background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm)"></div>
+      </div>
       <div id="cat-status" style="font-size:12px;color:var(--text-sec);margin-bottom:10px;min-height:18px"></div>
       <div id="cat-extract-status" style="display:none;font-size:12px;padding:10px 12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);margin-bottom:10px"></div>
       <div id="cat-extract-preview" style="display:none;margin-bottom:12px"></div>
@@ -1557,6 +1571,7 @@ git push origin main</pre>
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:100px">Categorie</th>
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:100px">Sous-categorie</th>
             <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a4a2a;min-width:160px">Marche</th>
+            <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#0f6e56;color:#fff;min-width:70px">Qté achetée</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#92400e;color:#fff;min-width:80px">Gamme labo</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:60px">Palier</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:55px">Colis.</th>
@@ -1629,7 +1644,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v427.js"></script>
+<script src="/app-v428.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

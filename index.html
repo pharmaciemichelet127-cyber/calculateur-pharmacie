@@ -1245,7 +1245,10 @@ git push origin main</pre>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">🏪 Vue COALIA (centrale d'achat, multi-labos)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Agrège automatiquement, à chaque import de ventes ci-dessus ou de mise à jour du TSRF COALIA (Catalogue), uniquement les références du TSRF parmi tous les labos présents dans l'export. Le bouton ouvre directement la vue.</p>
-          <button type="button" onclick="decConstruireCoalia()" style="font-size:12px;padding:6px 14px;background:#003B7A;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">🏪 Voir la vue COALIA</button>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button type="button" onclick="decConstruireCoalia()" style="font-size:12px;padding:6px 14px;background:#003B7A;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">🏪 Voir la vue COALIA</button>
+            <span id="dec-tsrf-badge"></span>
+          </div>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
@@ -1544,6 +1547,7 @@ git push origin main</pre>
           <label style="font-size:12px;padding:5px 12px;border:1px solid #f59e0b;border-radius:var(--radius-sm);background:#fffbeb;cursor:pointer;font-weight:500;color:#92400e;">&#129302; Extraire produits (IA)<input type="file" accept=".pdf" style="display:none" onchange="catExtrarePDF(this)"></label>
           <label style="font-size:12px;padding:5px 12px;border:1px solid #3b82f6;border-radius:var(--radius-sm);background:#eff6ff;cursor:pointer;font-weight:500;color:#1d4ed8;">&#128202; Importer catalogue (XLSX)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterXLSX(this)"></label>
           <label style="font-size:12px;padding:5px 12px;border:1px solid #003B7A;border-radius:var(--radius-sm);background:#eef3fa;cursor:pointer;font-weight:500;color:#003B7A;">&#127978; Importer TSRF COALIA<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterTSRF(this)"></label>
+          <span id="cat-tsrf-info" style="font-size:11px"></span>
           <span id="cat-officiel-info" style="font-size:11px;color:var(--text-sec)"></span>
         </div>
       </p>
@@ -1650,7 +1654,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v441.js"></script>
+<script src="/app-v442.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

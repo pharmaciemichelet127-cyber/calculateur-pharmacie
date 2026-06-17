@@ -1253,7 +1253,8 @@ git push origin main</pre>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'export LGPI « Stock » (Excel) pour avoir le stock à l'instant T, plus fiable.</p>
-          <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px">
+          <p id="dec-stock-target" style="font-size:11px;margin:0 0 6px"></p>
+          <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px" disabled>
           <p id="dec-stock-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         </div>
       </div>
@@ -1654,7 +1655,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v442.js"></script>
+<script src="/app-v443.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

@@ -8382,6 +8382,69 @@ async function catEnregistrerAchats() {
 // Import d'un export LGPI "Etat des achats" (colonnes Produits / ... / Nb d'unites), sans EAN.
 // Matching par libelle normalise contre le Catalogue du labo actif ; les lignes ambigues ou
 // non reconnues sont listees pour assignation manuelle (cf. catRenderAchatsNonMatches).
+// Import du TSRF COALIA (Tableau de Simulation de Remises et Frais) comme Catalogue d'un labo
+// "virtuel" nomme COALIA - une centrale d'achat couvre des dizaines de vrais laboratoires, donc
+// chaque ligne porte son propre LABO d'origine (affiche dans la colonne Gamme labo du Catalogue).
+function catTrouverColTSRF(header, motsTous) {
+  for (var i = 0; i < header.length; i++) {
+    var h = String(header[i] || '').toUpperCase();
+    if (motsTous.every(function(m){ return h.indexOf(m) >= 0; })) return i;
+  }
+  return -1;
+}
+
+async function catImporterTSRF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Cree/ouvre d\'abord le labo COALIA (Conditions commerciales > + Nouveau labo).'); input.value = ''; return; }
+  if (!confirm('Ceci va remplacer le Catalogue du labo actif (' + (condLabos[catLaboActif].nom || catLaboActif) + ') par le TSRF importe. Continuer ?')) { input.value = ''; return; }
+  var status = document.getElementById('cat-status');
+  if (status) { status.textContent = 'Lecture du TSRF...'; status.style.color = 'var(--text-sec)'; }
+  try {
+    var data = await file.arrayBuffer();
+    var wb = XLSX.read(data, { type: 'array' });
+    var sheetName = wb.SheetNames.find(function(n){ return n !== 'BExRepositorySheet' && n !== 'Module2'; }) || wb.SheetNames[wb.SheetNames.length - 1];
+    var ws = wb.Sheets[sheetName];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) { if (String(rows[i][0] || '').trim().toUpperCase() === 'LABO') { headerIdx = i; break; } }
+    if (headerIdx < 0) { if (status) { status.textContent = 'Format TSRF non reconnu (en-tete LABO introuvable).'; status.style.color = 'var(--danger)'; } return; }
+    var header = rows[headerIdx];
+    var idxLabo = catTrouverColTSRF(header, ['LABO']);
+    var idxEan = catTrouverColTSRF(header, ['CODE', '13']);
+    var idxNom = catTrouverColTSRF(header, ['GAMME']);
+    var idxColisage = catTrouverColTSRF(header, ['COLISAGE']);
+    var idxPrixRendu = catTrouverColTSRF(header, ['PRIX', 'NET', 'RENDU']);
+    if (idxEan < 0 || idxNom < 0) { if (status) { status.textContent = 'Colonnes CODE 13 / Gammes introuvables dans ce fichier.'; status.style.color = 'var(--danger)'; } return; }
+
+    var produits = [];
+    for (var r = headerIdx + 1; r < rows.length; r++) {
+      var row = rows[r];
+      var eanRaw = row[idxEan];
+      if (!eanRaw) continue;
+      var eanStr = String(typeof eanRaw === 'number' ? Math.round(eanRaw) : eanRaw).replace(/\D/g, '');
+      if (!eanStr) continue;
+      produits.push({
+        ean: eanStr,
+        nom: String(row[idxNom] || '').trim(),
+        famille: idxLabo >= 0 ? String(row[idxLabo] || '').trim() : '', // labo d'origine -> colonne "Gamme labo"
+        colisage: idxColisage >= 0 ? (parseFloat(row[idxColisage]) || 1) : 1,
+        pa_net: idxPrixRendu >= 0 ? (parseFloat(row[idxPrixRendu]) || 0) : 0,
+        marche: '', categorie: '', sous_cat: ''
+      });
+    }
+    if (!produits.length) { if (status) { status.textContent = 'Aucune ligne produit valide trouvee.'; status.style.color = 'var(--danger)'; } return; }
+
+    condLabos[catLaboActif].produits = produits;
+    catChargeLabo();
+    condSauvegarder();
+    if (status) { status.textContent = '✓ TSRF importe : ' + produits.length + ' references.'; status.style.color = 'var(--accent-text)'; }
+  } catch (e) {
+    if (status) { status.textContent = 'Erreur : ' + e.message; status.style.color = 'var(--danger)'; }
+  }
+  input.value = '';
+}
+
 async function catImporterAchats(input) {
   var file = input.files[0];
   if (!file) return;
@@ -9137,9 +9200,13 @@ function decImportOspharm(input) {
         var h = String(header[i] || '').trim();
         if (h) cols[h] = i;
       }
+      // Si l'export contient deja Quantite n-1 (cas d'un export "Toutes les ventes" tous labos confondus),
+      // on alimente decOspharmProdsN1 dans la meme passe - plus besoin d'un 2e fichier separe.
+      var hasN1Col = cols.hasOwnProperty('Quantité n-1');
       // Lire les données
       var labos = {};
       var prods = {};
+      var prodsN1 = hasN1Col ? {} : null;
       for (var r = 1; r < rows.length; r++) {
         var row = rows[r];
         var labo = String(row[cols['Libellé laboratoire']] || '').trim();
@@ -9156,11 +9223,17 @@ function decImportOspharm(input) {
         labos[labo] += caht;
         if (!prods[labo]) prods[labo] = [];
         prods[labo].push({lib:lib, ean:ean, caht:caht, marge:marge, qte:qte, paht:paht, stock:stock});
+        if (hasN1Col) {
+          var qteN1 = parseFloat(String(row[cols['Quantité n-1']] || '0').replace(/[^\d.-]/g,'')) || 0;
+          if (!prodsN1[labo]) prodsN1[labo] = [];
+          prodsN1[labo].push({lib:lib, ean:ean, qte:qteN1});
+        }
       }
       decOspharmData = labos;
       decOspharmProds = prods;
+      if (hasN1Col) decOspharmProdsN1 = prodsN1;
       var nb = Object.keys(labos).length;
-      status.textContent = '✅ ' + nb + ' labos chargés';
+      status.textContent = '✅ ' + nb + ' labos chargés' + (hasN1Col ? ' (comparaison N-1 incluse automatiquement)' : '');
       status.style.color = 'var(--accent-text)';
       document.getElementById('dec-search-wrap').style.display = 'block';
     } catch(err) {
@@ -9169,6 +9242,56 @@ function decImportOspharm(input) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ===== VUE COALIA (centrale d'achat, agrege plusieurs vrais labos selon le TSRF) =====
+// COALIA n'est pas un labo Ospharm en soi : ses references sont reparties sur des dizaines de
+// vrais laboratoires. On construit donc un "labo virtuel" decOspharmProds['COALIA'] en piochant,
+// a travers TOUS les labos presents dans l'export importe, uniquement les EAN qui figurent dans
+// le TSRF COALIA (catalogue du labo nomme "COALIA" dans Conditions commerciales / Catalogue).
+function decConstruireCoalia() {
+  if (!decOspharmProds) { alert('Importe d\'abord un export Ospharm large (plusieurs labos) ci-dessus.'); return; }
+  var coaliaLaboId = Object.keys(condLabos).find(function(k){ return condLabos[k] && (condLabos[k].nom||'').toUpperCase() === 'COALIA'; });
+  if (!coaliaLaboId || !condLabos[coaliaLaboId].produits || !condLabos[coaliaLaboId].produits.length) {
+    alert('Cree d\'abord le labo "COALIA" (Conditions commerciales > + Nouveau labo) et importe son TSRF (Catalogue > Importer TSRF COALIA).');
+    return;
+  }
+  var tsrfEans = {};
+  condLabos[coaliaLaboId].produits.forEach(function(p) { if (p.ean) tsrfEans[String(p.ean).replace(/\D/g,'')] = true; });
+
+  var agg = [], totalCa = 0;
+  Object.keys(decOspharmProds).forEach(function(labo) {
+    if (labo === 'COALIA') return;
+    decOspharmProds[labo].forEach(function(p) {
+      var cleanEan = p.ean ? String(p.ean).replace(/\D/g,'') : '';
+      if (cleanEan && tsrfEans[cleanEan]) { agg.push(p); totalCa += p.caht; }
+    });
+  });
+  decOspharmProds['COALIA'] = agg;
+
+  if (decOspharmProdsN1) {
+    var aggN1 = [];
+    Object.keys(decOspharmProdsN1).forEach(function(labo) {
+      if (labo === 'COALIA') return;
+      decOspharmProdsN1[labo].forEach(function(p) {
+        var cleanEan = p.ean ? String(p.ean).replace(/\D/g,'') : '';
+        if (cleanEan && tsrfEans[cleanEan]) aggN1.push(p);
+      });
+    });
+    decOspharmProdsN1['COALIA'] = aggN1;
+  }
+
+  if (!decOspharmData) decOspharmData = {};
+  decOspharmData['COALIA'] = totalCa;
+
+  var status = document.getElementById('dec-status');
+  if (status) { status.textContent = '✅ COALIA : ' + agg.length + ' références retrouvées dans les ventes sur ' + Object.keys(tsrfEans).length + ' du TSRF.'; status.style.color = 'var(--accent-text)'; }
+  document.getElementById('dec-search-wrap').style.display = 'block';
+  var inputEl = document.getElementById('dec-labo-input');
+  if (inputEl) inputEl.value = 'COALIA';
+  var choisiEl = document.getElementById('dec-labo-choisi');
+  if (choisiEl) choisiEl.textContent = '✓ COALIA';
+  decAfficherResume('COALIA');
 }
 
 function decImportOspharmN1(input) {

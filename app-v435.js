@@ -2645,8 +2645,67 @@ function condRenderMarches() {
       '<button type="button" onclick="condSupprimerMarche(' + i + ')" style="font-size:13px;color:var(--danger);background:none;border:none;cursor:pointer">×</button>' +
       '</div>' +
       condPaliersMarcheHTML(i) +
+      condComposerHTML(i) +
       '</div>';
   }).join('') + condGroupesLiesHTML() + kenvueBtn;
+}
+
+// ===== COMPOSITION MANUELLE D'UN MARCHE (choisir produit par produit, plus rapide que le tableau
+// Catalogue complet quand on a beaucoup de labos a configurer) =====
+function condComposerHTML(mi) {
+  var ouvert = !!condComposerOuvert[mi];
+  var html = '<div style="margin-top:4px">';
+  html += '<button type="button" onclick="condToggleComposer(' + mi + ')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border-med);border-radius:3px;background:#fff;color:var(--text-sec);cursor:pointer">📋 ' + (ouvert ? 'Fermer la composition' : 'Composer ce marché (choisir les produits)') + '</button>';
+  if (ouvert) {
+    html += '<div style="margin-top:6px;padding:8px;background:#fff;border:1px solid var(--border-med);border-radius:var(--radius-sm)">';
+    html += '<input type="text" id="cond-composer-search-' + mi + '" placeholder="Rechercher un produit..." style="width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;margin-bottom:6px;box-sizing:border-box" oninput="condFiltrerComposer(' + mi + ',this.value)">';
+    html += '<div id="cond-composer-list-' + mi + '" style="max-height:280px;overflow-y:auto">' + condComposerListeHTML(mi, '') + '</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function condComposerListeHTML(mi, filtre) {
+  var labo = condLabos[condLaboActif];
+  var m = labo && (labo.marches_negocies || [])[mi];
+  if (!labo || !m) return '';
+  var f = (filtre || '').toUpperCase().trim();
+  var prods = labo.produits || [];
+  var liste = f ? prods.filter(function(p){ return (p.nom||'').toUpperCase().indexOf(f) >= 0; }) : prods;
+  if (liste.length === 0) return '<p style="font-size:11px;color:var(--text-ter);padding:6px">Aucun produit ne correspond.</p>';
+  return liste.map(function(p) {
+    var idx = prods.indexOf(p);
+    var checked = (p.marche || '') === m.label;
+    return '<label style="display:flex;align-items:center;gap:6px;padding:3px 4px;font-size:11px;border-bottom:1px solid var(--border);cursor:pointer">' +
+      '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="condComposerToggle(' + mi + ',' + idx + ',this.checked)">' +
+      '<span style="flex:1">' + p.nom + '</span>' +
+      '<span style="font-size:9px;color:var(--text-ter);white-space:nowrap">' + (p.marche || '\u2014') + '</span>' +
+      '</label>';
+  }).join('');
+}
+
+function condComposerToggle(mi, idx, checked) {
+  var labo = condLabos[condLaboActif];
+  var m = labo && (labo.marches_negocies || [])[mi];
+  var p = labo && (labo.produits || [])[idx];
+  if (!m || !p) return;
+  p.marche = checked ? m.label : '';
+  p.marche_id = checked ? (m.marche_id || m.label) : '';
+  condSauvegarder();
+  var el = document.getElementById('cond-composer-list-' + mi);
+  var inp = document.getElementById('cond-composer-search-' + mi);
+  if (el) el.innerHTML = condComposerListeHTML(mi, inp ? inp.value : '');
+}
+
+function condFiltrerComposer(mi, val) {
+  var el = document.getElementById('cond-composer-list-' + mi);
+  if (el) el.innerHTML = condComposerListeHTML(mi, val);
+}
+
+function condToggleComposer(mi) {
+  condComposerOuvert[mi] = !condComposerOuvert[mi];
+  condRenderMarches();
 }
 
 function condUpdateEngagementMarches(key, val) {
@@ -7651,6 +7710,7 @@ function catSafeName(name) {
 
 // ===== HISTORIQUE ACHATS PAR LABO (sell-in LGPI, paliers volume) — fichier leger, Contents API classique =====
 var achatsLabos = {}; // laboId -> {periode_debut, periode_fin, maj, lignes:{ (ean||nom) : qte }}
+var condComposerOuvert = {}; // mi -> bool, panneau "composer ce marche a la main" ouvert/ferme (etat de session uniquement)
 
 function achGetLaboId(laboObj) {
   return Object.keys(condLabos).find(function(k){ return condLabos[k] === laboObj; }) || null;

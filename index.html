@@ -1446,6 +1446,9 @@ git push origin main</pre>
   <!-- ===== COMMANDE ===== -->
   <div id="panel-cmd" style="display:none">
 
+    <!-- Banniere Analyse Zone (visible si donnees chargees via ?az=) -->
+    <div id="cmd-az-banner" style="display:none;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1.5px solid #60a5fa;border-radius:var(--radius);padding:14px 18px;margin-bottom:14px"></div>
+
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Simulateur de commande</span>
@@ -1523,6 +1526,9 @@ git push origin main</pre>
       </div>
       <div id="cmd-conclusion" class="nego" style="margin-top:12px;display:none"></div>
     </div>
+
+    <!-- Rapport rapprochement AZ vs Calculateur (visible après cmdGenererAvecAz) -->
+    <div class="card" id="cmd-az-rapport" style="display:none;margin-top:14px"></div>
 
   </div>
 
@@ -1655,7 +1661,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v447.js"></script>
+<script src="/app-v448.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

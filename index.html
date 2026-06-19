@@ -1146,8 +1146,8 @@ git push origin main</pre>
               Importer avenant tarifs (PDF)
               <input type="file" id="cond-avenant-labo" accept=".pdf" style="display:none" onchange="condImportAvenantLabo(this)">
             </label>
-            <label style="font-size:11px;color:var(--accent-text);cursor:pointer;padding:4px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-bg);font-weight:500;display:flex;align-items:center;gap:4px">
-              Importer catalogue COALIA (XLSX)
+            <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px" title="Format SAP BEx générique (LABO/CODE 13/GAMME/COLISAGE) — laisse le PA net à 0€, le prix négocié va dans un champ séparé. Pas pour COALIA : utilise « 🏪 Importer TSRF COALIA » dans l'onglet Catalogue produits.">
+              Importer catalogue (XLSX générique)
               <input type="file" id="cond-cat-labo-xlsx" accept=".xlsx,.xls" style="display:none" onchange="condImportCatalogueLaboXLSX(this)">
             </label>
             <label style="font-size:11px;color:var(--text-sec);cursor:pointer;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;gap:4px">
@@ -1238,14 +1238,23 @@ git push origin main</pre>
         <p id="dec-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📊 Comparaison N-1 (optionnel)</p>
-          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Importer le même export Ospharm pour la période équivalente de l'année précédente, pour comparer les quantités vendues.</p>
+          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Importer le même export Ospharm pour la période équivalente de l'année précédente, pour comparer les quantités vendues. Inutile si ton export "Toutes les ventes" contient déjà une colonne Quantité n-1 — elle est alors lue automatiquement.</p>
           <input type="file" id="dec-file-n1" accept=".xlsx,.xls" onchange="decImportOspharmN1(this)" style="font-size:12px">
           <p id="dec-status-n1" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <p style="font-size:12px;font-weight:600;margin:0 0 6px">🏪 Vue COALIA (centrale d'achat, multi-labos)</p>
+          <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Agrège automatiquement, à chaque import de ventes ci-dessus ou de mise à jour du TSRF COALIA (Catalogue), uniquement les références du TSRF parmi tous les labos présents dans l'export. Le bouton ouvre directement la vue.</p>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button type="button" onclick="decConstruireCoalia()" style="font-size:12px;padding:6px 14px;background:#003B7A;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">🏪 Voir la vue COALIA</button>
+            <span id="dec-tsrf-badge"></span>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'export LGPI « Stock » (Excel) pour avoir le stock à l'instant T, plus fiable.</p>
-          <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px">
+          <p id="dec-stock-target" style="font-size:11px;margin:0 0 6px"></p>
+          <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px" disabled>
           <p id="dec-stock-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         </div>
       </div>
@@ -1271,6 +1280,13 @@ git push origin main</pre>
 
     <!-- ===== WORKFLOW ===== -->
   <div id="panel-workflow">
+    <div class="card" style="background:var(--accent-bg);border-color:var(--accent);margin-bottom:12px">
+      <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--accent-text);margin-bottom:6px">Guide de démarrage rapide</p>
+      <p style="font-size:13px;color:var(--accent-text);margin-bottom:12px;line-height:1.5">Nouveau RDV labo ? Ouvrez le guide pas-à-pas pour choisir le bon chemin et ne rien oublier.</p>
+      <a href="workflow-commande.html" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background:var(--accent);color:#fff;border-radius:var(--radius-sm);font-size:13px;font-weight:600;text-decoration:none;">
+        ↗ Ouvrir le Workflow Commande
+      </a>
+    </div>
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between">
         <span>Workflow — Préparer une commande labo</span>
@@ -1437,6 +1453,9 @@ git push origin main</pre>
   <!-- ===== COMMANDE ===== -->
   <div id="panel-cmd" style="display:none">
 
+    <!-- Banniere Analyse Zone (visible si donnees chargees via ?az=) -->
+    <div id="cmd-az-banner" style="display:none;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1.5px solid #60a5fa;border-radius:var(--radius);padding:14px 18px;margin-bottom:14px"></div>
+
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Simulateur de commande</span>
@@ -1515,6 +1534,9 @@ git push origin main</pre>
       <div id="cmd-conclusion" class="nego" style="margin-top:12px;display:none"></div>
     </div>
 
+    <!-- Rapport rapprochement AZ vs Calculateur (visible après cmdGenererAvecAz) -->
+    <div class="card" id="cmd-az-rapport" style="display:none;margin-top:14px"></div>
+
   </div>
 
 
@@ -1537,7 +1559,9 @@ git push origin main</pre>
           <button type="button" onclick="catApercuPDF()" style="font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#128196; Aperçu PDF</button>
           <label style="font-size:12px;padding:5px 12px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;cursor:pointer;">&#8593; Importer catalogue officiel (PDF/Excel)<input type="file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="catImportOfficiel(this)"></label>
           <label style="font-size:12px;padding:5px 12px;border:1px solid #f59e0b;border-radius:var(--radius-sm);background:#fffbeb;cursor:pointer;font-weight:500;color:#92400e;">&#129302; Extraire produits (IA)<input type="file" accept=".pdf" style="display:none" onchange="catExtrarePDF(this)"></label>
-          <label style="font-size:12px;padding:5px 12px;border:1px solid #3b82f6;border-radius:var(--radius-sm);background:#eff6ff;cursor:pointer;font-weight:500;color:#1d4ed8;">&#128202; Importer catalogue (XLSX)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterXLSX(this)"></label>
+          <label style="font-size:12px;padding:5px 12px;border:1px solid #3b82f6;border-radius:var(--radius-sm);background:#eff6ff;cursor:pointer;font-weight:500;color:#1d4ed8;" title="Import generique (n'importe quel labo) : colonnes LABO / CODE 13 / GAMME ou DESIGNATION / COLISAGE / PRIX TARIF ou RENDU OFFICINE. Le prix negocie (RENDU si present) va dans PA net.">&#128202; Importer catalogue (XLSX)<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterXLSX(this)"></label>
+          <label style="font-size:12px;padding:5px 12px;border:1px solid #003B7A;border-radius:var(--radius-sm);background:#eef3fa;cursor:pointer;font-weight:500;color:#003B7A;">&#127978; Importer TSRF COALIA<input type="file" accept=".xlsx,.xls" style="display:none" onchange="catImporterTSRF(this)"></label>
+          <span id="cat-tsrf-info" style="font-size:11px"></span>
           <span id="cat-officiel-info" style="font-size:11px;color:var(--text-sec)"></span>
         </div>
       </p>
@@ -1644,7 +1668,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v435.js"></script>
+<script src="/app-v451.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

@@ -1553,6 +1553,7 @@ git push origin main</pre>
           </select>
           <button type="button" onclick="catClassifierAuto(false)" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Auto-classifier</button>
           <button type="button" onclick="catClassifierAuto(true)" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Catalogue labo</button>
+          <button type="button" onclick="condDiagnosticLabos()" style="font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer;" title="Liste tous les labos enregistrés avec ID, nombre de produits et de produits classés — pour détecter un doublon.">🔍 Diagnostic labos</button>
           <button type="button" onclick="catReporterMarcheVersGammeLabo()" style="font-size:12px;padding:5px 12px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;" title="Recopie le Marché (colonne Marché, sélectionné via le menu déroulant) dans la colonne Gamme labo, produit par produit.">&#128203; Reporter Marché → Gamme labo</button>
           <button type="button" onclick="catSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
           <button type="button" onclick="catSauvegarder();if(catLaboActif)condSauvegarderProduitsGitHub(catLaboActif).then(function(){var s=document.getElementById('cat-status');if(s){s.textContent='☁ Produits sauvegardés sur GitHub';setTimeout(function(){s.textContent=''},3000);}});" style="font-size:12px;padding:5px 12px;background:#2563eb;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">☁ GitHub</button>
@@ -1751,7 +1752,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v463.js"></script>
+<script src="/app-v464.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

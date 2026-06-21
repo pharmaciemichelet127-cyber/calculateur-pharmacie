@@ -1589,6 +1589,13 @@ git push origin main</pre>
       <div id="cat-extract-status" style="display:none;font-size:12px;padding:10px 12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);margin-bottom:10px"></div>
       <div id="cat-extract-preview" style="display:none;margin-bottom:12px"></div>
 
+      <div class="card" style="background:#f5f0ff;border:1px solid #7c3aed;margin-bottom:14px">
+        <p class="card-title" style="margin-bottom:6px">📊 Comparatif LPPR multi-labos</p>
+        <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px 0">Compare les produits remboursés (LPPR &gt; 0) de tous tes labos pour une classe donnée (ex: Ceintures, Colliers, Genou...) — basé sur la colonne Gamme labo, donc classe d'abord les catalogues concernés.</p>
+        <select id="cat-comparatif-classe" onchange="catAfficherComparatifLPPR(this.value)" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);max-width:360px"></select>
+        <div id="cat-comparatif-resultat" style="margin-top:10px"></div>
+      </div>
+
       <div style="overflow-x:auto;width:100%">
         <table id="cat-tbl" style="border-collapse:collapse;font-size:12px;table-layout:auto">
           <thead><tr style="background:var(--text);color:#fff">
@@ -1752,7 +1759,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v498.js"></script>
+<script src="/app-v499.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

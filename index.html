@@ -118,6 +118,7 @@
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Conditions commerciales</button>
     <button type="button" class="tab-btn" id="tab-decision" onclick="showTab('decision')">⚡ Décision RDV</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
+    <button type="button" class="tab-btn" id="tab-simlppr" onclick="showTab('simlppr')">💊 Simulation LPPR</button>
     <button type="button" class="tab-btn" id="tab-cycle" onclick="showTab('cycle')">Cycle de vie</button>
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
     <button type="button" class="tab-btn" id="tab-sim" onclick="showTab('sim')">Simulation</button>
@@ -1620,6 +1621,37 @@ git push origin main</pre>
 
   </div>
 
+  <!-- ===== SIMULATION LPPR ===== -->
+  <div id="panel-simlppr" style="display:none">
+
+    <div class="card" style="background:#f5f0ff;border:1px solid #7c3aed">
+      <p class="card-title">💊 Simulation prix de vente — produits remboursés (LPPR)</p>
+      <p style="font-size:12px;color:var(--text-sec);margin:0 0 12px 0">
+        Périmètre : Thuasne (gamme Compression), Podowell (CHUT + CHUP), Gibaud et Enovis (tous produits LPPR).
+        Le PA net intègre la remise marché négociée actuellement active pour chaque produit. Fixe un taux de marque
+        ou un coefficient pour simuler ton prix de vente et voir la marge dégagée et l'éventuel dépassement à la
+        charge du client par rapport au tarif LPPR.
+      </p>
+      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-sec);display:block;margin-bottom:3px">Mode de calcul</label>
+          <select id="simlppr-mode" onchange="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm)">
+            <option value="marque">Taux de marque (% du PV)</option>
+            <option value="coef">Coefficient multiplicateur (× PA net)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-sec);display:block;margin-bottom:3px" id="simlppr-val-label">Taux de marque (%)</label>
+          <input type="number" id="simlppr-valeur" value="30" step="0.5" min="0" oninput="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);width:100px">
+        </div>
+        <button type="button" onclick="simLPPRRender()" style="font-size:12px;padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">↻ Actualiser</button>
+      </div>
+      <div id="simlppr-resume" style="font-size:12px;color:var(--text-sec);margin-bottom:10px"></div>
+      <div id="simlppr-resultat" style="overflow-x:auto"></div>
+    </div>
+
+  </div>
+
   <!-- ===== CYCLE DE VIE PRODUITS ===== -->
   <div id="panel-cycle" style="display:none">
 
@@ -1759,7 +1791,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v499.js"></script>
+<script src="/app-v500.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

@@ -118,6 +118,7 @@
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Conditions commerciales</button>
     <button type="button" class="tab-btn" id="tab-decision" onclick="showTab('decision')">⚡ Décision RDV</button>
     <button type="button" class="tab-btn" id="tab-meq" onclick="showTab('meq')">🎯 Marchés équivalents</button>
+    <button type="button" class="tab-btn" id="tab-map" onclick="showTab('map')">🗺 MAP Produits</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-simlppr" onclick="showTab('simlppr')">💊 Simulation LPPR</button>
     <button type="button" class="tab-btn" id="tab-cycle" onclick="showTab('cycle')">Cycle de vie</button>
@@ -389,6 +390,16 @@
       </div>
     </div>
     <div id="meq-content"></div>
+  </div>
+
+  <!-- ===== MAP PRODUITS ===== -->
+  <div id="panel-map" style="display:none">
+    <div class="card">
+      <p class="card-title">🗺 MAP Produits — Gestion des rattachements EAN → Marché / Sous-marché</p>
+      <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Recherchez un EAN ou un libellé pour voir son rattachement. Modifiez, ajoutez ou supprimez des mappings. Chaque modification recalcule les marchés équivalents en live.</p>
+      <input id="map-search" type="text" placeholder="🔍  Rechercher EAN, libellé, labo ou sous-marché…" oninput="mapRechercher()" style="width:100%;max-width:500px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);box-sizing:border-box;margin-bottom:4px">
+    </div>
+    <div id="map-content" style="margin-top:8px"></div>
   </div>
 
   <!-- ===== LEXIQUE ===== -->
@@ -1830,7 +1841,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v516.js"></script>
+<script src="/app-v517.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

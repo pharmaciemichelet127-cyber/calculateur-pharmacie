@@ -362,13 +362,18 @@
     <div class="card">
       <p class="card-title">🎯 Marchés équivalents — pilotage par marge</p>
       <p style="font-size:11px;color:var(--text-ter);margin:0 0 10px 0">Jointure MAP_PRODUIT_MARCHE × ventes LGPI (N / N-1). Aucun arbitrage automatique.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
         <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 1. MAP_PRODUIT_MARCHE</button>
         <button type="button" onclick="meqImporterVentesLGPI()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 2. Ventes LGPI N</button>
         <button type="button" onclick="meqImporterVentesLGPIN1()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">📥 3. Ventes LGPI N-1 <span style="font-size:10px">(optionnel)</span></button>
       </div>
-      <div class="row" style="margin:0"><label>Sous-marché</label>
-        <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)"></select>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+        <div class="row" style="margin:0"><label style="min-width:60px">Marché</label>
+          <select id="meq-select-marche" onchange="meqChangerMarche()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:180px"></select>
+        </div>
+        <div class="row" style="margin:0"><label style="min-width:90px">Sous-marché</label>
+          <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px"></select>
+        </div>
       </div>
     </div>
     <div id="meq-content"></div>
@@ -1813,7 +1818,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v511.js"></script>
+<script src="/app-v512.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

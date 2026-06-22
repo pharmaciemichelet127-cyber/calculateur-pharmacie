@@ -2752,7 +2752,10 @@ function condPaliersMarcheHTML(mi) {
     if (palActifObj) {
       var pctM = palActifObj.volume > 0 ? (realiseM / palActifObj.volume * 100) : 0;
       var refsOk = realiseRefsM >= (palActifObj.refs||0);
+      var volRestantM = Math.max(0, palActifObj.volume - realiseM);
+      var refsRestantM = Math.max(0, (palActifObj.refs||0) - realiseRefsM);
       html += '<div style="margin-top:4px;font-size:11px;color:var(--text-sec)">Réalisé (sell-in) : <strong>' + Math.round(realiseM) + '</strong> / ' + palActifObj.volume + ' u (<strong>' + pctM.toFixed(0) + '%</strong>) · <strong>' + realiseRefsM + '</strong> / ' + (palActifObj.refs||0) + ' réf. ' + (refsOk ? '✓' : '<span style="color:var(--danger)">manque ' + ((palActifObj.refs||0) - realiseRefsM) + '</span>') + '</div>';
+      html += '<div style="margin-top:2px;font-size:11px;font-weight:600;color:' + (volRestantM<=0 && refsRestantM<=0 ? 'var(--accent-text)' : 'var(--text-sec)') + '">' + condResteAFaireHTML(condLaboActif, volRestantM, refsRestantM) + '</div>';
     }
   }
   html += '</div>';
@@ -2787,6 +2790,27 @@ function condAchatsNbRefMarche(laboId, marcheLabel) {
 }
 
 // Variante "groupe" : compte volume/references sur l'UNION de plusieurs marches (ex: Hextril+Listerine lies)
+// Formate "combien il reste a faire avant la date de fermeture du marche" - la question concrete
+// que Maurice se pose, plutot qu'un pourcentage ou une projection de rythme.
+function condResteAFaireHTML(laboId, volRestant, refsRestant) {
+  var labo = condLabos[laboId];
+  var finStr = labo ? labo.dateFinEngagementMarches : '';
+  if (volRestant <= 0 && refsRestant <= 0) return '✓ Palier déjà atteint (volume et références)';
+  var parts = [];
+  if (volRestant > 0) parts.push(Math.ceil(volRestant) + ' u');
+  if (refsRestant > 0) parts.push(refsRestant + ' réf.');
+  var txt = 'Reste à faire : <strong>' + parts.join(' et ') + '</strong>';
+  if (finStr) {
+    var joursRestants = Math.ceil((new Date(finStr) - new Date()) / 86400000);
+    var dateTxt = new Date(finStr).toLocaleDateString('fr-FR');
+    if (joursRestants > 0) txt += ' avant le ' + dateTxt + ' (' + joursRestants + ' j restants)';
+    else txt += ' — <span style="color:var(--danger)">échéance dépassée (' + dateTxt + ')</span>';
+  } else {
+    txt += ' <span style="color:var(--text-ter);font-weight:400">(renseigne la date de fin d\'engagement pour voir le délai)</span>';
+  }
+  return txt;
+}
+
 function condAchatsRealiseGroupe(laboId, marcheLabels) {
   var labo = condLabos[laboId];
   var ach = achatsLabos[laboId];
@@ -2927,6 +2951,10 @@ function condGroupeLieHTML(gi) {
   if (achatsLabos[condLaboActif] && g.marches.filter(Boolean).length === 2) {
     var real = condAchatsRealiseGroupe(condLaboActif, g.marches);
     html += '<div style="margin-top:6px;font-size:11px;color:var(--text-sec)">Réalisé (sell-in, combiné) : <strong>' + Math.round(real.volume) + '</strong> u (seuil ' + (g.volume_min||0) + ') · <strong>' + real.refs + '</strong> réf.</div>';
+    var volRestantG = Math.max(0, (g.volume_min||0) - real.volume);
+    var prochainBonus = (g.bonus_paliers||[]).slice().sort(function(a,b){ return (a.refs||0)-(b.refs||0); }).find(function(bp){ return real.refs < (bp.refs||0); });
+    var refsRestantG = prochainBonus ? Math.max(0, (prochainBonus.refs||0) - real.refs) : 0;
+    html += '<div style="margin-top:2px;font-size:11px;font-weight:600;color:' + (volRestantG<=0 && refsRestantG<=0 ? 'var(--accent-text)' : 'var(--text-sec)') + '">' + condResteAFaireHTML(condLaboActif, volRestantG, refsRestantG) + (prochainBonus && refsRestantG > 0 ? ' <span style="color:#92400e;font-weight:400">(pour passer à +' + prochainBonus.bonus + ' pts)</span>' : '') + '</div>';
   }
   html += '</div>';
   return html;
@@ -4113,6 +4141,13 @@ async function condImportPDFDiag(input) {
   if (!file) return;
   if (!condLaboActif || !condLabos[condLaboActif]) return;
 
+  var apiKey = localStorage.getItem('anthropic_api_key') || '';
+  if (!apiKey) {
+    apiKey = prompt('Clé API Anthropic (sk-ant-...) — stockée localement sur ce Mac/navigateur :');
+    if (!apiKey || !apiKey.startsWith('sk-')) { alert('Clé invalide.'); input.value = ''; return; }
+    localStorage.setItem('anthropic_api_key', apiKey);
+  }
+
   var status = document.getElementById('cond-pdf-status');
   if (status) { status.textContent = 'Lecture PDF (passe 1/2)...'; status.style.color = 'var(--text-sec)'; }
 
@@ -4126,6 +4161,7 @@ async function condImportPDFDiag(input) {
   var allProds = {};
   var allTotauxMois = new Array(12).fill(0);
   var lgpiTotaux = null;
+  var apiErrors = [];
 
   var promptBase = 'Pour chaque ligne produit extrais : nom (max 25 cars), ean (13 chiffres ou vide), stock (entier), moy (colonne Moy. — decimal 2 chiffres), pa_net (PA Cat Net — decimal), pv_ttc (PV TTC — decimal), mois (12 entiers dans cet ordre : jun26,mai26,avr26,mar26,fev26,jan26,dec25,nov25,oct25,sep25,aou25,juil25 — mets 0 si cellule vide). Ignore les lignes de sous-total. UNIQUEMENT JSON sans texte ni markdown. Format strict : {"produits":[{"nom":"...","ean":"...","stock":0,"moy":0.00,"pa_net":0.00,"pv_ttc":0.00,"mois":[0,0,0,0,0,0,0,0,0,0,0,0]}]}';
   var prompts = [
@@ -4140,7 +4176,7 @@ async function condImportPDFDiag(input) {
       if (status) status.textContent = 'Lecture PDF (passe ' + (pi+1) + '/4)...';
       var resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: {"Content-Type":"application/json","x-api-key":localStorage.getItem("anthropic_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        headers: {"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 8000,
@@ -4153,7 +4189,12 @@ async function condImportPDFDiag(input) {
           }]
         })
       });
-      var data = await resp.json();
+      if (resp.status === 401) { localStorage.removeItem('anthropic_api_key'); throw new Error('Clé API invalide ou expirée (401) — réessaie, une nouvelle saisie te sera proposée.'); }
+      var responseText = await resp.text();
+      if (!resp.ok) { apiErrors.push('Passe ' + (pi+1) + ' : erreur HTTP ' + resp.status); continue; }
+      var data;
+      try { data = JSON.parse(responseText); } catch(e) { apiErrors.push('Passe ' + (pi+1) + ' : réponse non-JSON'); continue; }
+      if (data.error) { apiErrors.push('Passe ' + (pi+1) + ' : ' + (data.error.message || JSON.stringify(data.error))); continue; }
       var raw = (data.content||[]).map(function(c){return c.text||'';}).join('').trim();
       var jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) { console.warn('Pass ' + (pi+1) + ': no JSON found'); continue; }
@@ -4190,7 +4231,9 @@ async function condImportPDFDiag(input) {
     }
 
     var prods = Object.values(allProds);
-    if (prods.length === 0) throw new Error('Aucun produit extrait');
+    if (prods.length === 0) {
+      throw new Error('Aucun produit extrait.' + (apiErrors.length ? ' Détail : ' + apiErrors.join(' | ') : ' Le PDF a été lu sans erreur API mais aucune ligne produit n\'a été reconnue — vérifie le format du fichier.'));
+    }
     // v3.86 : normaliser PA net — si > 500 c'est en centimes, diviser par 1000
     prods.forEach(function(p) {
       if (p.pa_net && p.pa_net > 500) p.pa_net = p.pa_net / 1000;
@@ -4206,6 +4249,23 @@ async function condImportPDFDiag(input) {
         if (!eansDansProds[ean]) {
           var cat = NUTRICO_CATALOGUE[ean];
           prods.push({ nom: cat.nom, ean: ean, moy: 0, pa_net: 0, pv_ttc: 0, mois: new Array(12).fill(0) });
+        }
+      });
+    }
+
+    // COALIA : le PA net / colisage / labo d'origine doivent rester ceux du TSRF (négocié), pas
+    // ceux du PDF LGPI (qui peut afficher un prix de compte différent, pas forcément à jour).
+    // Seuls moy / pv_ttc / mois / stock viennent du PDF — c'est ce dont la Commande a besoin.
+    var _isCoalia = (condLabos[condLaboActif].nom || '').toUpperCase() === 'COALIA';
+    if (_isCoalia) {
+      var _tsrfByEan = {};
+      (condLabos[condLaboActif].produits || []).forEach(function(p){ if (p.ean) _tsrfByEan[p.ean] = p; });
+      prods.forEach(function(p) {
+        var tsrf = p.ean ? _tsrfByEan[p.ean] : null;
+        if (tsrf) {
+          p.pa_net = tsrf.pa_net;
+          if (tsrf.colisage !== undefined) p.colisage = tsrf.colisage;
+          if (tsrf.famille !== undefined) p.famille = tsrf.famille;
         }
       });
     }
@@ -5812,7 +5872,7 @@ function decAfficherResume(labo) {
   html += '<tr>';
   html += '<td style="' + tdT + '"></td>';
   html += '<td style="' + tdT + ';text-align:left">TOTAL (' + nbRefs + ' réf.)</td>';
-  html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
+  if (!hasN1) html += '<td style="' + tdT + '">' + Math.round(totQte).toLocaleString('fr') + '</td>';
   if (hasN1) {
     var evolTot = (totQteN1Found && totQteN1 > 0) ? ((totQte - totQteN1) / totQteN1 * 100) : null;
     html += '<td style="' + tdT + '">' + (totQteN1Found ? Math.round(totQteN1).toLocaleString('fr') : '—') + '</td>';
@@ -5831,6 +5891,23 @@ function decAfficherResume(labo) {
   decAfficherCarte(labo);
   decAfficherOffresSpec(labo);
   decAfficherTheaAnalyse(labo);
+  decRenderStockTarget();
+}
+
+// Repere visuel + garde-fou : montre clairement a quel labo le prochain import "Stock reel LGPI"
+// va s'appliquer (celui actuellement affiche), et desactive le champ tant qu'aucun labo n'est affiche
+// pour eviter d'appliquer un stock au mauvais labo sans s'en rendre compte.
+function decRenderStockTarget() {
+  var el = document.getElementById('dec-stock-target');
+  var fileInput = document.getElementById('dec-file-stock');
+  var labo = decCurrentStats ? decCurrentStats.labo : null;
+  var pret = labo && decOspharmProds && decOspharmProds[labo];
+  if (el) {
+    el.innerHTML = pret
+      ? 'Stock LGPI pour : <strong style="color:var(--accent-text)">' + labo + '</strong>'
+      : '<span style="color:var(--warn)">⚠ Affiche d\'abord un labo (recherche ci-dessus ou Vue COALIA) avant d\'importer le stock.</span>';
+  }
+  if (fileInput) fileInput.disabled = !pret;
 }
 
 
@@ -5912,6 +5989,13 @@ function decNormaliserCond(c) {
   delete c.remise;
   return c;
 }
+// Match un mot-cle en tant que MOT ENTIER (limite de mot), pas une simple sous-chaine -
+// sinon le mot-cle "BIAFINE" matche aussi "CICABIAFINE" (sous-chaine presente), ce qui est faux.
+function motCleMatch(lib, motCle) {
+  if (!motCle) return false;
+  var echappe = motCle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  try { return new RegExp('\\b' + echappe + '\\b').test(lib); } catch(e) { return lib.indexOf(motCle) !== -1; }
+}
 function decAffecterMarches(labo, marches, prodsOverride, eanToMarche) {
   // Affecte chaque produit Ospharm a son marche :
   // 1) PRIORITE : marche officiel saisi dans le Catalogue (eanToMarche, par EAN), si le produit y est connu.
@@ -5941,7 +6025,7 @@ function decAffecterMarches(labo, marches, prodsOverride, eanToMarche) {
     if (idx === -1) {
       for (var j = 0; j < marches.length; j++) {
         var hit = false;
-        for (var k = 0; k < motsM[j].length; k++) { if (lib.indexOf(motsM[j][k]) !== -1) { hit = true; break; } }
+        for (var k = 0; k < motsM[j].length; k++) { if (motCleMatch(lib, motsM[j][k])) { hit = true; break; } }
         if (hit) { idx = j; break; }
       }
     }
@@ -6245,7 +6329,7 @@ function decRenderConditionsCommerciales(labo) {
         }
         if (found === -1) {
           for (var mj = 0; mj < marches.length; mj++) {
-            for (var k = 0; k < motsM[mj].length; k++) { if (lib.indexOf(motsM[mj][k]) !== -1) { found = mj; break; } }
+            for (var k = 0; k < motsM[mj].length; k++) { if (motCleMatch(lib, motsM[mj][k])) { found = mj; break; } }
             if (found >= 0) break;
           }
         }
@@ -8039,10 +8123,11 @@ function catChargeLabo() {
   catLaboActif = rawId ? String(rawId) : null;
   catAchatsNonMatches = [];
   catRenderAchatsNonMatches();
-  if (!catLaboActif) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
+  if (!catLaboActif) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); renderTsrfBadges(); return; }
   var labo = condLabos[catLaboActif];
-  if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); return; }
+  if (!labo) { catProduits = []; catRenderTable(); catRenderOfficielInfo(); renderTsrfBadges(); return; }
   catRenderOfficielInfo();
+  renderTsrfBadges();
   // Pas de chargement automatique GitHub (v3.85 - trop de 404) - utiliser le bouton ☁
   var src = labo.produits || [];
   // Merge with existing catalogue if any
@@ -8094,6 +8179,7 @@ async function catClassifierAuto(useLabo) {
   // Option 1: Use official labo catalogue if available
   if (useLabo) {
     catProduits.forEach(function(p) {
+      if (p.marche) return; // deja classe (a la main ou par un run precedent) - ne jamais ecraser une decision existante
       var key = p.ean || '';
       var entry = key ? NUTRICO_CATALOGUE[key] : null;
       if (!entry) {
@@ -8125,8 +8211,10 @@ async function catClassifierAuto(useLabo) {
     if (status) status.textContent = 'Catalogue labo : ' + nClass + '/' + catProduits.length + ' produits classes. Corrigez si besoin puis Sauvegarder.';
     return;
   }
-  // Option 2: local rule-based classification for all products
+  // Option 2: local rule-based classification - UNIQUEMENT pour les produits jamais encore classes
+  // (marche vide) ; ne touche jamais a une classification existante, manuelle ou automatique.
   catProduits.forEach(function(p) {
+    if (p.marche) return; // deja classe - protege le travail manuel (composeur, dropdown, Hors marche...)
     var res = catClassifierProduit(p.nom);
     p.categorie  = res.cat;
     p.sous_cat   = res.scat;
@@ -8135,7 +8223,7 @@ async function catClassifierAuto(useLabo) {
   });
 
   catRenderTable();
-  var nonClasses = catProduits.filter(function(p){ return p.categorie === 'Autre' || !p.marche || p.marche === ''; });
+  var nonClasses = catProduits.filter(function(p){ return !p.marche; }); // jamais classe du tout - seuls ceux-la passent par Claude
   if (status) status.textContent = 'Classification locale : ' + (catProduits.length - nonClasses.length) + ' classes, ' + nonClasses.length + ' à assigner via Claude.';
 
   // Claude API pour tous les produits sans marché (v3.90)
@@ -8344,6 +8432,171 @@ async function catEnregistrerAchats() {
 // Import d'un export LGPI "Etat des achats" (colonnes Produits / ... / Nb d'unites), sans EAN.
 // Matching par libelle normalise contre le Catalogue du labo actif ; les lignes ambigues ou
 // non reconnues sont listees pour assignation manuelle (cf. catRenderAchatsNonMatches).
+// Import generique d'un catalogue XLSX (n'importe quel labo, format de colonnes flexible :
+// LABO / CODE 13 / GAMME ou DESIGNATION ou LIBELLE / COLISAGE / PRIX TARIF ou PRIX NET / RENDU OFFICINE
+// ou PRIX NET RENDU / TVA). Contrairement a l'ancien import XLSX de Cond. commerciales, le prix
+// negocie (RENDU si present, sinon le prix trouve) est bien ecrit dans pa_net.
+function catTrouverColGenerique(headerUp, motsTous) {
+  for (var i = 0; i < headerUp.length; i++) {
+    if (motsTous.every(function(m){ return headerUp[i].indexOf(m) >= 0; })) return i;
+  }
+  return -1;
+}
+
+async function catImporterXLSX(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Choisis d\'abord un labo dans la liste ci-dessus.'); input.value = ''; return; }
+  if (!confirm('Ceci va remplacer le Catalogue du labo actif (' + (condLabos[catLaboActif].nom || catLaboActif) + ') par le fichier importe. Continuer ?')) { input.value = ''; return; }
+  var status = document.getElementById('cat-status');
+  if (status) { status.textContent = 'Lecture du fichier...'; status.style.color = 'var(--text-sec)'; }
+  try {
+    var data = await file.arrayBuffer();
+    var wb = XLSX.read(data, { type: 'array' });
+    // Choisir l'onglet le plus rempli (eviter les onglets vides type BExRepositorySheet)
+    var wsName = wb.SheetNames[0];
+    for (var si = 0; si < wb.SheetNames.length; si++) {
+      var r2 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[si]], { header: 1, defval: '' });
+      if (r2 && r2.length > 2) { wsName = wb.SheetNames[si]; break; }
+    }
+    var rows = XLSX.utils.sheet_to_json(wb.Sheets[wsName], { header: 1, defval: '' });
+
+    // Chercher la ligne d'en-tete dans les 20 premieres lignes
+    var headerIdx = -1, headerUp = [];
+    for (var ri = 0; ri < Math.min(rows.length, 20); ri++) {
+      var row = rows[ri];
+      if (!row) continue;
+      var rowUp = row.map(function(c){ return String(c||'').trim().toUpperCase(); });
+      var hasLabo  = rowUp.some(function(c){ return c === 'LABO'; });
+      var hasCode  = rowUp.some(function(c){ return c.indexOf('CODE 13') >= 0 || c === 'CODE13'; });
+      var hasGamme = rowUp.some(function(c){ return c.indexOf('GAMME') >= 0 || c.indexOf('DESIGNATION') >= 0 || c.indexOf('LIBELLE') >= 0; });
+      if (hasLabo || hasCode || hasGamme) { headerIdx = ri; headerUp = rowUp; break; }
+    }
+    if (headerIdx < 0) { if (status) { status.textContent = 'Header non trouve (attendu : colonne LABO, CODE 13 ou GAMME/DESIGNATION).'; status.style.color = 'var(--danger)'; } return; }
+
+    var idxLabo      = catTrouverColGenerique(headerUp, ['LABO']);
+    var idxEan       = catTrouverColGenerique(headerUp, ['CODE', '13']);
+    var idxColisage  = catTrouverColGenerique(headerUp, ['COLISAGE']);
+    var idxTva       = headerUp.findIndex(function(c){ return c === 'T.V.A' || c === 'TVA'; });
+    var idxNom       = headerUp.findIndex(function(c){ return c.indexOf('DESIGNATION') >= 0 || c.indexOf('LIBELLE') >= 0; });
+    if (idxNom < 0) idxNom = headerUp.findIndex(function(c){ return c.indexOf('GAMME') >= 0; });
+    var idxRendu     = catTrouverColGenerique(headerUp, ['PRIX', 'NET', 'RENDU']);
+    if (idxRendu < 0) idxRendu = headerUp.findIndex(function(c){ return c.indexOf('RENDU') >= 0; });
+    var idxTarif     = headerUp.findIndex(function(c){ return c.indexOf('PRIX TARIF') >= 0 || (c.indexOf('PRIX NET') >= 0 && c.indexOf('RENDU') < 0); });
+
+    if (idxEan < 0 && idxNom < 0) { if (status) { status.textContent = 'Ni colonne CODE 13 ni colonne designation/gamme trouvee.'; status.style.color = 'var(--danger)'; } return; }
+
+    var produits = [], eansVus = {};
+    for (var r = headerIdx + 1; r < rows.length; r++) {
+      var row2 = rows[r];
+      if (!row2 || row2.every(function(c){ return !c; })) continue;
+      var ean = idxEan >= 0 ? String(row2[idxEan] || '').trim().replace(/\D/g, '') : '';
+      if (ean && ean.length < 10) ean = '';
+      var nom = idxNom >= 0 ? String(row2[idxNom] || '').trim() : '';
+      var labo = idxLabo >= 0 ? String(row2[idxLabo] || '').trim() : '';
+      if (!nom && !ean) continue;
+      if (!nom) nom = labo + ' ' + ean;
+      if (ean && eansVus[ean]) continue;
+      // Prix negocie : RENDU si present, sinon le tarif trouve — jamais 0 par defaut comme l'ancien import
+      var prixRendu = idxRendu >= 0 ? (parseFloat(String(row2[idxRendu]).replace(',', '.')) || 0) : 0;
+      var prixTarif = idxTarif >= 0 ? (parseFloat(String(row2[idxTarif]).replace(',', '.')) || 0) : 0;
+      var paNet = prixRendu > 0 ? prixRendu : prixTarif;
+      var colisage = idxColisage >= 0 ? (parseInt(row2[idxColisage]) || 1) : 1;
+      var tvaRaw = idxTva >= 0 ? (parseFloat(String(row2[idxTva]).replace(',', '.').replace('%', '')) || 0) : 0;
+      var tva = tvaRaw > 0 && tvaRaw < 1 ? Math.round(tvaRaw * 1000) / 10 : tvaRaw; // 0.055 -> 5.5
+
+      produits.push({
+        ean: ean, nom: nom, famille: labo,
+        colisage: colisage, pa_net: paNet,
+        tva: tva || undefined,
+        marche: '', categorie: '', sous_cat: ''
+      });
+      if (ean) eansVus[ean] = true;
+    }
+    if (!produits.length) { if (status) { status.textContent = 'Aucune ligne produit valide trouvee.'; status.style.color = 'var(--danger)'; } return; }
+
+    condLabos[catLaboActif].produits = produits;
+    catChargeLabo();
+    condSauvegarder();
+    if (status) { status.textContent = '✓ Catalogue importe : ' + produits.length + ' references' + (idxRendu < 0 ? ' (aucune colonne prix net rendu trouvee — PA net = prix tarif)' : '') + '.'; status.style.color = 'var(--accent-text)'; }
+  } catch (e) {
+    if (status) { status.textContent = 'Erreur : ' + e.message; status.style.color = 'var(--danger)'; }
+  }
+  input.value = '';
+}
+
+// Import du TSRF COALIA (Tableau de Simulation de Remises et Frais) comme Catalogue d'un labo
+// "virtuel" nomme COALIA - une centrale d'achat couvre des dizaines de vrais laboratoires, donc
+// chaque ligne porte son propre LABO d'origine (affiche dans la colonne Gamme labo du Catalogue).
+function catTrouverColTSRF(header, motsTous) {
+  for (var i = 0; i < header.length; i++) {
+    var h = String(header[i] || '').toUpperCase();
+    if (motsTous.every(function(m){ return h.indexOf(m) >= 0; })) return i;
+  }
+  return -1;
+}
+
+async function catImporterTSRF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!catLaboActif || !condLabos[catLaboActif]) { alert('Cree/ouvre d\'abord le labo COALIA (Conditions commerciales > + Nouveau labo).'); input.value = ''; return; }
+  if (!confirm('Ceci va remplacer le Catalogue du labo actif (' + (condLabos[catLaboActif].nom || catLaboActif) + ') par le TSRF importe. Continuer ?')) { input.value = ''; return; }
+  var status = document.getElementById('cat-status');
+  if (status) { status.textContent = 'Lecture du TSRF...'; status.style.color = 'var(--text-sec)'; }
+  try {
+    var data = await file.arrayBuffer();
+    var wb = XLSX.read(data, { type: 'array' });
+    var sheetName = wb.SheetNames.find(function(n){ return n !== 'BExRepositorySheet' && n !== 'Module2'; }) || wb.SheetNames[wb.SheetNames.length - 1];
+    var ws = wb.Sheets[sheetName];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) { if (String(rows[i][0] || '').trim().toUpperCase() === 'LABO') { headerIdx = i; break; } }
+    if (headerIdx < 0) { if (status) { status.textContent = 'Format TSRF non reconnu (en-tete LABO introuvable).'; status.style.color = 'var(--danger)'; } return; }
+    var header = rows[headerIdx];
+    var idxLabo = catTrouverColTSRF(header, ['LABO']);
+    var idxEan = catTrouverColTSRF(header, ['CODE', '13']);
+    var idxNom = catTrouverColTSRF(header, ['GAMME']);
+    var idxColisage = catTrouverColTSRF(header, ['COLISAGE']);
+    var idxPrixRendu = catTrouverColTSRF(header, ['PRIX', 'NET', 'RENDU']);
+    if (idxEan < 0 || idxNom < 0) { if (status) { status.textContent = 'Colonnes CODE 13 / Gammes introuvables dans ce fichier.'; status.style.color = 'var(--danger)'; } return; }
+
+    var produits = [];
+    for (var r = headerIdx + 1; r < rows.length; r++) {
+      var row = rows[r];
+      var eanRaw = row[idxEan];
+      if (!eanRaw) continue;
+      var eanStr = String(typeof eanRaw === 'number' ? Math.round(eanRaw) : eanRaw).replace(/\D/g, '');
+      if (!eanStr) continue;
+      produits.push({
+        ean: eanStr,
+        nom: String(row[idxNom] || '').trim(),
+        famille: idxLabo >= 0 ? String(row[idxLabo] || '').trim() : '', // labo d'origine -> colonne "Gamme labo"
+        colisage: idxColisage >= 0 ? (parseFloat(row[idxColisage]) || 1) : 1,
+        pa_net: idxPrixRendu >= 0 ? (parseFloat(row[idxPrixRendu]) || 0) : 0,
+        marche: '', categorie: '', sous_cat: ''
+      });
+    }
+    if (!produits.length) { if (status) { status.textContent = 'Aucune ligne produit valide trouvee.'; status.style.color = 'var(--danger)'; } return; }
+
+    condLabos[catLaboActif].produits = produits;
+    catChargeLabo();
+    condSauvegarder();
+    var coaliaMaj = '';
+    var estCoalia = (condLabos[catLaboActif].nom || '').toUpperCase() === 'COALIA';
+    if (estCoalia && decOspharmProds) {
+      if (decConstruireCoaliaCore(true)) {
+        coaliaMaj = ' · Vue COALIA recalculée (' + decCoaliaInfo.nbRefs + ' réf. retrouvées dans les ventes).';
+        if (decCurrentStats && decCurrentStats.labo === 'COALIA') decAfficherResume('COALIA');
+      }
+    }
+    if (status) { status.textContent = '✓ TSRF importe : ' + produits.length + ' references.' + coaliaMaj; status.style.color = 'var(--accent-text)'; }
+    if (estCoalia) tsrfDemanderDate(); // le TSRF vient de changer -> demander sa nouvelle date de validite
+  } catch (e) {
+    if (status) { status.textContent = 'Erreur : ' + e.message; status.style.color = 'var(--danger)'; }
+  }
+  input.value = '';
+}
+
 async function catImporterAchats(input) {
   var file = input.files[0];
   if (!file) return;
@@ -9034,6 +9287,8 @@ var simInited = false;
 
 window.addEventListener('DOMContentLoaded', function() {
   setTimeout(function(){ showTab('workflow'); }, 100);
+  try { renderTsrfBadges(); } catch(e) {}
+  try { decRenderStockTarget(); } catch(e) {}
 });
 
 
@@ -9041,6 +9296,7 @@ window.addEventListener('DOMContentLoaded', function() {
 var decOspharmData = null;
 var decOspharmProds = null;
 var decOspharmProdsN1 = null;
+var decCoaliaInfo = null; // {nbRefs, nbTsrf} - dernier resultat de reconstruction COALIA
 
 function decFiltrerLabos(q) {
   var list = document.getElementById('dec-labo-list');
@@ -9099,9 +9355,13 @@ function decImportOspharm(input) {
         var h = String(header[i] || '').trim();
         if (h) cols[h] = i;
       }
+      // Si l'export contient deja Quantite n-1 (cas d'un export "Toutes les ventes" tous labos confondus),
+      // on alimente decOspharmProdsN1 dans la meme passe - plus besoin d'un 2e fichier separe.
+      var hasN1Col = cols.hasOwnProperty('Quantité n-1');
       // Lire les données
       var labos = {};
       var prods = {};
+      var prodsN1 = hasN1Col ? {} : null;
       for (var r = 1; r < rows.length; r++) {
         var row = rows[r];
         var labo = String(row[cols['Libellé laboratoire']] || '').trim();
@@ -9118,11 +9378,20 @@ function decImportOspharm(input) {
         labos[labo] += caht;
         if (!prods[labo]) prods[labo] = [];
         prods[labo].push({lib:lib, ean:ean, caht:caht, marge:marge, qte:qte, paht:paht, stock:stock});
+        if (hasN1Col) {
+          var qteN1 = parseFloat(String(row[cols['Quantité n-1']] || '0').replace(/[^\d.-]/g,'')) || 0;
+          if (!prodsN1[labo]) prodsN1[labo] = [];
+          prodsN1[labo].push({lib:lib, ean:ean, qte:qteN1});
+        }
       }
       decOspharmData = labos;
       decOspharmProds = prods;
+      if (hasN1Col) decOspharmProdsN1 = prodsN1;
+      var coaliaOk = decConstruireCoaliaCore(true);
+      if (coaliaOk && decCurrentStats && decCurrentStats.labo === 'COALIA') decAfficherResume('COALIA');
       var nb = Object.keys(labos).length;
-      status.textContent = '✅ ' + nb + ' labos chargés';
+      status.textContent = '✅ ' + nb + ' labos chargés' + (hasN1Col ? ' (comparaison N-1 incluse automatiquement)' : '')
+        + (coaliaOk ? ' · COALIA reconstruite automatiquement (' + decCoaliaInfo.nbRefs + ' réf.)' : '');
       status.style.color = 'var(--accent-text)';
       document.getElementById('dec-search-wrap').style.display = 'block';
     } catch(err) {
@@ -9131,6 +9400,130 @@ function decImportOspharm(input) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ===== Date de validite du TSRF COALIA — badge informatif (Catalogue + Decision RDV) =====
+// Purement visuel : un TSRF expire ne bloque rien, juste un repere pour savoir qu'il faut le renegocier/remplacer.
+function tsrfTrouverLaboId() {
+  return Object.keys(condLabos).find(function(k){ return condLabos[k] && (condLabos[k].nom||'').toUpperCase() === 'COALIA'; });
+}
+
+function tsrfParseDateFR(s) {
+  var m = String(s || '').trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (!m) return '';
+  var jj = ('0'+m[1]).slice(-2), mm = ('0'+m[2]).slice(-2), aaaa = m[3];
+  return aaaa + '-' + mm + '-' + jj;
+}
+
+function tsrfBadgeHTML() {
+  var coaliaLaboId = tsrfTrouverLaboId();
+  if (!coaliaLaboId) return '';
+  var dateStr = condLabos[coaliaLaboId].tsrfDateValidite || '';
+  if (!dateStr) {
+    return '<span style="font-size:11px;color:var(--text-ter)">📅 Date de validité TSRF non renseignée</span>'
+      + ' — <a href="#" onclick="tsrfDemanderDate();return false" style="font-size:11px;color:var(--accent-text)">en saisir une</a>';
+  }
+  var d = new Date(dateStr + 'T00:00:00');
+  var dTxt = d.toLocaleDateString('fr-FR');
+  var expire = d.getTime() < new Date(new Date().toDateString()).getTime();
+  if (expire) {
+    return '<span style="font-size:11px;font-weight:600;color:#fff;background:var(--danger);padding:2px 9px;border-radius:10px">⚠ TSRF expiré depuis le ' + dTxt + '</span>'
+      + ' <a href="#" onclick="tsrfDemanderDate();return false" style="font-size:11px;color:var(--accent-text);margin-left:4px">Mettre à jour</a>';
+  }
+  return '<span style="font-size:11px;color:var(--text-sec)">📅 TSRF valide jusqu\'au <b>' + dTxt + '</b></span>'
+    + ' <a href="#" onclick="tsrfDemanderDate();return false" style="font-size:11px;color:var(--accent-text);margin-left:4px">Modifier</a>';
+}
+
+function renderTsrfBadges() {
+  var html = tsrfBadgeHTML();
+  var decEl = document.getElementById('dec-tsrf-badge');
+  if (decEl) decEl.innerHTML = html;
+  var catEl = document.getElementById('cat-tsrf-info');
+  if (catEl) {
+    var coaliaLaboId = tsrfTrouverLaboId();
+    catEl.innerHTML = (catLaboActif && coaliaLaboId && catLaboActif === coaliaLaboId) ? html : '';
+  }
+}
+
+function tsrfDemanderDate() {
+  var coaliaLaboId = tsrfTrouverLaboId();
+  if (!coaliaLaboId) { alert('Crée d\'abord le labo "COALIA" (Conditions commerciales > + Nouveau labo).'); return; }
+  var actuel = condLabos[coaliaLaboId].tsrfDateValidite || '';
+  var defaut = actuel ? new Date(actuel + 'T00:00:00').toLocaleDateString('fr-FR') : '';
+  var saisie = prompt('Date de fin de validité du TSRF COALIA (JJ/MM/AAAA) :', defaut);
+  if (saisie === null) return; // annule
+  if (saisie.trim() === '') { condLabos[coaliaLaboId].tsrfDateValidite = ''; }
+  else {
+    var iso = tsrfParseDateFR(saisie);
+    if (!iso) { alert('Format de date non reconnu. Utilise JJ/MM/AAAA, par exemple 30/09/2026.'); return; }
+    condLabos[coaliaLaboId].tsrfDateValidite = iso;
+  }
+  condSauvegarder();
+  renderTsrfBadges();
+}
+
+
+// COALIA n'est pas un labo Ospharm en soi : ses references sont reparties sur des dizaines de
+// vrais laboratoires. On construit donc un "labo virtuel" decOspharmProds['COALIA'] en piochant,
+// a travers TOUS les labos presents dans l'export importe, uniquement les EAN qui figurent dans
+// le TSRF COALIA (catalogue du labo nomme "COALIA" dans Conditions commerciales / Catalogue).
+// Construit/reconstruit le labo virtuel COALIA a partir de decOspharmProds + du TSRF deja en memoire.
+// silent=true (reconstruction auto a chaque import) : pas d'alerte si les prerequis manquent, echoue en silence.
+// Renvoie true si la reconstruction a reussi, false sinon. Resultat dispo dans decCoaliaInfo.
+function decConstruireCoaliaCore(silent) {
+  if (!decOspharmProds) {
+    if (!silent) alert('Importe d\'abord un export Ospharm large (plusieurs labos) ci-dessus.');
+    return false;
+  }
+  var coaliaLaboId = Object.keys(condLabos).find(function(k){ return condLabos[k] && (condLabos[k].nom||'').toUpperCase() === 'COALIA'; });
+  if (!coaliaLaboId || !condLabos[coaliaLaboId].produits || !condLabos[coaliaLaboId].produits.length) {
+    if (!silent) alert('Cree d\'abord le labo "COALIA" (Conditions commerciales > + Nouveau labo) et importe son TSRF (Catalogue > Importer TSRF COALIA).');
+    return false;
+  }
+  var tsrfEans = {};
+  condLabos[coaliaLaboId].produits.forEach(function(p) { if (p.ean) tsrfEans[String(p.ean).replace(/\D/g,'')] = true; });
+
+  var agg = [], totalCa = 0;
+  Object.keys(decOspharmProds).forEach(function(labo) {
+    if (labo === 'COALIA') return;
+    decOspharmProds[labo].forEach(function(p) {
+      var cleanEan = p.ean ? String(p.ean).replace(/\D/g,'') : '';
+      if (cleanEan && tsrfEans[cleanEan]) { agg.push(p); totalCa += p.caht; }
+    });
+  });
+  decOspharmProds['COALIA'] = agg;
+
+  if (decOspharmProdsN1) {
+    var aggN1 = [];
+    Object.keys(decOspharmProdsN1).forEach(function(labo) {
+      if (labo === 'COALIA') return;
+      decOspharmProdsN1[labo].forEach(function(p) {
+        var cleanEan = p.ean ? String(p.ean).replace(/\D/g,'') : '';
+        if (cleanEan && tsrfEans[cleanEan]) aggN1.push(p);
+      });
+    });
+    decOspharmProdsN1['COALIA'] = aggN1;
+  }
+
+  if (!decOspharmData) decOspharmData = {};
+  decOspharmData['COALIA'] = totalCa;
+  decCoaliaInfo = { nbRefs: agg.length, nbTsrf: Object.keys(tsrfEans).length };
+  return true;
+}
+
+// Bouton manuel "Construire la vue COALIA" : construit (avec messages d'erreur explicites si les
+// prerequis manquent) puis bascule l'affichage sur COALIA. Reste utile comme raccourci direct vers
+// la vue, la reconstruction des donnees etant desormais automatique a chaque import.
+function decConstruireCoalia() {
+  if (!decConstruireCoaliaCore(false)) return;
+  var status = document.getElementById('dec-status');
+  if (status) { status.textContent = '✅ COALIA : ' + decCoaliaInfo.nbRefs + ' références retrouvées dans les ventes sur ' + decCoaliaInfo.nbTsrf + ' du TSRF.'; status.style.color = 'var(--accent-text)'; }
+  document.getElementById('dec-search-wrap').style.display = 'block';
+  var inputEl = document.getElementById('dec-labo-input');
+  if (inputEl) inputEl.value = 'COALIA';
+  var choisiEl = document.getElementById('dec-labo-choisi');
+  if (choisiEl) choisiEl.textContent = '✓ COALIA';
+  decAfficherResume('COALIA');
 }
 
 function decImportOspharmN1(input) {
@@ -9164,6 +9557,7 @@ function decImportOspharmN1(input) {
         prods[labo].push({lib:lib, ean:ean, qte:qte});
       }
       decOspharmProdsN1 = prods;
+      decConstruireCoaliaCore(true);
       var nb = Object.keys(prods).length;
       status.textContent = '✅ ' + nb + ' labos chargés (N-1)';
       status.style.color = 'var(--accent-text)';

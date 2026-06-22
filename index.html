@@ -117,7 +117,10 @@
     <button type="button" class="tab-btn active" id="tab-workflow" onclick="showTab('workflow')">Workflow</button>
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Conditions commerciales</button>
     <button type="button" class="tab-btn" id="tab-decision" onclick="showTab('decision')">⚡ Décision RDV</button>
+    <button type="button" class="tab-btn" id="tab-meq" onclick="showTab('meq')">🎯 Marchés équivalents</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
+    <button type="button" class="tab-btn" id="tab-simlppr" onclick="showTab('simlppr')">💊 Simulation LPPR</button>
+    <button type="button" class="tab-btn" id="tab-cycle" onclick="showTab('cycle')">Cycle de vie</button>
     <button type="button" class="tab-btn" id="tab-cmd" onclick="showTab('cmd')">Commande</button>
     <button type="button" class="tab-btn" id="tab-sim" onclick="showTab('sim')">Simulation</button>
     <button type="button" class="tab-btn" id="tab-prixnet" onclick="showTab('prixnet')">Prix nets</button>
@@ -352,6 +355,18 @@
       <div class="formula-box" id="p-formula"></div>
       <p style="font-size:11px;color:var(--text-ter);margin-top:8px;font-family:'DM Mono',monospace">TVA collectée : <b id="p-tva-v" style="color:var(--text)">—</b></p>
     </div>
+  </div>
+
+  <!-- ===== MARCHES EQUIVALENTS ===== -->
+  <div id="panel-meq" style="display:none">
+    <div class="card">
+      <p class="card-title">🎯 Marchés équivalents — pilotage par marge</p>
+      <p style="font-size:11px;color:var(--text-ter);margin:0 0 10px 0">Compare les labos qui couvrent un même besoin produit. Choix manuel — aucun arbitrage automatique. Données de test en attendant l'import depuis MAP_PRODUIT_MARCHE.</p>
+      <div class="row"><label>Sous-marché</label>
+        <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)"></select>
+      </div>
+    </div>
+    <div id="meq-content"></div>
   </div>
 
   <!-- ===== LEXIQUE ===== -->
@@ -1552,6 +1567,8 @@ git push origin main</pre>
           </select>
           <button type="button" onclick="catClassifierAuto(false)" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Auto-classifier</button>
           <button type="button" onclick="catClassifierAuto(true)" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">Catalogue labo</button>
+          <button type="button" onclick="condDiagnosticLabos()" style="font-size:11px;padding:5px 10px;border:1px dashed var(--border-med);border-radius:var(--radius-sm);background:#fff;color:var(--text-sec);cursor:pointer;" title="Liste tous les labos enregistrés avec ID, nombre de produits et de produits classés — pour détecter un doublon.">🔍 Diagnostic labos</button>
+          <button type="button" onclick="catReporterMarcheVersGammeLabo()" style="font-size:12px;padding:5px 12px;background:#f59e0b;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;" title="Recopie le Marché (colonne Marché, sélectionné via le menu déroulant) dans la colonne Gamme labo, produit par produit.">&#128203; Reporter Marché → Gamme labo</button>
           <button type="button" onclick="catSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
           <button type="button" onclick="catSauvegarder();if(catLaboActif)condSauvegarderProduitsGitHub(catLaboActif).then(function(){var s=document.getElementById('cat-status');if(s){s.textContent='☁ Produits sauvegardés sur GitHub';setTimeout(function(){s.textContent=''},3000);}});" style="font-size:12px;padding:5px 12px;background:#2563eb;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">☁ GitHub</button>
           
@@ -1586,6 +1603,13 @@ git push origin main</pre>
       <div id="cat-extract-status" style="display:none;font-size:12px;padding:10px 12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);margin-bottom:10px"></div>
       <div id="cat-extract-preview" style="display:none;margin-bottom:12px"></div>
 
+      <div class="card" style="background:#f5f0ff;border:1px solid #7c3aed;margin-bottom:14px">
+        <p class="card-title" style="margin-bottom:6px">📊 Comparatif LPPR multi-labos</p>
+        <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px 0">Compare les produits remboursés (LPPR &gt; 0) de tous tes labos pour une classe donnée (ex: Ceintures, Colliers, Genou...) — basé sur la colonne Gamme labo, donc classe d'abord les catalogues concernés.</p>
+        <select id="cat-comparatif-classe" onchange="catAfficherComparatifLPPR(this.value)" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);max-width:360px"></select>
+        <div id="cat-comparatif-resultat" style="margin-top:10px"></div>
+      </div>
+
       <div style="overflow-x:auto;width:100%">
         <table id="cat-tbl" style="border-collapse:collapse;font-size:12px;table-layout:auto">
           <thead><tr style="background:var(--text);color:#fff">
@@ -1600,11 +1624,127 @@ git push origin main</pre>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#1a3a50;min-width:60px">Palier</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:55px">Colis.</th>
             <th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#2a2a50;min-width:55px">TVA%</th>
+            <th id="cat-pacat-header" style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#0a3d5c;color:#fff;min-width:70px">PA Cat. HT</th>
             <th id="cat-lppr-header" style="padding:6px 8px;text-align:center;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:#3a1a40;min-width:58px">LPPR TTC</th>
           </tr></thead>
           <tbody id="cat-tbody"></tbody>
         </table>
       </div>
+    </div>
+
+  </div>
+
+  <!-- ===== SIMULATION LPPR ===== -->
+  <div id="panel-simlppr" style="display:none">
+
+    <div class="card" style="background:#f5f0ff;border:1px solid #7c3aed">
+      <p class="card-title">💊 Simulation prix de vente — produits remboursés (LPPR)</p>
+      <p style="font-size:12px;color:var(--text-sec);margin:0 0 12px 0">
+        Périmètre : Thuasne (tous produits LPPR), Podowell (CHUT + CHUP), Gibaud et Enovis (tous produits LPPR).
+        Le PA net intègre la remise marché négociée actuellement active pour chaque produit. Fixe un taux de marque
+        ou un coefficient pour simuler ton prix de vente et voir la marge dégagée et l'éventuel dépassement à la
+        charge du client par rapport au tarif LPPR.
+      </p>
+      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-sec);display:block;margin-bottom:3px">Mode de calcul</label>
+          <select id="simlppr-mode" onchange="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm)">
+            <option value="marque">Taux de marque (% du PV)</option>
+            <option value="coef">Coefficient multiplicateur (× PA net)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-sec);display:block;margin-bottom:3px" id="simlppr-val-label">Taux de marque (%)</label>
+          <input type="number" id="simlppr-valeur" value="30" step="0.5" min="0" oninput="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);width:100px">
+        </div>
+        <button type="button" onclick="simLPPRRender()" style="font-size:12px;padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">↻ Actualiser</button>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-sec);display:block;margin-bottom:3px">🎯 Filtrer par classe</label>
+          <select id="simlppr-filtre-classe" onchange="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);max-width:280px"></select>
+        </div>
+      </div>
+      <div id="simlppr-resume" style="font-size:12px;color:var(--text-sec);margin-bottom:10px"></div>
+      <div id="simlppr-resultat" style="overflow-x:auto"></div>
+    </div>
+
+  </div>
+
+  <!-- ===== CYCLE DE VIE PRODUITS ===== -->
+  <div id="panel-cycle" style="display:none">
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>Cycle de vie produits — Mapping EAN, ajouts, arrêts</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="cycle-labo-sel" onchange="cycleChargeLabo()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+            <option value="">-- Choisir un labo --</option>
+          </select>
+          <button type="button" onclick="cycleSauvegarder()" style="font-size:12px;padding:5px 12px;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Sauvegarder</button>
+        </div>
+      </p>
+      <p style="font-size:11px;color:var(--text-ter);margin-bottom:12px">
+        Quand un produit change de code-barres (ex: migration EAN grand public &#8594; EAN officine, ou nouveau packaging), enregistrez ici la correspondance ancien &#8594; nouveau EAN.
+        L'application pourra ensuite rattacher l'historique de ventes de l'ancien EAN au nouveau produit. Ce tableau n'affecte pas le Catalogue principal.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Correspondances EAN (ancien &#8594; nouveau)</span>
+        <button type="button" onclick="cycleAjouterMapping()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ Ajouter une correspondance</button>
+      </p>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--text);color:#fff">
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;min-width:160px">Nom produit</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:120px">Ancien EAN</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:120px">Nouvel EAN</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:90px">Statut</th>
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;min-width:140px">Note</th>
+            <th style="padding:5px 6px;min-width:30px"></th>
+          </tr></thead>
+          <tbody id="cycle-mapping-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Produits arrêtés (ne se font plus)</span>
+        <button type="button" onclick="cycleAjouterArret()" style="font-size:12px;padding:5px 12px;background:var(--danger);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ Marquer un arrêt</button>
+      </p>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--text);color:#fff">
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;min-width:160px">Nom produit</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:120px">EAN</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:110px">Date d'arrêt</th>
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;min-width:140px">Note</th>
+            <th style="padding:5px 6px;min-width:30px"></th>
+          </tr></thead>
+          <tbody id="cycle-arret-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Nouveaux produits (à intégrer au catalogue)</span>
+        <button type="button" onclick="cycleAjouterNouveau()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ Ajouter un nouveau produit</button>
+      </p>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--text);color:#fff">
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;min-width:160px">Nom produit</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:120px">EAN</th>
+            <th style="padding:5px 6px;text-align:center;font-size:9px;font-weight:600;text-transform:uppercase;min-width:110px">Date d'ajout</th>
+            <th style="padding:5px 6px;text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;min-width:140px">Note</th>
+            <th style="padding:5px 6px;min-width:30px"></th>
+          </tr></thead>
+          <tbody id="cycle-nouveau-tbody"></tbody>
+        </table>
+      </div>
+      <p style="font-size:11px;color:var(--text-ter);margin-top:10px">Une fois validé, ajoutez ce produit au catalogue via l'onglet Catalogue (import XLSX ou saisie manuelle).</p>
     </div>
 
   </div>
@@ -1668,7 +1808,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v451.js"></script>
+<script src="/app-v508.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

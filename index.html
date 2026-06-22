@@ -397,7 +397,11 @@
     <div class="card">
       <p class="card-title">🗺 MAP Produits — Gestion des rattachements EAN → Marché / Sous-marché</p>
       <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Recherchez un EAN ou un libellé pour voir son rattachement. Modifiez, ajoutez ou supprimez des mappings. Chaque modification recalcule les marchés équivalents en live.</p>
-      <input id="map-search" type="text" placeholder="🔍  Rechercher EAN, libellé, labo ou sous-marché…" oninput="mapRechercher()" style="width:100%;max-width:500px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);box-sizing:border-box;margin-bottom:4px">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <input id="map-search" type="text" placeholder="🔍  EAN, libellé, labo, sous-marché…" oninput="mapRechercher()" style="flex:1;min-width:260px;max-width:480px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);box-sizing:border-box">
+        <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer;white-space:nowrap">📥 Importer MAP_PRODUIT_MARCHE</button>
+        <span id="map-count" style="font-size:11px;color:var(--text-ter)"></span>
+      </div>
     </div>
     <div id="map-content" style="margin-top:8px"></div>
   </div>

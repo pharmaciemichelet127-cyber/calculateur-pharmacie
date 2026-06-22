@@ -11993,8 +11993,15 @@ function mapRender() {
   var res = mapGetFiltered(q);
   var total = Object.keys(condMapProduitMarche).length;
 
+  var cntEl = document.getElementById('map-count');
+  if (cntEl) cntEl.textContent = total ? total + ' EANs mappés' : '';
+
   if (!total) {
-    div.innerHTML = '<div class="card"><p style="color:var(--text-ter);font-size:12px">Aucune donnée. Importez MAP_PRODUIT_MARCHE via l\'onglet 🎯 Marchés équivalents.</p></div>';
+    div.innerHTML = '<div class="card" style="text-align:center;padding:24px">' +
+      '<p style="font-size:14px;margin-bottom:8px">📂 Aucun mapping chargé</p>' +
+      '<p style="color:var(--text-sec);font-size:12px;margin-bottom:16px">Cliquez sur <b>📥 Importer MAP_PRODUIT_MARCHE</b> ci-dessus.</p>' +
+      '<p style="color:var(--text-ter);font-size:11px">Un seul import suffit — les données persistent entre les sessions.</p>' +
+      '</div>';
     return;
   }
 

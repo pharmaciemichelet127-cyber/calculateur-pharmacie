@@ -11118,22 +11118,44 @@ var meqSelections = (function () {
 // { id, libelle, segment, produits:[{ean, labo_nom, designation, qtes_12m, colisage, statut_ref}] }
 var meqDataTest = [
   {
-    id: 'SM_PAST_TEST',
-    libelle: 'Maux de gorge — pastilles (exemple)',
+    id: 'PROB_1',
+    libelle: 'Probiotiques (intimes & digestifs)',
     segment: 'SOCLE',
     produits: [
-      { ean: '3400939035765', labo_nom: 'COOPER', designation: 'Pastilles maux de gorge — gamme A', qtes_12m: 217, colisage: 6, statut_ref: 'référencé' },
-      { ean: '3400933226619', labo_nom: 'URGO', designation: 'Pastilles maux de gorge — gamme B', qtes_12m: 84, colisage: 12, statut_ref: 'référencé' },
-      { ean: '3400934348686', labo_nom: 'NUTRI CO', designation: 'Pastilles maux de gorge — gamme C', qtes_12m: 0, colisage: 1, statut_ref: 'non référencé' }
+      { ean: '', labo_nom: 'NUTRI CO',                    designation: 'Probiotiques NUTRI CO',              qtes_12m: 17, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'PILEJE',                      designation: 'Probiotiques PILEJE',                qtes_12m: 13, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'BIOCODEX',                    designation: 'Probiotiques BIOCODEX',              qtes_12m: 15, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'NUTERGIA',                    designation: 'Probiotiques NUTERGIA',              qtes_12m: 10, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'PROCTER GAMBLE HEALTH FRANCE',designation: 'Probiotiques PROCTER',               qtes_12m: 5,  colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'IMMUBIO',                     designation: 'Probiotiques IMMUBIO',               qtes_12m: 7,  colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'BAYER SANTE FAMILIALE',       designation: 'Probiotiques BAYER',                 qtes_12m: 7,  colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'BESINS INTERNATIONAL',        designation: 'Probiotiques BESINS',                qtes_12m: 3,  colisage: 1, statut_ref: 'référencé' }
     ]
   },
   {
-    id: 'COMPRESSION_TEST',
-    libelle: 'Compression veineuse (exemple)',
-    segment: 'CŒUR',
+    id: 'TM_A',
+    libelle: 'Toux mixte adulte',
+    segment: 'SOCLE',
     produits: [
-      { ean: '0000000000001', labo_nom: 'THUASNE', designation: 'Bas de compression classe 2', qtes_12m: 156, colisage: 1, statut_ref: 'référencé' },
-      { ean: '0000000000002', labo_nom: 'PODOWELL', designation: 'Bas de compression classe 2', qtes_12m: 39, colisage: 1, statut_ref: 'référencé' }
+      { ean: '', labo_nom: 'PERRIGO - OMEGA PHARMA',      designation: 'Toux mixte adulte PERRIGO',          qtes_12m: 82, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'ARKOMEDIKA',                  designation: 'Toux mixte adulte ARKOMEDIKA',       qtes_12m: 77, colisage: 1, statut_ref: 'référencé' },
+      { ean: '3577056028236', labo_nom: 'PIERRE FABRE MEDICAMENT', designation: 'LIBERILL SIROP TOUX MIXTE 120ML', qtes_12m: 30, colisage: 12, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'PROCTER GAMBLE HEALTH FRANCE',designation: 'Toux mixte adulte PROCTER',          qtes_12m: 23, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'SANOFI AVENTIS FRANCE - OPELLA', designation: 'Toux mixte adulte OPELLA',        qtes_12m: 16, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'NATURACTIVE PIERRE FABRE',    designation: 'Toux mixte adulte NATURACTIVE',      qtes_12m: 5,  colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'ABOCA',                       designation: 'Toux mixte adulte ABOCA',            qtes_12m: 6,  colisage: 1, statut_ref: 'référencé' }
+    ]
+  },
+  {
+    id: 'SM_PAST',
+    libelle: 'Pastilles maux de gorge',
+    segment: 'SOCLE',
+    produits: [
+      { ean: '', labo_nom: 'RECKITT BENCKISER HEALTHCARE', designation: 'Pastilles gorge RECKITT',           qtes_12m: 389, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'SANOFI AVENTIS FRANCE - OPELLA', designation: 'Pastilles gorge OPELLA',          qtes_12m: 217, colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'BOUCHARA RECORDATI SAS',      designation: 'Pastilles gorge BOUCHARA',           qtes_12m: 84,  colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'PIERRE FABRE MEDICAMENT',     designation: 'Pastilles gorge PIERRE FABRE',       qtes_12m: 20,  colisage: 1, statut_ref: 'référencé' },
+      { ean: '', labo_nom: 'COOPER',                      designation: 'Pastilles gorge COOPER',             qtes_12m: 14,  colisage: 1, statut_ref: 'référencé' }
     ]
   }
 ];

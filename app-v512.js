@@ -11510,6 +11510,7 @@ function meqFiltrerSousMarches(marcheId) {
   selS.innerHTML = data.map(function(sm) {
     return '<option value="' + sm.id + '">' + sm.libelle + ' (' + sm.totalN + ' u.)</option>';
   }).join('');
+  if (selS.options.length > 0) selS.selectedIndex = 0;
   meqRender();
 }
 
@@ -11547,7 +11548,7 @@ function meqRender() {
   var content = document.getElementById('meq-content');
   if (!content) return;
   var sel = document.getElementById('meq-select');
-  if (!sel || !sel.value) { meqInit(); sel = document.getElementById('meq-select'); }
+  if (!sel || !sel.value) { content.innerHTML = ''; return; }
   var data = meqGetData();
   var sm = data.find(function (x) { return x.id === sel.value; }) || data[0];
   if (!sm) { content.innerHTML = ''; return; }

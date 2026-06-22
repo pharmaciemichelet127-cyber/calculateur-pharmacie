@@ -11879,7 +11879,7 @@ function meqRenderVueLabo() {
           '</tr>';
       }).join('');
 
-      return '<tr style="cursor:pointer;border-top:1px solid var(--border)" onclick="meqToggleTop3('' + mid + '', this)">' +
+      return '<tr style="cursor:pointer;border-top:1px solid var(--border)" data-mid="' + mid + '" onclick="meqToggleTop3(this.dataset.mid, this)">' +
         '<td style="padding:8px;font-size:11px">▶</td>' +
         '<td style="padding:8px;font-weight:600">' + marche + '</td>' +
         '<td style="padding:8px;font-size:11px;color:var(--text-sec)">' + sms.length + ' sous-marché' + (sms.length>1?'s':'') + ' · ' + badgesRes + '</td>' +

@@ -398,8 +398,14 @@
       <p class="card-title">🗺 MAP Produits — Gestion des rattachements EAN → Marché / Sous-marché</p>
       <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Recherchez un EAN ou un libellé pour voir son rattachement. Modifiez, ajoutez ou supprimez des mappings. Chaque modification recalcule les marchés équivalents en live.</p>
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-        <input id="map-search" type="text" placeholder="🔍  EAN, libellé, labo, sous-marché…" oninput="mapRechercher()" style="flex:1;min-width:260px;max-width:480px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);box-sizing:border-box">
-        <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer;white-space:nowrap">📥 Importer MAP_PRODUIT_MARCHE</button>
+        <input id="map-search" type="text" placeholder="🔍  EAN, libellé, labo…" oninput="mapRechercher()" style="flex:1;min-width:220px;max-width:360px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);box-sizing:border-box">
+        <select id="map-filter-marche" onchange="mapChangerMarche()" style="font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:180px">
+          <option value="">— Tous les marchés —</option>
+        </select>
+        <select id="map-filter-sm" onchange="mapChangerSM()" style="font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px">
+          <option value="">— Tous les sous-marchés —</option>
+        </select>
+        <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer;white-space:nowrap">📥 Importer MAP</button>
         <span id="map-count" style="font-size:11px;color:var(--text-ter)"></span>
       </div>
     </div>
@@ -1845,7 +1851,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v518.js"></script>
+<script src="/app-v519.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

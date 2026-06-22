@@ -367,12 +367,24 @@
         <button type="button" onclick="meqImporterVentesLGPI()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 2. Ventes LGPI N</button>
         <button type="button" onclick="meqImporterVentesLGPIN1()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">📥 3. Ventes LGPI N-1 <span style="font-size:10px">(optionnel)</span></button>
       </div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <!-- Mode toggle -->
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <button type="button" id="meq-mode-sm" onclick="meqSetMode('sm')" style="font-size:11px;padding:5px 14px;border-radius:var(--radius-sm);border:2px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-weight:600">🗂 Par sous-marché</button>
+        <button type="button" id="meq-mode-labo" onclick="meqSetMode('labo')" style="font-size:11px;padding:5px 14px;border-radius:var(--radius-sm);border:2px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">🏭 Par labo</button>
+      </div>
+      <!-- Filtres sous-marché -->
+      <div id="meq-filters-sm" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
         <div class="row" style="margin:0"><label style="min-width:60px">Marché</label>
           <select id="meq-select-marche" onchange="meqChangerMarche()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:180px"></select>
         </div>
         <div class="row" style="margin:0"><label style="min-width:90px">Sous-marché</label>
           <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px"></select>
+        </div>
+      </div>
+      <!-- Filtre labo -->
+      <div id="meq-filters-labo" style="display:none;align-items:center;gap:12px">
+        <div class="row" style="margin:0"><label style="min-width:40px">Labo</label>
+          <select id="meq-select-labo" onchange="meqRenderVueLabo()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px"></select>
         </div>
       </div>
     </div>
@@ -1818,7 +1830,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v514.js"></script>
+<script src="/app-v515.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

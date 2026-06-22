@@ -11175,17 +11175,25 @@ function meqImporterMapProduitMarche() {
     reader.onload = function (ev) {
       try {
         var wb = XLSX.read(ev.target.result, { type: 'array' });
-        // Chercher feuille avec EAN + SOUS_MARCHE
+        // Chercher feuille : nom exact en priorité, sinon scan par en-têtes (1ère ligne seulement)
+        var NOMS_PRIORITAIRES = ['MAP_PRODUIT_MARCHE', 'MAP PRODUIT MARCHE', 'MAPPING_PRODUIT_SOUS_MARCHE', 'MAP_ALL'];
         var sheetName = null;
-        wb.SheetNames.forEach(function (n) {
-          if (sheetName) return;
-          var ws = wb.Sheets[n];
-          var r1 = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', range: 0 });
-          if (!r1.length) return;
-          var hdrs = r1[0].map(function(h){ return String(h).toUpperCase().trim(); });
-          if (hdrs.indexOf('EAN') >= 0 && hdrs.indexOf('SOUS_MARCHE') >= 0) sheetName = n;
-        });
-        if (!sheetName) { alert('Aucune feuille avec colonnes EAN et SOUS_MARCHE trouvée.'); return; }
+        NOMS_PRIORITAIRES.forEach(function(n) { if (!sheetName && wb.SheetNames.indexOf(n) >= 0) sheetName = n; });
+        if (!sheetName) {
+          wb.SheetNames.forEach(function (n) {
+            if (sheetName) return;
+            var ws = wb.Sheets[n];
+            if (!ws || !ws['!ref']) return;
+            // Lire seulement la 1ère ligne (rapide)
+            var rng = XLSX.utils.decode_range(ws['!ref']);
+            rng.e.r = 0;
+            var r1 = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', range: rng });
+            if (!r1.length) return;
+            var hdrs = r1[0].map(function(h){ return String(h).toUpperCase().trim(); });
+            if (hdrs.indexOf('EAN') >= 0 && hdrs.indexOf('SOUS_MARCHE') >= 0) sheetName = n;
+          });
+        }
+        if (!sheetName) { alert('Feuille MAP_PRODUIT_MARCHE introuvable.\nFeuilles disponibles : ' + wb.SheetNames.slice(0,10).join(', ') + '...'); return; }
 
         var ws = wb.Sheets[sheetName];
         var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });

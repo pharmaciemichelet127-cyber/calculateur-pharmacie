@@ -419,7 +419,7 @@
       <p class="card-title">🎯 Engagements marchés — PDM cible, plafonds et suivi par labo</p>
       <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Paramétrez labo par labo : statut de chaque marché, PDM cible, engagement volume ou PDM. Le plafond disponible est calculé automatiquement depuis vos ventes N-1 moins le stock actuel.</p>
       <div class="row" style="margin:0"><label>Labo</label>
-        <select id="eng-select-labo" onchange="engLaboSelectionne=this.value;engRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px">
+        <select id="eng-select-labo" onchange="engLaboSelectionne=this.value;engRenderMC(this.value)" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px">
           <option value="">— Choisir un labo —</option>
         </select>
       </div>
@@ -1866,7 +1866,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v524.js"></script>
+<script src="/app-v525.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

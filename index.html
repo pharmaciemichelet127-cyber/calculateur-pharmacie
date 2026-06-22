@@ -361,12 +361,9 @@
   <div id="panel-meq" style="display:none">
     <div class="card">
       <p class="card-title">🎯 Marchés équivalents — pilotage par marge</p>
-      <p style="font-size:11px;color:var(--text-ter);margin:0 0 10px 0">Compare les labos qui couvrent un même besoin produit. Choix manuel — aucun arbitrage automatique.</p>
-      <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap">
-        <div class="row" style="margin:0"><label>Sous-marché</label>
-          <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)"></select>
-        </div>
-        <button type="button" onclick="meqImporterXLSX()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 Importer MAP_PRODUIT_MARCHE</button>
+      <p style="font-size:11px;color:var(--text-ter);margin:0 0 10px 0">Compare les labos qui couvrent un même besoin produit. Choix manuel — aucun arbitrage automatique. Données de test en attendant l'import depuis MAP_PRODUIT_MARCHE.</p>
+      <div class="row"><label>Sous-marché</label>
+        <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)"></select>
       </div>
     </div>
     <div id="meq-content"></div>
@@ -1811,7 +1808,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v509.js"></script>
+<script src="/app-v508.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

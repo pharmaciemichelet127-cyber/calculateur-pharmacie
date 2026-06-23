@@ -118,6 +118,8 @@
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Conditions commerciales</button>
     <button type="button" class="tab-btn" id="tab-decision" onclick="showTab('decision')">⚡ Décision RDV</button>
     <button type="button" class="tab-btn" id="tab-meq" onclick="showTab('meq')">🎯 Marchés équivalents</button>
+    <button type="button" class="tab-btn" id="tab-map" onclick="showTab('map')">🗺 MAP Produits</button>
+    <button type="button" class="tab-btn" id="tab-eng" onclick="showTab('eng')">🎯 Engagements</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-simlppr" onclick="showTab('simlppr')">💊 Simulation LPPR</button>
     <button type="button" class="tab-btn" id="tab-cycle" onclick="showTab('cycle')">Cycle de vie</button>
@@ -361,12 +363,72 @@
   <div id="panel-meq" style="display:none">
     <div class="card">
       <p class="card-title">🎯 Marchés équivalents — pilotage par marge</p>
-      <p style="font-size:11px;color:var(--text-ter);margin:0 0 10px 0">Compare les labos qui couvrent un même besoin produit. Choix manuel — aucun arbitrage automatique. Données de test en attendant l'import depuis MAP_PRODUIT_MARCHE.</p>
-      <div class="row"><label>Sous-marché</label>
-        <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)"></select>
+      <p style="font-size:11px;color:var(--text-ter);margin:0 0 10px 0">Jointure MAP_PRODUIT_MARCHE × ventes LGPI (N / N-1). Aucun arbitrage automatique.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 1. MAP_PRODUIT_MARCHE</button>
+        <button type="button" onclick="meqImporterVentesLGPI()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 2. Ventes LGPI N</button>
+        <button type="button" onclick="meqImporterVentesLGPIN1()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">📥 3. Ventes LGPI N-1 <span style="font-size:10px">(optionnel)</span></button>
+      </div>
+      <!-- Mode toggle -->
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <button type="button" id="meq-mode-sm" onclick="meqSetMode('sm')" style="font-size:11px;padding:5px 14px;border-radius:var(--radius-sm);border:2px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-weight:600">🗂 Par sous-marché</button>
+        <button type="button" id="meq-mode-labo" onclick="meqSetMode('labo')" style="font-size:11px;padding:5px 14px;border-radius:var(--radius-sm);border:2px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">🏭 Par labo</button>
+      </div>
+      <!-- Filtres sous-marché -->
+      <div id="meq-filters-sm" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+        <div class="row" style="margin:0"><label style="min-width:60px">Marché</label>
+          <select id="meq-select-marche" onchange="meqChangerMarche()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:180px"></select>
+        </div>
+        <div class="row" style="margin:0"><label style="min-width:90px">Sous-marché</label>
+          <select id="meq-select" onchange="meqRender()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px"></select>
+        </div>
+      </div>
+      <!-- Filtre labo -->
+      <div id="meq-filters-labo" style="display:none;align-items:center;gap:12px">
+        <div class="row" style="margin:0"><label style="min-width:40px">Labo</label>
+          <select id="meq-select-labo" onchange="meqRenderVueLabo()" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px"></select>
+        </div>
       </div>
     </div>
     <div id="meq-content"></div>
+  </div>
+
+  <!-- ===== MAP PRODUITS ===== -->
+  <div id="panel-map" style="display:none">
+    <div class="card">
+      <p class="card-title">🗺 MAP Produits — Gestion des rattachements EAN → Marché / Sous-marché</p>
+      <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Recherchez un EAN ou un libellé pour voir son rattachement. Modifiez, ajoutez ou supprimez des mappings. Chaque modification recalcule les marchés équivalents en live.</p>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <input id="map-search" type="text" placeholder="🔍  EAN, libellé, labo…" oninput="mapRechercher()" style="flex:1;min-width:220px;max-width:360px;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);box-sizing:border-box">
+        <select id="map-filter-marche" onchange="mapChangerMarche()" style="font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:180px">
+          <option value="">— Tous les marchés —</option>
+        </select>
+        <select id="map-filter-sm" onchange="mapChangerSM()" style="font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px">
+          <option value="">— Tous les sous-marchés —</option>
+        </select>
+        <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer;white-space:nowrap">📥 Importer MAP</button>
+        <span id="map-count" style="font-size:11px;color:var(--text-ter)"></span>
+      </div>
+    </div>
+    <div id="map-content" style="margin-top:8px"></div>
+  </div>
+
+  <!-- ===== ENGAGEMENTS ===== -->
+  <div id="panel-eng" style="display:none">
+    <div class="card">
+      <p class="card-title">🎯 Engagements marchés — PDM cible, plafonds et suivi par labo</p>
+      <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Paramétrez labo par labo : statut de chaque marché, PDM cible, engagement volume ou PDM. Le plafond disponible est calculé automatiquement depuis vos ventes N-1 moins le stock actuel.</p>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="row" style="margin:0"><label>Labo</label>
+          <select id="eng-select-labo" onchange="engLaboSelectionne=this.value;engRenderMC(this.value)" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px">
+            <option value="">— Choisir un labo —</option>
+          </select>
+        </div>
+        <button type="button" onclick="engImporterCommandesXLSX()" id="btn-commandes-en-cours" style="font-size:11px;padding:6px 14px;border:1px solid var(--border);background:#fff;border-radius:var(--radius-sm);cursor:pointer">📦 Importer commandes en cours</button>
+        <span id="eng-commandes-badge" style="font-size:11px;color:var(--text-ter)"></span>
+      </div>
+    </div>
+    <div id="eng-content" style="margin-top:8px"></div>
   </div>
 
   <!-- ===== LEXIQUE ===== -->
@@ -1808,7 +1870,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v508.js"></script>
+<script src="/app-v529.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

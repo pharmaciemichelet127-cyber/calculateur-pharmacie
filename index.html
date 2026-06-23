@@ -418,10 +418,14 @@
     <div class="card">
       <p class="card-title">🎯 Engagements marchés — PDM cible, plafonds et suivi par labo</p>
       <p style="font-size:11px;color:var(--text-ter);margin:0 0 12px 0">Paramétrez labo par labo : statut de chaque marché, PDM cible, engagement volume ou PDM. Le plafond disponible est calculé automatiquement depuis vos ventes N-1 moins le stock actuel.</p>
-      <div class="row" style="margin:0"><label>Labo</label>
-        <select id="eng-select-labo" onchange="engLaboSelectionne=this.value;engRenderMC(this.value)" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px">
-          <option value="">— Choisir un labo —</option>
-        </select>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="row" style="margin:0"><label>Labo</label>
+          <select id="eng-select-labo" onchange="engLaboSelectionne=this.value;engRenderMC(this.value)" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-width:260px">
+            <option value="">— Choisir un labo —</option>
+          </select>
+        </div>
+        <button type="button" onclick="engImporterCommandesXLSX()" id="btn-commandes-en-cours" style="font-size:11px;padding:6px 14px;border:1px solid var(--border);background:#fff;border-radius:var(--radius-sm);cursor:pointer">📦 Importer commandes en cours</button>
+        <span id="eng-commandes-badge" style="font-size:11px;color:var(--text-ter)"></span>
       </div>
     </div>
     <div id="eng-content" style="margin-top:8px"></div>
@@ -1866,7 +1870,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v526.js"></script>
+<script src="/app-v527.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

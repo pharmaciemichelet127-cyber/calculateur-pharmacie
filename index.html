@@ -121,6 +121,7 @@
     <button type="button" class="tab-btn" id="tab-map" onclick="showTab('map')">🗺 MAP Produits</button>
     <button type="button" class="tab-btn" id="tab-eng" onclick="showTab('eng')">🎯 Engagements</button>
     <button type="button" class="tab-btn" id="tab-precommande" onclick="showTab('precommande');precommandeRender()">🛒 Précommande</button>
+    <button type="button" class="tab-btn" id="tab-cipmap" onclick="showTab('cipmap');cipmapRender()">🔄 CIP/EAN</button>
     <button type="button" class="tab-btn" id="tab-cat" onclick="showTab('cat')">Catalogue</button>
     <button type="button" class="tab-btn" id="tab-simlppr" onclick="showTab('simlppr')">💊 Simulation LPPR</button>
     <button type="button" class="tab-btn" id="tab-cycle" onclick="showTab('cycle')">Cycle de vie</button>
@@ -1871,7 +1872,7 @@ git push origin main</pre>
   </div>
 
 </div>
-<script src="/app-v543.js"></script>
+<script src="/app-v545.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.
@@ -1890,5 +1891,6 @@ git push origin main</pre>
 
 <div id="app-version" title="Version de l'application — dérivée automatiquement du fichier /app-vXYZ.js chargé ci-dessus. Comparer avec le numéro annoncé par Claude. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">…</div>
 <div id="panel-precommande" style="display:none;padding:0 0 40px 0"></div>
+<div id="panel-cipmap" style="display:none;padding:0 0 40px 0"></div>
 </body>
 </html>

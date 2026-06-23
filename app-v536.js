@@ -13114,7 +13114,7 @@ function precommandeRender() {
       : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">❌ ' + (seuil - totalUnM) + ' u. manquantes</span>';
 
     var mid = m.id || m.label;
-    tableRows += '<tr onclick="precommandeToggle('' + mid + '')" style="cursor:pointer;border-bottom:1px solid var(--border)">';
+    tableRows += '<tr onclick="precommandeToggle(\'' + mid + '\')" style="cursor:pointer;border-bottom:1px solid var(--border)">';
     tableRows += '<td style="padding:10px 12px;font-weight:600;font-size:13px">' + m.label + '</td>';
     tableRows += '<td style="padding:10px 12px;text-align:center;font-size:13px">' + seuil + ' u.</td>';
     tableRows += '<td style="padding:10px 12px">';

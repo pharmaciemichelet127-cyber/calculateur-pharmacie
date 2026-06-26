@@ -117,6 +117,7 @@
     <button type="button" class="tab-btn active" id="tab-workflow" onclick="showTab('workflow')">Workflow</button>
     <button type="button" class="tab-btn" id="tab-cond" onclick="showTab('cond')">Conditions commerciales</button>
     <button type="button" class="tab-btn" id="tab-decision" onclick="showTab('decision')">⚡ Décision RDV</button>
+    <button type="button" class="tab-btn" id="tab-rdv" onclick="showTab('rdv')">📅 Planning RDV</button>
     <button type="button" class="tab-btn" id="tab-meq" onclick="showTab('meq')">🎯 Marchés équivalents</button>
     <button type="button" class="tab-btn" id="tab-map" onclick="showTab('map')">🗺 MAP Produits</button>
     <button type="button" class="tab-btn" id="tab-eng" onclick="showTab('eng')">🎯 Engagements</button>
@@ -1874,7 +1875,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v570.js"></script>
+<script src="/app-v571.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.
@@ -1894,5 +1895,6 @@ git push origin main</pre>
 <div id="app-version" title="Version de l'application — dérivée automatiquement du fichier /app-vXYZ.js chargé ci-dessus. Comparer avec le numéro annoncé par Claude. Si différent : Cmd+Shift+R." style="position:fixed;bottom:6px;right:10px;font-size:10px;color:var(--text-ter);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 9px;opacity:.85;z-index:9999;font-family:'DM Mono',monospace">…</div>
 <div id="panel-precommande" style="display:none;padding:0 0 40px 0"></div>
 <div id="panel-cipmap" style="display:none;padding:0 0 40px 0"></div>
+<div id="panel-rdv" style="display:none;padding:0 0 40px 0"></div>
 </body>
 </html>

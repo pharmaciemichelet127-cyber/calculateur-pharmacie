@@ -1723,6 +1723,7 @@ git push origin main</pre>
           <input type="number" id="simlppr-valeur" value="30" step="0.5" min="0" oninput="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);width:100px">
         </div>
         <button type="button" onclick="simLPPRRender()" style="font-size:12px;padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">↻ Actualiser</button>
+        <button type="button" onclick="simLPPRAppliquerPrix()" style="font-size:12px;padding:6px 14px;background:#15803d;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600" title="PV = LPPR si marge ≥40%, sinon PV = PA net / 0,60">✓ Appliquer PV LPPR (MB≥40%)</button>
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--text-sec);display:block;margin-bottom:3px">🎯 Filtrer par classe</label>
           <select id="simlppr-filtre-classe" onchange="simLPPRRender()" style="font-size:12px;padding:5px 10px;border:1px solid #7c3aed;border-radius:var(--radius-sm);max-width:280px"></select>
@@ -1879,7 +1880,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v594.js"></script>
+<script src="/app-v595.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

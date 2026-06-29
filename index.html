@@ -1131,6 +1131,15 @@ git push origin main</pre>
           <input type="date" id="cond-date-eval" oninput="condAutoSave()" style="font-family:'DM Mono',monospace;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
         </div>
         <div class="row">
+          <label>Type de labo</label>
+          <select id="cond-labo-type" onchange="condSauvegarderType(this.value)" style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)">
+            <option value="direct">🏭 Direct labo</option>
+            <option value="centrale">🏪 Centrale d'achat</option>
+            <option value="groupement">🤝 Groupement</option>
+            <option value="autre">📦 Autre</option>
+          </select>
+        </div>
+        <div class="row">
           <label>CA 12 mois glissants TTC (euro)</label>
           <input type="number" id="cond-ca-annuel" placeholder="ex : 9780" step="100" min="0" oninput="condCalc()">
           <span class="hint" id="cond-ca-hint"></span>
@@ -1887,7 +1896,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v678.js"></script>
+<script src="/app-v680.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

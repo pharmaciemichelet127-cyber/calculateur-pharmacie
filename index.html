@@ -1371,8 +1371,14 @@ git push origin main</pre>
   <div id="panel-workflow">
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <span style="font-size:13px;font-weight:700">📊 Tableau de bord — tous les labos</span>
-        <button onclick="dashboardRender()" style="font-size:11px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer">↻ Actualiser</button>
+        <span style="font-size:13px;font-weight:700">📊 Tableau de bord — labos directs</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="font-size:11px;padding:5px 12px;background:var(--accent,#6366f1);color:#fff;border-radius:6px;cursor:pointer;font-weight:600">
+            📦 Importer ZIP factures
+            <input type="file" accept=".zip" style="display:none" onchange="facturesOuvrirModal();var _f=this;setTimeout(function(){facturesImporterZip(_f)},200)">
+          </label>
+          <button onclick="dashboardRender()" style="font-size:11px;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer">↻ Actualiser</button>
+        </div>
       </div>
       <div id="dashboard-panel"><div style="font-size:12px;color:var(--text-ter);padding:8px">Chargement...</div></div>
     </div>
@@ -1896,7 +1902,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v682.js"></script>
+<script src="/app-v683.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

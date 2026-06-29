@@ -1360,6 +1360,13 @@ git push origin main</pre>
 
     <!-- ===== WORKFLOW ===== -->
   <div id="panel-workflow">
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700">📊 Tableau de bord — tous les labos</span>
+        <button onclick="dashboardRender()" style="font-size:11px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer">↻ Actualiser</button>
+      </div>
+      <div id="dashboard-panel"><div style="font-size:12px;color:var(--text-ter);padding:8px">Chargement...</div></div>
+    </div>
     <div class="card" style="background:var(--accent-bg);border-color:var(--accent);margin-bottom:12px">
       <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--accent-text);margin-bottom:6px">Guide de démarrage rapide</p>
       <p style="font-size:13px;color:var(--accent-text);margin-bottom:12px;line-height:1.5">Nouveau RDV labo ? Ouvrez le guide pas-à-pas pour choisir le bon chemin et ne rien oublier.</p>
@@ -1880,7 +1887,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v677.js"></script>
+<script src="/app-v678.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

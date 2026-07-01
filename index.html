@@ -1319,12 +1319,14 @@ git push origin main</pre>
 
   <!-- ===== DECISION RDV ===== -->
   <div id="panel-decision" style="display:none">
+    <div id="dec-osph-bandeau" style="display:none;margin:8px 16px 0"></div>
     <div class="card" style="margin:0 auto">
       <p class="card-title">⚡ Décision RDV</p>
       <div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)">
         <p style="font-size:12px;font-weight:600;margin:0 0 10px">Importer ventes Ospharm (Excel)</p>
         <input type="file" id="dec-file" accept=".xlsx,.xls" onchange="decImportOspharm(this)" style="font-size:12px">
         <p id="dec-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
+        <button type="button" onclick="decChargerOspharmGitHub().then(function(ok){ if(!ok) alert('Aucun fichier Ospharm sur GitHub. Importez d\'abord un fichier Ospharm.'); })" style="font-size:11px;padding:4px 10px;background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-top:6px">☁ Charger Ospharm depuis GitHub</button>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📊 Comparaison N-1 (optionnel)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Importer le même export Ospharm pour la période équivalente de l'année précédente, pour comparer les quantités vendues. Inutile si ton export "Toutes les ventes" contient déjà une colonne Quantité n-1 — elle est alors lue automatiquement.</p>
@@ -1904,7 +1906,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v699.js"></script>
+<script src="/app-v701.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

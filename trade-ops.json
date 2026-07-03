@@ -197,22 +197,6 @@
    "detail": "Offre promotionnelle NIFTY : 20% de remise immédiate sur toute la gamme APAISYL Anti-Poux.\nPériode : 01/04/2026 → 30/04/2026.\nMise en place : imprimer le visuel promotionnel (PJ) et le disposer en rayon devant le produit concerné.\n\nÀ compléter : produits concernés (EAN)."
   },
   {
-   "promo": "COMPEED — réduction immédiate 2 € (NIFTY)",
-   "labo": "",
-   "debut": "2026-04-01",
-   "fin": "2026-07-31",
-   "type": "Remise",
-   "canal_promo": "NIFTY",
-   "canal_achat": null,
-   "montant": 2,
-   "unite": "€",
-   "cde_debut": null,
-   "cde_fin": null,
-   "compensation": null,
-   "intercomptoir": false,
-   "detail": "Réduction immédiate de 2€ sur toute la gamme COMPEED éligible via QR code (NIFTY). Offre valable du 01/04/2026 au 31/07/2026."
-  },
-  {
    "promo": "MAG 2 Offres du moment — Avril 2026",
    "labo": "",
    "debut": "2026-04-01",
@@ -341,70 +325,6 @@
    "detail": "OP inter-comptoir « SYNTHOLKINE ROLL ON en MAI ».\nValidité : 01/05/2026 → 15/06/2026.\nPériode de commande : 19/03/2026 → 01/05/2026.\nLivraison : à partir du 01/05, par voie postale.\nPlanning : inscription à l’OP, réception de l’affiche via LE MAGG UPP (réimpression possible via médiathèque), mise en avant inter-comptoir en mai, justificatif à déposer sur le site.\nEAN produit : 3094904500077."
   },
   {
-   "promo": "ARNICAN — 1,50€ de remise immédiate (NIFTY)",
-   "labo": "",
-   "debut": "2026-06-01",
-   "fin": "2026-07-31",
-   "type": "Remise",
-   "canal_promo": "NIFTY",
-   "canal_achat": null,
-   "montant": 1.5,
-   "unite": "€",
-   "cde_debut": null,
-   "cde_fin": null,
-   "compensation": null,
-   "intercomptoir": false,
-   "detail": "Remise immédiate de 1,50€ pour l’achat d’un produit Arnican, en partenariat avec NIFTY (HighCo Data) et le logiciel de caisse. Pour être remboursé automatiquement : se référencer une seule fois auprès de HighCo Data via https://nifty.highco.com/ (onglet « inscrivez-vous »)."
-  },
-  {
-   "promo": "CINQ SUR CINQ Roll-on apaisant — 1,50€ de remise immédiate",
-   "labo": "",
-   "debut": "2026-06-01",
-   "fin": "2026-08-31",
-   "type": "Remise",
-   "canal_promo": "NIFTY",
-   "canal_achat": null,
-   "montant": 1.5,
-   "unite": "€",
-   "cde_debut": null,
-   "cde_fin": null,
-   "compensation": null,
-   "intercomptoir": false,
-   "detail": "Roll-on apaisant Effet glaçon — coupon mobile NIFTY. Offre valable du 01/06/2026 au 31/08/2026 (dans la limite des stocks / pharmacies participantes)."
-  },
-  {
-   "promo": "PHYSIODOSE Sérum physiologique",
-   "labo": "",
-   "debut": "2026-06-01",
-   "fin": "2026-07-15",
-   "type": "Autre",
-   "canal_promo": "OFFRE DU MOMENT UPP",
-   "canal_achat": null,
-   "montant": null,
-   "unite": "libre",
-   "cde_debut": "2026-03-25",
-   "cde_fin": "2026-06-01",
-   "compensation": null,
-   "intercomptoir": false,
-   "detail": "Opération « Offres du moment » de juin 2026.\nValidité : 01/06/2026 → 15/07/2026.\nPériode de commande : 25/03/2026 → 01/06/2026.\nLivraison : à partir du 01/06 (voie postale).\nProduit sélectionné : Sérum physiologique 40 unidoses × 5 mL (EAN 3518646266638).\nLaboratoire partenaire : à compléter."
-  },
-  {
-   "promo": "MyVariations — Soldes d’été -15% brosses à dents électriques",
-   "labo": "",
-   "debut": "2026-06-24",
-   "fin": "2026-07-21",
-   "type": "Remise",
-   "canal_promo": "PHARMACIE",
-   "canal_achat": "Autre",
-   "montant": 15,
-   "unite": "%",
-   "cde_debut": "2026-06-24",
-   "cde_fin": "2026-07-21",
-   "compensation": null,
-   "intercomptoir": false,
-   "detail": "Opération soldes d’été : -15% sur les brosses à dents électriques MyVariations (adultes & kids). Offre du 24/06/2026 au 21/07/2026."
-  },
-  {
    "promo": "Avène Cleanance Comedomed Peeling — 2€ de remise immédiate (NIFTY)",
    "labo": "AVENE",
    "debut": "2026-04-01",
@@ -435,6 +355,22 @@
    "compensation": 2,
    "intercomptoir": false,
    "detail": "BRI (réduction immédiate) de -2 € sur la gamme Avène « solaires visage » — Avril 2026.\nCompensation : laboratoire AVENE.\nProduits associés : voir relation « Produits »."
+  },
+  {
+   "promo": "Spray d’Eau Thermale Avène 300 ml — BRI 1€ (été 2026)",
+   "labo": "AVENE",
+   "debut": "2026-07-01",
+   "fin": "2026-08-31",
+   "type": "BRI",
+   "canal_promo": "PHARMACIE",
+   "canal_achat": "Autre",
+   "montant": 1,
+   "unite": "€/boîte",
+   "cde_debut": null,
+   "cde_fin": null,
+   "compensation": null,
+   "intercomptoir": false,
+   "detail": "Du 1er juillet au 31 août : bénéficiez de 1€ trade par unité vendue du Spray d’Eau Thermale Avène 300 ml. Mise en avant recommandée du Spray 300 ml + BRI 1€ ; anticiper les commandes de réassort (opération “alerte canicule”)."
   },
   {
    "promo": "BAUSCH + LOMB — Thermcool&Hot (NIFTY) — 2€ remise immédiate",
@@ -483,6 +419,22 @@
    "compensation": null,
    "intercomptoir": false,
    "detail": "2€ de remise immédiate (coupon mobile via QR code à présenter en caisse) sur les produits Thermcool&Hot listés."
+  },
+  {
+   "promo": "CINQ SUR CINQ Roll-on apaisant — 1,50€ de remise immédiate",
+   "labo": "BAUSCH + LOMB",
+   "debut": "2026-06-01",
+   "fin": "2026-08-31",
+   "type": "Remise",
+   "canal_promo": "NIFTY",
+   "canal_achat": null,
+   "montant": 1.5,
+   "unite": "€",
+   "cde_debut": null,
+   "cde_fin": null,
+   "compensation": null,
+   "intercomptoir": false,
+   "detail": "Roll-on apaisant Effet glaçon — coupon mobile NIFTY. Offre valable du 01/06/2026 au 31/08/2026 (dans la limite des stocks / pharmacies participantes)."
   },
   {
    "promo": "CINQ SUR CINQ Spray Citriodora lot de 2 (EAN 3614790000828) — Offres du moment UPP (juin-juillet 2026)",
@@ -741,6 +693,22 @@
    "detail": "Mécanique NIFTY : 1€ de remise immédiate via coupon QR code sur Insect Ecran Zones infestées. Offre valable du 01/05/2026 au 30/06/2026 (dans la limite des stocks / coupons disponibles)."
   },
   {
+   "promo": "ARNICAN — 1,50€ de remise immédiate (NIFTY)",
+   "labo": "COOPER",
+   "debut": "2026-06-01",
+   "fin": "2026-07-31",
+   "type": "Remise",
+   "canal_promo": "NIFTY",
+   "canal_achat": null,
+   "montant": 1.5,
+   "unite": "€",
+   "cde_debut": null,
+   "cde_fin": null,
+   "compensation": null,
+   "intercomptoir": false,
+   "detail": "Remise immédiate de 1,50€ pour l’achat d’un produit Arnican, en partenariat avec NIFTY (HighCo Data) et le logiciel de caisse. Pour être remboursé automatiquement : se référencer une seule fois auprès de HighCo Data via https://nifty.highco.com/ (onglet « inscrivez-vous »)."
+  },
+  {
    "promo": "POUXIT Flash — coupon -34% (NIFTY)",
    "labo": "COOPER",
    "debut": "2026-07-01",
@@ -755,22 +723,6 @@
    "compensation": null,
    "intercomptoir": false,
    "detail": "Coupon mobile -34% de remise immédiate sur l’achat d’un produit Pouxit Flash. Offre valable du 01/07/2026 au 31/08/2026, pour achat d’un produit éligible (EAN listés), dans la limite des 5000 premiers participations, uniquement dans les pharmacies participantes. Offre non cumulable avec d’autres promotions en cours. Voir conditions via QR code / coupon NIFTY."
-  },
-  {
-   "promo": "Spray d’Eau Thermale Avène 300 ml — BRI 1€ (été 2026)",
-   "labo": "Eau Thermale Avène (Pierre Fabre)",
-   "debut": "2026-07-01",
-   "fin": "2026-08-31",
-   "type": "BRI",
-   "canal_promo": "PHARMACIE",
-   "canal_achat": "Autre",
-   "montant": 1,
-   "unite": "€/boîte",
-   "cde_debut": null,
-   "cde_fin": null,
-   "compensation": null,
-   "intercomptoir": false,
-   "detail": "Du 1er juillet au 31 août : bénéficiez de 1€ trade par unité vendue du Spray d’Eau Thermale Avène 300 ml. Mise en avant recommandée du Spray 300 ml + BRI 1€ ; anticiper les commandes de réassort (opération “alerte canicule”)."
   },
   {
    "promo": "OFFRE EFFIK BRI -26",
@@ -949,6 +901,22 @@
    "detail": "Laboratoire : GILBERT.\nOpération « Offres du moment » de mars 2026 (PharmUPP).\nProduit : SÉRUM PHYSIOLOGIQUE 40 UNIDOSES × 5 mL.\nEAN : 3518646266638.\nRI : libre.\nCanal d’achat : SDAV.\nValidité : 01/03/2026 → 15/04/2026.\nPériode de commande : 23/12/2025 → 01/03/2026.\nLivraison : à partir du 01/03 (voie postale)."
   },
   {
+   "promo": "PHYSIODOSE Sérum physiologique",
+   "labo": "GILBERT",
+   "debut": "2026-06-01",
+   "fin": "2026-07-15",
+   "type": "Autre",
+   "canal_promo": "OFFRE DU MOMENT UPP",
+   "canal_achat": null,
+   "montant": null,
+   "unite": "libre",
+   "cde_debut": "2026-03-25",
+   "cde_fin": "2026-06-01",
+   "compensation": null,
+   "intercomptoir": false,
+   "detail": "Opération « Offres du moment » de juin 2026.\nValidité : 01/06/2026 → 15/07/2026.\nPériode de commande : 25/03/2026 → 01/06/2026.\nLivraison : à partir du 01/06 (voie postale).\nProduit sélectionné : Sérum physiologique 40 unidoses × 5 mL (EAN 3518646266638).\nLaboratoire partenaire : à compléter."
+  },
+  {
    "promo": "ZARBEIL — KENVUE —réduction immédiate 1,50 € (NIFTY)",
    "labo": "KENVUE",
    "debut": "2026-03-01",
@@ -995,6 +963,22 @@
    "compensation": null,
    "intercomptoir": false,
    "detail": "Laboratoire : Lohmann & Rauscher.\nOP bac soldeur COTOPADS / COTOBIO (mars 2026) (PharmUPP).\nEAN : 4056649512820, 4056649792758.\nCanal d’achat : SDAV.\nValidité : 01/03/2026 → 15/04/2026.\nPériode de commande : 23/12/2025 → 01/03/2026.\nLivraison : à partir du 01/03 (voie postale)."
+  },
+  {
+   "promo": "MyVariations — Soldes d’été -15% brosses à dents électriques",
+   "labo": "MY VARIATIONS",
+   "debut": "2026-06-24",
+   "fin": "2026-07-21",
+   "type": "Remise",
+   "canal_promo": "PHARMACIE",
+   "canal_achat": "Autre",
+   "montant": 15,
+   "unite": "%",
+   "cde_debut": "2026-06-24",
+   "cde_fin": "2026-07-21",
+   "compensation": null,
+   "intercomptoir": false,
+   "detail": "Opération soldes d’été : -15% sur les brosses à dents électriques MyVariations (adultes & kids). Offre du 24/06/2026 au 21/07/2026."
   },
   {
    "promo": "Neutrogena Soins corps — 2€ de remise immédiate (NIFTY)",
@@ -1139,6 +1123,22 @@
    "compensation": null,
    "intercomptoir": false,
    "detail": "Offre -20% de remise immédiate (voir photo). Produits ZzzQuil (gamme sommeil)."
+  },
+  {
+   "promo": "COMPEED — réduction immédiate 2 € (NIFTY)",
+   "labo": "PERRIGO",
+   "debut": "2026-04-01",
+   "fin": "2026-07-31",
+   "type": "Remise",
+   "canal_promo": "NIFTY",
+   "canal_achat": null,
+   "montant": 2,
+   "unite": "€",
+   "cde_debut": null,
+   "cde_fin": null,
+   "compensation": null,
+   "intercomptoir": false,
+   "detail": "Réduction immédiate de 2€ sur toute la gamme COMPEED éligible via QR code (NIFTY). Offre valable du 01/04/2026 au 31/07/2026."
   },
   {
    "promo": "Paranix / Duo LP Pro — 4€ de remise immédiate (juil–sept 2026)",

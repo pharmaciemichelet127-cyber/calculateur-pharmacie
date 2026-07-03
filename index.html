@@ -1818,6 +1818,7 @@ git push origin main</pre>
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Correspondances EAN (ancien &#8594; nouveau)</span>
         <button type="button" onclick="cycleAjouterMapping()" style="font-size:12px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;">+ Ajouter une correspondance</button>
+        <button type="button" onclick="cycleAppliquerMappings()" style="font-size:12px;padding:5px 12px;background:#1e5a8a;color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:500;margin-left:8px;" title="Applique les lignes Confirmé au catalogue du labo : nouvel EAN et/ou nouveau libellé (champ Nom), puis push GitHub">⚡ Appliquer les confirmés au catalogue</button>
       </p>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -1936,7 +1937,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v727.js"></script>
+<script src="/app-v728.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

@@ -1,0 +1,41 @@
+name: Trade ops Notion
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # chaque nuit à 02:00 UTC (04:00 heure de Marseille en été)
+  workflow_dispatch:       # bouton "Run workflow" pour un lancement manuel
+
+permissions:
+  contents: write
+
+jobs:
+  regenerer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le repo
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Régénérer trade-ops.json depuis Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python scripts/gen_trade_ops.py
+
+      - name: Valider le JSON produit
+        run: python -c "import json; d=json.load(open('trade-ops.json')); print('JSON valide —', d['nb'], 'operations')"
+
+      - name: Commit et push si le fichier a changé
+        run: |
+          git config user.name "trade-ops-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add trade-ops.json
+          if git diff --cached --quiet; then
+            echo "Aucun changement — pas de commit."
+          else
+            git commit -m "trade-ops.json : régénération automatique depuis Notion"
+            git push
+          fi

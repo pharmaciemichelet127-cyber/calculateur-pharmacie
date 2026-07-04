@@ -205,7 +205,7 @@ print(f"  {len(produits)} produits injectés (rotations réelles depuis état de
 
 # ── Sauvegarde ─────────────────────────────────────────────────────────────────
 with open(SOURCE, "w", encoding="utf-8") as f:
-    json.dump(labos, f, ensure_ascii=False, separators=(",", ":"))
+    json.dump(labos, f, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 print(f"\n✅ data-labos.json mis à jour")
 print("   → git add data-labos.json && git commit -m '...' && git pull --no-rebase origin main && git push origin main")

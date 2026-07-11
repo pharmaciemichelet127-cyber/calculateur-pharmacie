@@ -1,16 +1,20 @@
-// api/github.js — v7.38 (remplace l'ancien proxy qui faisait transiter le token client)
-// Proxy GitHub sécurisé : le token vit dans la variable d'environnement Vercel
-// GH_TOKEN, jamais côté navigateur. Chaque requête exige un jeton de session
-// valide (header X-Session, délivré par /api/login, signé avec SESSION_SECRET).
+// api/github.js — v7.39 (proxy GitHub sécurisé + décompression gzip)
+// Le token vit dans la variable d'environnement Vercel GH_TOKEN, jamais côté
+// navigateur. Chaque requête exige un jeton de session valide (header
+// X-Session, délivré par /api/login, signé avec SESSION_SECRET).
 // Périmètre strict : uniquement le repo calculateur-pharmacie, uniquement les
-// endpoints utilisés par l'app (contents, git/blobs, git/refs, git/commits, git/trees).
+// endpoints utilisés par l'app (contents, git/blobs, git/refs, git/commits,
+// git/trees).
+// v7.39 : les corps de requête marqués X-Gzip: 1 arrivent compressés depuis le
+// navigateur (contournement de la limite Vercel 4,5 Mo — erreur 413 sur la
+// sauvegarde manuelle de data-labos.json). Lecture du flux brut, bodyParser
+// désactivé pour un comportement déterministe.
 import crypto from 'crypto';
+import zlib from 'zlib';
 
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
+    bodyParser: false,
   },
 };
 
@@ -31,6 +35,12 @@ function sessionValide(req) {
   const b = Buffer.from(attendu);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+async function lireCorpsBrut(req) {
+  const morceaux = [];
+  for await (const c of req) morceaux.push(c);
+  return Buffer.concat(morceaux);
 }
 
 export default async function handler(req, res) {
@@ -60,9 +70,16 @@ export default async function handler(req, res) {
   };
 
   const options = { method: req.method, headers: headers };
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
-    options.body = (typeof req.body === 'string') ? req.body : JSON.stringify(req.body);
-    headers['Content-Type'] = 'application/json';
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    let corps = await lireCorpsBrut(req);
+    if (corps.length) {
+      if (req.headers['x-gzip'] === '1') {
+        try { corps = zlib.gunzipSync(corps); }
+        catch (e) { return res.status(400).json({ message: 'Décompression gzip impossible : ' + e.message }); }
+      }
+      options.body = corps.toString('utf8');
+      headers['Content-Type'] = 'application/json';
+    }
   }
 
   try {

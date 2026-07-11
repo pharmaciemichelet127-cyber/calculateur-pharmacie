@@ -1746,8 +1746,11 @@ git push origin main</pre>
         <div id="cat-comparatif-resultat" style="margin-top:10px"></div>
       </div>
 
-      <!-- v7.40 : ancre du widget Prix Public — au niveau de l'en-tête du tableau, côté TVA/PA -->
-      <div id="px-anchor" style="display:flex;justify-content:flex-end;margin-bottom:6px"></div>
+      <!-- v7.40 : ancre du widget Prix Public — au niveau de l'en-tête du tableau, côté TVA/PA
+           v7.41 : sticky — la barre reste visible à l'écran (collée sous le header) pendant
+           le défilement vertical ; le défilement horizontal du tableau ne la déplace pas
+           (il se fait dans le conteneur overflow-x frère, pas sur l'ancre). -->
+      <div id="px-anchor" style="display:flex;justify-content:flex-end;margin-bottom:6px;position:sticky;top:62px;z-index:99"></div>
       <div style="overflow-x:auto;width:100%">
         <table id="cat-tbl" style="border-collapse:collapse;font-size:12px;table-layout:auto">
           <thead><tr style="background:var(--text);color:#fff">
@@ -1954,7 +1957,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v740.js"></script>
+<script src="/app-v741.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

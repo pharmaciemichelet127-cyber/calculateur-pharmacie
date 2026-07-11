@@ -1,7 +1,8 @@
 {
   "rewrites": [
     { "source": "/api/claude", "destination": "/api/claude.js" },
-    { "source": "/api/login", "destination": "/api/login.js" }
+    { "source": "/api/login", "destination": "/api/login.js" },
+    { "source": "/api/github", "destination": "/api/github.js" }
   ],
   "headers": [
     {

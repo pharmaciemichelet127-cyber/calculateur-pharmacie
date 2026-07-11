@@ -1152,7 +1152,9 @@ git push origin main</pre>
         </label>
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
-        <input type="password" id="cond-gh-token" placeholder="GitHub Personal Access Token (ghp_...)" style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);flex:1;max-width:340px" oninput="localStorage.setItem('gh_token', this.value)">
+        <!-- v7.38 : token géré côté serveur (Vercel GH_TOKEN). Champ conservé masqué : condGetToken() lit son .value -->
+        <input type="password" id="cond-gh-token" placeholder="GitHub Personal Access Token (ghp_...)" style="display:none" oninput="localStorage.setItem('gh_token', this.value)">
+        <span style="font-size:11px;color:var(--text-ter)">🔒 Accès GitHub géré par le serveur — plus aucun token à saisir</span>
         <span id="cond-backup-status" style="font-size:11px;color:var(--accent-text)"></span>
       </div>
       <div id="cond-labo-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px"></div>
@@ -1950,7 +1952,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v737.js"></script>
+<script src="/app-v738.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

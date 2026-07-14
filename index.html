@@ -1387,7 +1387,10 @@ git push origin main</pre>
   <div id="panel-decision" style="display:none">
     <div id="dec-osph-bandeau" style="display:none;margin:8px 16px 0"></div>
     <div class="card" style="margin:0 auto">
-      <p class="card-title">⚡ Décision RDV</p>
+      <p class="card-title" style="display:flex;align-items:center;gap:12px">⚡ Décision RDV
+        <button type="button" onclick="decWorkflowToggle()" style="font-size:11px;padding:4px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer;font-weight:400">❓ Workflow</button>
+      </p>
+      <div id="dec-workflow" style="display:none"></div>
       <div style="background:var(--surface2);padding:14px;border-radius:var(--radius-sm)">
         <p style="font-size:12px;font-weight:600;margin:0 0 10px">Importer ventes Ospharm (Excel)</p>
         <input type="file" id="dec-file" accept=".xlsx,.xls" onchange="decImportOspharm(this)" style="font-size:12px">
@@ -1411,6 +1414,7 @@ git push origin main</pre>
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'export LGPI « Stock » (Excel) pour avoir le stock à l'instant T, plus fiable.</p>
           <p id="dec-stock-target" style="font-size:11px;margin:0 0 6px"></p>
+          <label style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:5px;margin-right:10px">Stock au <input type="date" id="dec-stock-date" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)"></label>
           <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px" disabled>
           <p id="dec-stock-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         </div>
@@ -1978,7 +1982,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v778.js"></script>
+<script src="/app-v780.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

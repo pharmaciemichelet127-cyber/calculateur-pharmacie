@@ -418,6 +418,7 @@
         <label style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:5px">inventaire au <input type="date" id="meq-stock-date" title="Date de l'inventaire stock (affichée dans les tableaux)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)"></label>
         <span id="meq-stock-badge" style="font-size:10px;color:var(--accent-text)"></span>
         <button type="button" onclick="meqImporterSaisonnalite()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer" title="Exports LGPI mensuels, sélection multiple. Noms acceptés : « Toutes les ventes aout 25.xlsx », « Toutes les ventes Mai 2026.xlsx », « ..._2025-08-01_2025-08-31.xlsx ». Fusion : chaque mois s'ajoute, un mois réimporté est remplacé.">📥 5. Saisonnalité <span style="font-size:10px">(mensuels · ajout/fusion)</span></button>
+        <label style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:5px" title="Les produits à TVA 2,1 % (remboursés) sont exclus des imports ventes et saisonnalité, SAUF si leur libellé contient un de ces mots-clés (séparés par des virgules). Réimporter après modification.">🚫 TVA 2,1 % sauf : <input type="text" id="meq-tva-exceptions" onchange="meqTvaExceptionsChanger(this)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);width:250px"></label>
         <span id="meq-sync-badge" style="font-size:10px;color:var(--text-ter)"></span>
       </div>
       <!-- Mode toggle -->
@@ -1974,7 +1975,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v764.js"></script>
+<script src="/app-v765.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

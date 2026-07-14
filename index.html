@@ -414,6 +414,9 @@
         <button type="button" onclick="meqImporterMapProduitMarche()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 1. MAP_PRODUIT_MARCHE</button>
         <button type="button" onclick="meqImporterVentesLGPI()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:#fff;color:var(--accent-text);cursor:pointer">📥 2. Ventes LGPI N</button>
         <button type="button" onclick="meqImporterVentesLGPIN1()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">📥 3. Ventes LGPI N-1 <span style="font-size:10px">(optionnel)</span></button>
+        <button type="button" onclick="meqImporterStockLGPI()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">📦 4. Stock LGPI <span style="font-size:10px">(optionnel)</span></button>
+        <label style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:5px">inventaire au <input type="date" id="meq-stock-date" title="Date de l'inventaire stock (affichée dans les tableaux)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)"></label>
+        <span id="meq-stock-badge" style="font-size:10px;color:var(--accent-text)"></span>
       </div>
       <!-- Mode toggle -->
       <div style="display:flex;gap:6px;margin-bottom:12px">
@@ -1957,7 +1960,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v748.js"></script>
+<script src="/app-v749.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

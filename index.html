@@ -444,6 +444,7 @@
         <span style="font-size:11px;color:var(--text-sec)">Détail par sous-marché :</span>
         <button type="button" id="meq-plan-scA" onclick="meqPlanSetScenario('A')" style="font-size:10.5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer">Historique labo</button>
         <button type="button" id="meq-plan-scB" onclick="meqPlanSetScenario('B')" style="font-size:10.5px;padding:3px 10px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-weight:600">Marché regroupé</button>
+        <label style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="meqPlanTogglePotentiels(this)"> Sous-marchés potentiels</label>
       </div>
       <div id="meq-filters-labo" style="display:none;align-items:center;gap:12px">
         <div class="row" style="margin:0"><label style="min-width:40px">Labo</label>
@@ -1973,7 +1974,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v762.js"></script>
+<script src="/app-v763.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

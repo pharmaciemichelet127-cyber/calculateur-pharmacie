@@ -1396,6 +1396,7 @@ git push origin main</pre>
         <input type="file" id="dec-file" accept=".xlsx,.xls" onchange="decImportOspharm(this)" style="font-size:12px">
         <p id="dec-status" style="font-size:12px;margin:8px 0 0;color:var(--text-sec)"></p>
         <button type="button" onclick="decChargerOspharmGitHub().then(function(ok){ if(!ok) alert('Aucun fichier Ospharm sur GitHub. Importez d\'abord un fichier Ospharm.'); })" style="font-size:11px;padding:4px 10px;background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-top:6px">☁ Charger Ospharm depuis GitHub</button>
+        <button type="button" onclick="if(typeof decOspharmData==='undefined'||!decOspharmData){alert('Importez ou chargez d\'abord un export Ospharm.');}else{decSauvegarderOspharmGitHub();}" style="font-size:11px;padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-top:6px;margin-left:6px">☁ Sauvegarder sur GitHub</button>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📊 Comparaison N-1 (optionnel)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Importer le même export Ospharm pour la période équivalente de l'année précédente, pour comparer les quantités vendues. Inutile si ton export "Toutes les ventes" contient déjà une colonne Quantité n-1 — elle est alors lue automatiquement.</p>
@@ -1656,6 +1657,11 @@ git push origin main</pre>
               <option value="ignore">Ignorer (commander sur rotation seule)</option>
               <option value="deduct">Deduire du besoin</option>
             </select>
+          </div>
+          <div class="row">
+            <label>Seuil colisage (%)</label>
+            <input type="number" id="cmd-seuil-colis" value="50" min="0" max="100" step="5" style="width:80px">
+            <span class="hint">ne commander un colis que si le manque atteint ce % du colisage (0 = toujours commander)</span>
           </div>
           <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1982,7 +1988,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v780.js"></script>
+<script src="/app-v781.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

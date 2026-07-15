@@ -1635,8 +1635,19 @@ git push origin main</pre>
     <div class="card">
       <p class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
         <span>Simulateur de commande</span>
+        <button type="button" onclick="cmdWorkflowToggle()" style="font-size:11px;padding:4px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer;font-weight:400;margin-left:10px">&#10067; Workflow</button>
+        <button type="button" onclick="cmdMoteurToggle()" style="font-size:11px;padding:4px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer;font-weight:400">&#128203; Coller commande Moteur</button>
         <button type="button" onclick="cmdGenerer()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;">Calculer la commande</button>
       </p>
+      <div id="cmd-workflow" style="display:none"></div>
+      <div id="cmd-moteur-zone" style="display:none;background:var(--surface2);padding:12px;border-radius:var(--radius-sm);margin-bottom:12px">
+        <p style="font-size:11.5px;margin:0 0 6px;font-weight:600">Collez le tableau copi&eacute; depuis le Sheet Moteur (avec sa ligne de titres) puis cliquez Charger :</p>
+        <textarea id="cmd-moteur-texte" rows="6" style="width:100%;font-size:11px;font-family:monospace;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px" placeholder="EAN&#9;Libell&eacute;&#9;Labo&#9;Qt&eacute; &agrave; commander&#9;Colisage&#9;Segment&#9;Stock RT&#9;..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button type="button" onclick="cmdMoteurCharger()" style="font-size:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">Charger</button>
+          <button type="button" onclick="cmdMoteurToggle()" style="font-size:12px;padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text-sec)">Annuler</button>
+        </div>
+      </div>
 
       <div style="display:flex;flex-direction:column;gap:0;margin-bottom:0">
         <div>
@@ -1988,7 +1999,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v782.js"></script>
+<script src="/app-v783.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.

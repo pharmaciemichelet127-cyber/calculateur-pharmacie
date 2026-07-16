@@ -1414,6 +1414,7 @@ git push origin main</pre>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <p style="font-size:12px;font-weight:600;margin:0 0 6px">📦 Stock réel LGPI (optionnel)</p>
           <p style="font-size:11px;color:var(--text-ter);margin:0 0 8px">Le stock Ospharm peut être daté — importer l'export LGPI « Stock » (Excel) pour avoir le stock à l'instant T, plus fiable.</p>
+          <p id="dec-stock-persist" style="font-size:11px;margin:0 0 8px"></p>
           <p id="dec-stock-target" style="font-size:11px;margin:0 0 6px"></p>
           <label style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:5px;margin-right:10px">Stock au <input type="date" id="dec-stock-date" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)"></label>
           <input type="file" id="dec-file-stock" accept=".xlsx,.xls" onchange="decImporterStockLGPI(this)" style="font-size:12px" disabled>
@@ -2001,7 +2002,7 @@ git push origin main</pre>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-<script src="/app-v800.js"></script>
+<script src="/app-v801.js"></script>
 <script>
 // Auto-version : la SEULE source de vérité est le nom du fichier ci-dessus (/app-vXYZ.js).
 // Les 2 badges d'affichage (header + coin bas-droit) se synchronisent automatiquement dessus.
